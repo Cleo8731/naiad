@@ -2,15 +2,16 @@
 // flowchart file through the Vite dev server. Development only (`npm run dev`); the
 // desktop app uses the Rust commands in src-tauri/src/lib.rs instead.
 //
-// It serves requests from this machine only, touches only .mmd / .mermaid files, and
-// requires a custom header on writes so that no other web page can trigger one.
+// It serves requests from this machine only, touches only flowchart and Markdown files
+// (.mmd, .mermaid, .md, .markdown), and requires a custom header on writes so that no
+// other web page can trigger one.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
-const ALLOWED = new Set(['.mmd', '.mermaid']);
+const ALLOWED = new Set(['.mmd', '.mermaid', '.md', '.markdown']);
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -69,7 +70,7 @@ export function fileBridge(): Plugin {
           }
           if (url === '/open' && req.method === 'POST') {
             const next = path.resolve((await readBody(req)).trim());
-            if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd and .mermaid files can be opened.' });
+            if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd, .mermaid and .md files can be opened.' });
             if (!fs.existsSync(next)) return send(404, { error: `No file at ${next}` });
             current = next;
             watch();

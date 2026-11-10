@@ -15,7 +15,12 @@ export interface Backend {
   setWindowTitle(title: string): void;
 }
 
-const FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
+const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
+const OPEN_FILTERS = [
+  { name: 'Flowcharts (Mermaid, Markdown)', extensions: ['mmd', 'mermaid', 'md', 'markdown'] },
+  ...NEW_FILTERS,
+  { name: 'Markdown', extensions: ['md', 'markdown'] },
+];
 
 async function desktop(): Promise<Backend> {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -39,10 +44,10 @@ async function desktop(): Promise<Backend> {
       return () => { window.clearTimeout(timer); unlisten(); };
     },
     async pickOpen() {
-      const picked = await dialog.open({ multiple: false, directory: false, filters: FILTERS });
+      const picked = await dialog.open({ multiple: false, directory: false, filters: OPEN_FILTERS });
       return typeof picked === 'string' ? picked : null;
     },
-    pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: FILTERS }),
+    pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: NEW_FILTERS }),
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
   };
@@ -66,7 +71,7 @@ function browser(): Backend {
       return () => es.close();
     },
     async pickOpen() {
-      const typed = window.prompt('Full path of the .mmd file to open:');
+      const typed = window.prompt('Full path of the .mmd or .md file to open:');
       if (!typed) return null;
       return (await call('/api/open', { method: 'POST', body: typed })).path;
     },

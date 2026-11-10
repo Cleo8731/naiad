@@ -14,7 +14,8 @@ use tauri_plugin_opener::OpenerExt;
 #[derive(Default)]
 struct Watching(Mutex<Option<RecommendedWatcher>>);
 
-/// The shell only ever touches flowchart files, whatever the page asks for.
+/// The shell only ever touches flowchart files and Markdown files (which can hold a
+/// flowchart block), whatever the page asks for.
 fn check(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
     let ext = p
@@ -22,10 +23,10 @@ fn check(path: &str) -> Result<PathBuf, String> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
-    if ext == "mmd" || ext == "mermaid" {
+    if matches!(ext.as_str(), "mmd" | "mermaid" | "md" | "markdown") {
         Ok(p)
     } else {
-        Err("Only .mmd and .mermaid files can be opened.".into())
+        Err("Only .mmd, .mermaid and .md files can be opened.".into())
     }
 }
 

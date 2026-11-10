@@ -2,8 +2,9 @@
 
 A lightweight flowchart viewer and editor for plain Mermaid text files.
 
-- The flowchart is one ordinary `.mmd` file. It is valid Mermaid, opens in any Mermaid
-  tool, and is the only copy: no positions, no hidden data.
+- The flowchart is one ordinary `.mmd` file, or a `mermaid` block inside a Markdown
+  file (`.md`), where Naiad touches nothing but the block. It is valid Mermaid, opens in
+  any Mermaid tool, and is the only copy: no positions, no hidden data.
 - On the chart each node shows only a short **title**. Click a node and a **sidebar**
   opens with its title and its full **description** (Markdown).
 - Edit the file by hand, let an AI agent edit it, or edit in Naiad (on the chart, in the

@@ -59,6 +59,7 @@ button.danger:hover { border-color: var(--bad); }
 }
 .bar .file { display: flex; align-items: baseline; gap: 10px; margin-left: 8px; min-width: 0; }
 .bar .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar .file select { max-width: 260px; min-width: 0; }
 .bar .status { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .bar .status[data-state="bad"] { color: var(--bad); }
 .bar .spacer { flex: 1; }

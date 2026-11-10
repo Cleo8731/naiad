@@ -1,9 +1,11 @@
 # The Naiad file format
 
 For anyone, person or AI agent, who edits a Naiad file by hand. A Naiad file is an
-ordinary Mermaid flowchart saved as `.mmd` (or `.mermaid`). It opens unchanged in every
-Mermaid tool. Naiad adds one convention on top: **description blocks**, written as
-Mermaid comments, which hold each node's full description.
+ordinary Mermaid flowchart saved as `.mmd` (or `.mermaid`), or a Markdown file (`.md`)
+with the flowchart in a `mermaid` block
+([A flowchart inside a Markdown file](#a-flowchart-inside-a-markdown-file)). It opens
+unchanged in every Mermaid tool. Naiad adds one convention on top: **description
+blocks**, written as Mermaid comments, which hold each node's full description.
 
 The text file is the only copy of the flowchart. Naiad keeps no other data: no positions,
 no hidden file beside it.
@@ -79,6 +81,51 @@ Rules:
 A comment must be on a line of its own. Mermaid 12 rejects a comment after a statement
 on the same line (`a --> b %% note` is a syntax error).
 
+## A flowchart inside a Markdown file
+
+Naiad also opens a Markdown file (`.md`, `.markdown`) and works on a flowchart kept in
+it as a fenced block marked `mermaid`, the form GitHub and most Markdown tools draw in
+place. This guide calls it the **flowchart block**:
+
+````markdown
+# Pipeline
+
+Some text.
+
+```mermaid
+flowchart TD
+    collect[Collect data] --> clean{Clean?}
+
+%% @collect
+%% Pull the raw exports from the warehouse.
+```
+
+More text.
+````
+
+- Everything said above holds inside the flowchart block: titles, description blocks,
+  `%% .`. Description blocks go inside the flowchart block, before its closing line, so
+  it stays one valid Mermaid flowchart and still draws on GitHub.
+- Naiad changes only lines between the flowchart block's opening and closing lines.
+  Every other line of the Markdown file stays byte for byte as it was. Before saving,
+  Naiad reads its own result back and refuses to save if the flowchart block would no
+  longer be found whole.
+- The text pane shows the flowchart's text, not the Markdown around it.
+- A flowchart block is opened with three or more backticks or tildes followed by
+  `mermaid`, and closed by a line of the same character, at least as many of them.
+  Fenced blocks in other languages, and `mermaid` blocks that are not flowcharts (their
+  first line is not `flowchart` or `graph`), are left alone. A flowchart block inside a
+  quote (`>`) is not found.
+- A file with several flowchart blocks shows one at a time; a list in the toolbar
+  switches between them.
+- A flowchart block may be indented, for example inside a list. Every line of it must
+  then start with the same whitespace as its opening line (empty lines may be fully
+  empty, or all carry that whitespace). If they do not, or the closing line is missing,
+  Naiad shows the flowchart but does not change it.
+- A line that would close the flowchart block (three or more backticks alone on a line,
+  when it was opened with backticks) cannot be part of a flowchart in a Markdown file.
+  Naiad does not save such a text.
+
 ## What Naiad changes in a file, and what it never does
 
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
@@ -93,7 +140,9 @@ on the same line (`a --> b %% note` is a syntax error).
 - The file is saved only while it is a valid Mermaid flowchart (Ctrl+S saves it anyway).
 - When the file changes on disk (an agent or another editor saved it), Naiad reloads
   it. If Naiad holds an unsaved edit at that moment, the version on disk wins and the
-  unsaved edit stays in Undo.
+  unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the
+  flowchart block as it was (only the text around it changed) is taken in without
+  touching the flowchart or an unsaved edit to it.
 
 ## Mermaid syntax Naiad can edit from the chart
 
@@ -121,4 +170,6 @@ but must be edited as text:
   description block. If you rename an id, rename its `%% @id` line too.
 - Put long text in a description block, never in the title.
 - Write an empty description line as `%% .`.
+- In a Markdown file, keep description blocks inside the flowchart block, and keep
+  every line of an indented flowchart block at its indent.
 - Naiad reloads the file as soon as you save it; nothing else needs doing.
