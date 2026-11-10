@@ -59,3 +59,7 @@ npm test               # run the tests
 shell.
 
 Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
+
+## Licence
+
+[MIT](LICENSE).

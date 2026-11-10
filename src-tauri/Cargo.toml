@@ -2,6 +2,7 @@
 name = "naiad"
 version = "0.1.0"
 description = "A lightweight viewer/editor for plain Mermaid flowchart files"
+license = "MIT"
 edition = "2021"
 
 [lib]
