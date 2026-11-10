@@ -1,0 +1,14 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+
+# Project records and agent setup: kept on disk, not part of the app or the repository.
+.claude/
+docs/
+CLAUDE.md

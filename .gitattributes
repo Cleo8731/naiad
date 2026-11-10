@@ -1,0 +1,6 @@
+# Text files are stored and checked out with LF newlines on every system: the tests
+# compare the sample flowchart's exact text.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

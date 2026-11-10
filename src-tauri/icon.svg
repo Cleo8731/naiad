@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b8fd6"/>
+      <stop offset="1" stop-color="#2a4fc4"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <!-- a water drop, for the naiad -->
+  <path d="M512 150 C 610 300 760 440 760 610 A 248 248 0 0 1 264 610 C 264 440 414 300 512 150 Z" fill="#ffffff"/>
+  <!-- a small flowchart inside it: one tile leading to two -->
+  <g fill="none" stroke="#2a4fc4" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 520 V 590 M512 590 H 420 V 650 M512 590 H 604 V 650"/>
+  </g>
+  <g fill="#2a4fc4">
+    <rect x="432" y="410" width="160" height="110" rx="26"/>
+    <rect x="352" y="650" width="136" height="100" rx="24"/>
+    <rect x="536" y="650" width="136" height="100" rx="24"/>
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+export const sample = readFileSync(resolve('examples/sample.mmd'), 'utf8').replace(/\r\n/g, '\n');
+
+export const fixtures: Record<string, string> = {
+  sample,
+  plain: 'graph LR\nA-->B\nB-->C\n',
+  chains: [
+    'flowchart TD',
+    '  A[Start] --> B(Middle) --> C{End?}',
+    '  X & Y --> P & Q --> R',
+    '  A -.-> X',
+    '  B == heavy ==> Y; C --o Q',
+    '  C -->|"say #quot;hi#quot;"| A',
+    '  linkStyle 1 stroke:#f00',
+    '  linkStyle 5,6 stroke:#0a0,stroke-width:3px',
+    '  linkStyle 9 stroke:#00f',
+    '',
+  ].join('\n'),
+  groups: [
+    'flowchart LR',
+    '    subgraph outer["Outer group"]',
+    '        direction TB',
+    '        a1[First] --> a2[Second]',
+    '        subgraph inner [Inner]',
+    '            b1 --> b2',
+    '        end',
+    '        a2 --> b1',
+    '    end',
+    '    subgraph "Title only"',
+    '        c1[(Store)]',
+    '    end',
+    '    a1 --> c1',
+    '    lone',
+    '    classDef hot fill:#fdd,stroke:#c00',
+    '    class a1,b2 hot',
+    '    style outer fill:#eef',
+    '    style a2 fill:#ffd,stroke:#aa0,color:#000',
+    '    click c1 href "https://example.com" "Open"',
+    '',
+    '%% @a1',
+    '%% The first step.',
+    '',
+    '%% @b2',
+    '%% Deep inside.',
+    '',
+  ].join('\n'),
+  noTrailingNewline: 'flowchart TD\n    one --> two\n    two --> three:::hot\n    classDef hot fill:#f00',
+};

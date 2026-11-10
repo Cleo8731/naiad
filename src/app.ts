@@ -1,0 +1,541 @@
+// The app: one open file, kept as text. The chart, the text pane and the sidebar are
+// three views of that text; every change from any of them becomes new text, which is
+// drawn again and saved to the file. A change to the file on disk comes back the same way.
+
+import type { Backend } from './backend';
+import { Chart, configureMermaid, type Target } from './chart';
+import { getDescriptions } from './core/descriptions';
+import { EditError, parseLink } from './core/edits';
+import { nodeLabel, parseDoc, type Doc } from './core/scan';
+import { snapshot, type Snap } from './semantics';
+import { NEW_GROUP, Sidebar, type View } from './sidebar';
+import { applyChecked, expectOp, type Op, type OpResult } from './verify';
+
+type Source = 'chart' | 'text' | 'disk' | 'history';
+
+const NEW_FILE = 'flowchart TD\n    start[Start]\n';
+const NODE_TEXT = '#1c2026';
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+function errorText(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.split('\n').filter((l) => l.trim()).slice(0, 4).join('\n');
+}
+
+function remember(key: string, value?: string): string | null {
+  try {
+    if (value === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, value);
+  } catch { /* storage can be unavailable; the app works without it */ }
+  return null;
+}
+
+export class App {
+  private text = '';
+  /** The file's text as last read from or written to disk. */
+  private saved = '';
+  private path: string | null = null;
+  private crlf = false;
+  private bom = false;
+  private doc: Doc = parseDoc('');
+  private snap: Snap | null = null;
+  private error: string | null = null;
+  private selection: Target | null = null;
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  private work: Promise<void> = Promise.resolve();
+  private saveTimer: number | undefined;
+  private textTimer: number | undefined;
+  private stopWatch: (() => void) | null = null;
+  private note = '';
+
+  private chart!: Chart;
+  private sidebar!: Sidebar;
+  private el!: {
+    name: HTMLElement; status: HTMLElement; area: HTMLTextAreaElement; notices: HTMLElement; stage: HTMLElement;
+    empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
+    add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
+  };
+
+  constructor(private root: HTMLElement, private backend: Backend) {}
+
+  async init(): Promise<void> {
+    this.root.innerHTML = `
+      <header class="bar">
+        <button data-act="open" title="Open a file (Ctrl+O)">Open</button>
+        <button data-act="new" title="Start a new flowchart file">New</button>
+        <div class="file"><span class="name"></span><span class="status"></span></div>
+        <div class="spacer"></div>
+        <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
+        <button data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button data-act="redo" title="Redo (Ctrl+Y)">Redo</button>
+        <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
+          <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
+          <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
+        </select>
+        <button data-act="fit" title="Fit the chart to the window">Fit</button>
+        <button data-act="text" title="Show or hide the file's text" aria-pressed="true">Text</button>
+      </header>
+      <main>
+        <section class="textpane">
+          <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The file's text"></textarea>
+          <div class="notices"></div>
+        </section>
+        <section class="stage" tabindex="-1">
+          <div class="empty" hidden>
+            <h1>No file open</h1>
+            <p>Open a Mermaid flowchart file (<code>.mmd</code>) to view and edit it.</p>
+            <p><button class="primary" data-act="open">Open a file</button> <button data-act="new">New flowchart</button></p>
+          </div>
+        </section>
+        <aside class="sidebar" hidden></aside>
+      </main>
+      <div class="toast" role="status" hidden></div>`;
+    const q = <T extends HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
+    this.el = {
+      name: q('.name'), status: q('.status'), area: q('textarea'), notices: q('.notices'), stage: q('.stage'),
+      empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
+      redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="text"]'), pane: q('.textpane'),
+      fit: q('[data-act="fit"]'),
+    };
+    if (this.backend.kind === 'browser') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
+
+    const dark = window.matchMedia('(prefers-color-scheme: dark)');
+    configureMermaid(dark.matches);
+    dark.addEventListener('change', () => { configureMermaid(dark.matches); this.queue(() => this.refresh(true)); });
+
+    this.chart = new Chart(this.el.stage, {
+      onSelect: (t) => this.select(t),
+      onConnect: (from, to) => { void this.edit({ kind: 'addEdge', from, to }); },
+      onAddNode: () => { void this.addNode(null); },
+      onRename: (t) => { this.select(t); this.sidebar.focusTitle(); },
+    });
+    this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
+      close: () => this.select(null),
+      setTitle: (id, title) => { void this.edit({ kind: 'setTitle', id, title }); },
+      setDescription: (id, description) => { void this.edit({ kind: 'setDescription', id, description }); },
+      setShape: (id, shape) => { void this.edit({ kind: 'setShape', id, shape }); },
+      setFill: (id, s) => {
+        const isNode = !!this.snap?.nodes[id];
+        const changes = s ? { fill: s.fill, stroke: s.stroke, ...(isNode ? { color: NODE_TEXT } : {}) } : { fill: null, stroke: null, color: null };
+        void this.edit({ kind: 'setStyle', id, changes });
+      },
+      setGroup: (id, group) => {
+        if (group === NEW_GROUP) void this.edit({ kind: 'groupNode', id, title: 'New group' });
+        else void this.edit({ kind: 'moveNode', id, target: group || null });
+      },
+      deleteNode: (id) => { void this.edit({ kind: 'deleteNode', id }); },
+      setEdgeLabel: (index, label) => { void this.edit({ kind: 'setEdgeLabel', index, label }); },
+      setEdgeStroke: (index, stroke) => { void this.edit({ kind: 'setEdgeStyle', index, stroke }); },
+      setEdgeArrow: (index, arrow) => { void this.edit({ kind: 'setEdgeStyle', index, arrow }); },
+      deleteEdge: (index) => { void this.edit({ kind: 'deleteEdge', index }); },
+      renameGroup: (id, title) => { void this.edit({ kind: 'renameSubgraph', id, title }); },
+      setGroupDirection: (id, dir) => { void this.edit({ kind: 'setSubgraphDirection', id, dir: dir || null }); },
+      addNodeIn: (id) => { void this.addNode(id); },
+      ungroup: (id) => { void this.edit({ kind: 'ungroup', id }); },
+      openLink: (url) => this.backend.openLink(url),
+    });
+
+    this.bind();
+    if (remember('textpane') === 'hidden') this.toggleText(false);
+    const width = Number(remember('textpane-width'));
+    if (width >= 220) this.el.pane.style.width = `${width}px`;
+
+    const first = await this.backend.initialPath().catch(() => null);
+    if (first) await this.open(first);
+    else this.paint();
+  }
+
+  // ------------------------------------------------------------------ file
+
+  private decode(raw: string): string {
+    this.bom = raw.startsWith('﻿');
+    const body = this.bom ? raw.slice(1) : raw;
+    this.crlf = /\r\n/.test(body);
+    return body.replace(/\r\n?/g, '\n');
+  }
+
+  private encode(text: string): string {
+    return (this.bom ? '﻿' : '') + (this.crlf ? text.replace(/\n/g, '\r\n') : text);
+  }
+
+  async open(path: string): Promise<void> {
+    let raw: string;
+    try {
+      raw = await this.backend.read(path);
+    } catch (e) {
+      this.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
+      return;
+    }
+    await this.flushSave();
+    this.stopWatch?.();
+    this.path = path;
+    this.text = this.saved = this.decode(raw);
+    this.undoStack = [];
+    this.redoStack = [];
+    this.selection = null;
+    this.note = '';
+    this.el.area.value = this.text;
+    this.chart.resetView();
+    this.backend.setWindowTitle(`${basename(path)} - Naiad`);
+    this.stopWatch = await this.backend.watch(path, () => { void this.diskChanged(); });
+    await this.queue(() => this.refresh(true));
+  }
+
+  private async pickAndOpen(): Promise<void> {
+    try {
+      const path = await this.backend.pickOpen();
+      if (path) await this.open(path);
+    } catch (e) {
+      this.toast(errorText(e));
+    }
+  }
+
+  private async newFile(): Promise<void> {
+    const path = await this.backend.pickSave('flowchart.mmd');
+    if (!path) return;
+    try {
+      await this.backend.write(path, NEW_FILE);
+      await this.open(path);
+    } catch (e) {
+      this.toast(`Could not create the file: ${errorText(e)}`);
+    }
+  }
+
+  private async diskChanged(): Promise<void> {
+    if (!this.path) return;
+    let disk: string;
+    try {
+      disk = this.decode(await this.backend.read(this.path));
+    } catch {
+      this.note = 'The file cannot be read (moved or deleted?)';
+      this.paintBar();
+      return;
+    }
+    if (disk === this.saved) return; // our own save, or nothing really changed
+    const hadUnsaved = this.text !== this.saved;
+    this.saved = disk;
+    if (disk !== this.text) {
+      await this.change(disk, 'disk');
+      this.note = `Reloaded from disk ${new Date().toLocaleTimeString()}`;
+      if (hadUnsaved) this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
+    }
+    this.paintBar();
+  }
+
+  private scheduleSave(): void {
+    window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => { void this.save(false); }, 350);
+  }
+
+  private async flushSave(): Promise<void> {
+    window.clearTimeout(this.saveTimer);
+    await this.save(false);
+  }
+
+  /** Writes the text to the file. A text with a syntax error is written only on Ctrl+S. */
+  private async save(force: boolean): Promise<void> {
+    if (!this.path || this.text === this.saved) return;
+    if (this.error && !force) { this.paintBar(); return; }
+    const text = this.text;
+    try {
+      // If the file changed since it was last read, take that change in rather than overwrite it.
+      const disk = this.decodeQuiet(await this.backend.read(this.path));
+      if (disk !== this.saved) { await this.diskChanged(); return; }
+      await this.backend.write(this.path, this.encode(text));
+      this.saved = text;
+      this.note = '';
+    } catch (e) {
+      this.note = `Could not save: ${errorText(e)}`;
+    }
+    this.paintBar();
+  }
+
+  private decodeQuiet(raw: string): string {
+    return (raw.startsWith('﻿') ? raw.slice(1) : raw).replace(/\r\n?/g, '\n');
+  }
+
+  // ------------------------------------------------------------------ changes
+
+  /** Runs jobs one after another, so two drawings never overlap. */
+  private queue(job: () => Promise<void>): Promise<void> {
+    this.work = this.work.then(job).catch((e) => { console.error(e); this.toast(errorText(e)); });
+    return this.work;
+  }
+
+  private change(next: string, source: Source): Promise<void> {
+    return this.queue(async () => {
+      if (next === this.text) return;
+      if (source !== 'history') {
+        this.undoStack.push(this.text);
+        if (this.undoStack.length > 300) this.undoStack.shift();
+        this.redoStack = [];
+      }
+      this.text = next;
+      if (source !== 'text') {
+        const { scrollTop, scrollLeft } = this.el.area;
+        this.el.area.value = next;
+        this.el.area.scrollTop = scrollTop;
+        this.el.area.scrollLeft = scrollLeft;
+      }
+      await this.refresh(false);
+      if (source !== 'disk') this.scheduleSave();
+    });
+  }
+
+  private async refresh(force: boolean): Promise<void> {
+    this.doc = parseDoc(this.text);
+    const before = this.snap;
+    try {
+      const snap = await snapshot(this.text);
+      if (force || !before || this.error !== null || this.chartText !== this.text) await this.chart.draw(this.text, snap);
+      this.chartText = this.text;
+      this.snap = snap;
+      this.error = null;
+    } catch (e) {
+      this.error = errorText(e);
+      if (!this.snap) this.chart.clear();
+    }
+    this.keepSelection(before);
+    this.paint();
+  }
+  private chartText: string | null = null;
+
+  private keepSelection(before: Snap | null): void {
+    const s = this.selection;
+    if (!s || !this.snap) return;
+    if (s.kind === 'node' && !(s.id in this.snap.nodes)) this.selection = null;
+    if (s.kind === 'sub' && !(s.id in this.snap.subs)) this.selection = null;
+    if (s.kind === 'edge') {
+      const was = before?.edges[s.index];
+      const now = this.snap.edges[s.index];
+      if (!was || !now || was.start !== now.start || was.end !== now.end) this.selection = null;
+    }
+  }
+
+  private async edit(op: Op): Promise<OpResult | null> {
+    await this.work;
+    const before = this.snap;
+    let res: OpResult;
+    try {
+      res = await applyChecked(this.text, op);
+    } catch (e) {
+      this.toast(e instanceof EditError ? e.message : errorText(e));
+      this.paint(); // put the controls back to what the file says
+      return null;
+    }
+    // Decide what stays selected before the redraw, so it is painted once.
+    if (op.kind === 'deleteNode' || op.kind === 'deleteEdge' || op.kind === 'ungroup') this.selection = null;
+    if (op.kind === 'addNode') this.selection = { kind: 'node', id: res.created! };
+    if (op.kind === 'renameSubgraph') this.selection = { kind: 'sub', id: res.created! };
+    let follow: string | null = null;
+    if (before && (op.kind === 'setEdgeLabel' || op.kind === 'setEdgeStyle')) {
+      follow = JSON.stringify(expectOp(before, op, res).edges[op.index]);
+      this.selection = null;
+    }
+    await this.change(res.text, 'chart');
+    if (follow && this.snap) {
+      const index = this.snap.edges.findIndex((e) => JSON.stringify(e) === follow);
+      if (index >= 0) this.select({ kind: 'edge', index });
+    }
+    if (op.kind === 'addEdge' && this.snap) this.select({ kind: 'edge', index: this.snap.edges.length - 1 });
+    return res;
+  }
+
+  private async addNode(parent: string | null): Promise<void> {
+    const sel = this.selection;
+    const into = parent ?? (sel?.kind === 'sub' ? sel.id : null);
+    const res = await this.edit({ kind: 'addNode', title: 'New node', parent: into });
+    if (res) this.sidebar.focusTitle();
+  }
+
+  private async history(from: string[], to: string[]): Promise<void> {
+    await this.work;
+    const next = from.pop();
+    if (next === undefined) return;
+    to.push(this.text);
+    await this.change(next, 'history');
+  }
+
+  private select(target: Target | null): void {
+    this.selection = target;
+    this.paint();
+  }
+
+  private deleteSelection(): void {
+    const s = this.selection;
+    if (!s) return;
+    if (s.kind === 'node') void this.edit({ kind: 'deleteNode', id: s.id });
+    else if (s.kind === 'edge') void this.edit({ kind: 'deleteEdge', index: s.index });
+    else void this.edit({ kind: 'ungroup', id: s.id });
+  }
+
+  // ------------------------------------------------------------------ painting
+
+  private view(): View | null {
+    const s = this.selection;
+    const snap = this.snap;
+    if (!s || !snap) return null;
+    const fillOf = (styles: string[]) => styles.find((x) => x.startsWith('fill:'))?.slice(5).trim() ?? '';
+    if (s.kind === 'node') {
+      const n = snap.nodes[s.id];
+      if (!n) return null;
+      const groups = Object.entries(snap.subs).map(([id, g]) => ({ id, title: g.title || id }));
+      return {
+        kind: 'node', id: s.id, title: nodeLabel(this.doc, s.id)?.title ?? n.text,
+        description: getDescriptions(this.text).get(s.id) ?? '', shape: n.type, fill: fillOf(n.styles),
+        group: Object.keys(snap.subs).find((id) => snap.subs[id].nodes.includes(s.id)) ?? '', groups,
+      };
+    }
+    if (s.kind === 'sub') {
+      const g = snap.subs[s.id];
+      if (!g) return null;
+      return { kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), count: g.nodes.length };
+    }
+    const e = snap.edges[s.index];
+    if (!e) return null;
+    const title = (id: string) => nodeLabel(this.doc, id)?.title ?? snap.subs[id]?.title ?? id;
+    const arrow = ({ arrow_point: 'arrow', arrow_open: 'none', double_arrow_point: 'both', arrow_circle: 'circle', arrow_cross: 'cross' } as const)[e.type] ?? 'arrow';
+    let label = e.text;
+    const ref = this.doc.edges[s.index];
+    if (ref) {
+      try { label = parseLink(this.doc.info[ref.line].chains![ref.chain].links[ref.link].raw).label; } catch { /* keep Mermaid's text */ }
+    }
+    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), label, stroke: e.stroke as never, arrow };
+  }
+
+  private paint(): void {
+    const open = this.path !== null;
+    this.el.empty.hidden = open;
+    this.el.area.disabled = !open;
+    this.chart.select(this.selection);
+    this.sidebar.show(this.view());
+    this.paintBar();
+    this.paintNotices();
+  }
+
+  private paintBar(): void {
+    const open = this.path !== null;
+    this.el.name.textContent = this.path ? basename(this.path) : '';
+    this.el.name.title = this.path ?? '';
+    let status = '';
+    let state = '';
+    if (open) {
+      if (this.note.startsWith('Could not') || this.note.startsWith('The file cannot')) { status = this.note; state = 'bad'; }
+      else if (this.text === this.saved) status = this.note || 'Saved';
+      else if (this.error) { status = 'Not saved: syntax error (Ctrl+S saves anyway)'; state = 'bad'; }
+      else status = 'Saving…';
+    }
+    this.el.status.textContent = status;
+    this.el.status.dataset.state = state;
+    this.el.undo.disabled = !this.undoStack.length;
+    this.el.redo.disabled = !this.redoStack.length;
+    this.el.add.disabled = this.el.fit.disabled = this.el.dir.disabled = !open || !this.snap;
+    if (this.snap) this.el.dir.value = this.snap.direction === 'TB' ? 'TD' : this.snap.direction;
+  }
+
+  private paintNotices(): void {
+    const items: HTMLElement[] = [];
+    const notice = (cls: string, text: string, action?: { label: string; run: () => void }) => {
+      const div = document.createElement('div');
+      div.className = `notice ${cls}`;
+      div.append(text);
+      if (action) {
+        const b = document.createElement('button');
+        b.textContent = action.label;
+        b.addEventListener('click', action.run);
+        div.append(' ', b);
+      }
+      items.push(div);
+    };
+    if (this.error) notice('bad', `Mermaid cannot read this text, so the chart shows the last good version.\n${this.error}`);
+    else if (this.doc.problems.length) {
+      const p = this.doc.problems[0];
+      notice('warn', `Line ${p.line + 1}: ${p.message} The chart can show this file but will not edit it; change it here.`);
+    }
+    if (this.doc.warnings.length) {
+      const lines = this.doc.warnings.map((w) => w.line + 1).join(', ');
+      notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, {
+        label: 'Change to "%% ."',
+        run: () => { void this.change(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); },
+      });
+    }
+    this.el.notices.replaceChildren(...items);
+  }
+
+  private toastTimer: number | undefined;
+  private toast(message: string): void {
+    this.el.toast.textContent = message;
+    this.el.toast.hidden = false;
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => { this.el.toast.hidden = true; }, 6500);
+  }
+
+  private toggleText(show?: boolean): void {
+    const visible = show ?? this.el.pane.hidden;
+    this.el.pane.hidden = !visible;
+    this.el.textToggle.setAttribute('aria-pressed', String(visible));
+    remember('textpane', visible ? 'shown' : 'hidden');
+  }
+
+  // ------------------------------------------------------------------ input
+
+  private bind(): void {
+    this.root.addEventListener('click', (e) => {
+      const act = (e.target as Element).closest<HTMLElement>('button[data-act]')?.dataset.act;
+      if (act === 'open') void this.pickAndOpen();
+      if (act === 'new') void this.newFile();
+      if (act === 'add') void this.addNode(null);
+      if (act === 'undo') void this.history(this.undoStack, this.redoStack);
+      if (act === 'redo') void this.history(this.redoStack, this.undoStack);
+      if (act === 'fit') this.chart.fit();
+      if (act === 'text') this.toggleText();
+    });
+    this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
+
+    this.el.area.addEventListener('input', () => {
+      window.clearTimeout(this.textTimer);
+      this.textTimer = window.setTimeout(() => { void this.change(this.el.area.value.replace(/\r\n?/g, '\n'), 'text'); }, 220);
+    });
+    this.el.area.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      this.el.area.setRangeText('    ', this.el.area.selectionStart, this.el.area.selectionEnd, 'end');
+      this.el.area.dispatchEvent(new Event('input'));
+    });
+
+    // Drag the text pane's right edge to resize it.
+    this.el.pane.addEventListener('pointerdown', (e) => {
+      const r = this.el.pane.getBoundingClientRect();
+      if (e.clientX < r.right - 6) return;
+      e.preventDefault();
+      this.el.pane.setPointerCapture(e.pointerId);
+      const move = (m: PointerEvent) => { this.el.pane.style.width = `${Math.max(220, Math.min(window.innerWidth * 0.7, m.clientX - r.left))}px`; };
+      const up = () => {
+        this.el.pane.removeEventListener('pointermove', move);
+        remember('textpane-width', String(Math.round(this.el.pane.getBoundingClientRect().width)));
+      };
+      this.el.pane.addEventListener('pointermove', move);
+      this.el.pane.addEventListener('pointerup', up, { once: true });
+    });
+
+    window.addEventListener('keydown', (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 's') { e.preventDefault(); void this.save(true); return; }
+      if (mod && key === 'o') { e.preventDefault(); void this.pickAndOpen(); return; }
+      const typing = (e.target as Element).closest('input, textarea, select, [contenteditable]');
+      if (typing) return;
+      if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.history(this.undoStack, this.redoStack); }
+      else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.history(this.redoStack, this.undoStack); }
+      else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.deleteSelection(); }
+      else if (key === 'escape') this.select(null);
+      else if ((key === 'enter' || key === 'f2') && this.selection) { e.preventDefault(); this.sidebar.focusTitle(); }
+    });
+
+    window.addEventListener('beforeunload', () => { void this.flushSave(); });
+  }
+}

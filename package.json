@@ -1,0 +1,29 @@
+{
+  "name": "naiad",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A lightweight viewer/editor for plain Mermaid flowchart files, with per-node descriptions in a sidebar.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "dompurify": "^3.4.17",
+    "marked": "^18.2.0",
+    "mermaid": "^12.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/node": "^26.6.6",
+    "jsdom": "^31.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}

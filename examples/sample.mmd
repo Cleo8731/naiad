@@ -1,0 +1,25 @@
+flowchart TD
+    collect[Collect data] --> clean{Clean?}
+    clean -- yes --> train[Train model]
+    clean -- no --> fix[Fix the data]
+    fix --> clean
+
+    subgraph review [Review]
+        train --> evaluate([Evaluate])
+        evaluate --> ship((Ship))
+    end
+
+    style ship fill:#d3f9d8,stroke:#2f9e44,color:#1c2026
+
+%% @collect
+%% Pull the raw exports from the warehouse.
+%% .
+%% Descriptions are **Markdown**: lists, `code` and links all work.
+%% - one file per day
+%% - never edited by hand
+
+%% @clean
+%% Check for nulls and duplicates. Rows that fail go back to *Fix the data*.
+
+%% @ship
+%% Publish the model and tell the team.
