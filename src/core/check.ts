@@ -3,6 +3,7 @@
 // it hands in a reader, which is Mermaid's own parser (src/cli.ts in the app).
 
 import { parseDescriptions } from './descriptions';
+import { plainText, withEndingsOf } from './endings';
 import { findBlocks, isMarkdownPath } from './markdown';
 import { parseDoc, usedIds } from './scan';
 
@@ -193,10 +194,7 @@ export interface Fixed {
  * byte of the file changes. Refuses when Mermaid reads a flowchart differently after.
  */
 export async function fixFile(name: string, raw: string, read: Reader): Promise<Fixed> {
-  const bom = raw.startsWith('﻿');
-  const body = bom ? raw.slice(1) : raw;
-  const newline = /\r\n/.test(body) ? '\r\n' : '\n';
-  const lines = body.replace(/\r\n?/g, '\n').split('\n');
+  const lines = plainText(raw).split('\n');
   const text = lines.join('\n');
   const none: Fixed = { raw, lines: [], refused: null };
 
@@ -244,7 +242,8 @@ export async function fixFile(name: string, raw: string, read: Reader): Promise<
     const descriptions = (t: string) => JSON.stringify(parseDescriptions(t.split('\n')).map((d) => [d.id, d.text]));
     if (descriptions(before[k]) !== descriptions(after[k])) return { ...none, refused: 'the fix would have changed a description.' };
   }
-  return { raw: (bom ? '﻿' : '') + out.join(newline), lines: changed, refused: null };
+  // Each line keeps its own line ending; the changed lines keep theirs too.
+  return { raw: withEndingsOf(raw, out.join('\n')), lines: changed, refused: null };
 }
 
 const count = (n: number): string => (n === 1 ? '1 problem' : `${n} problems`);

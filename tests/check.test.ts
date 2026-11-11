@@ -174,6 +174,15 @@ describe('fix', () => {
     expect(fixed.raw).toBe('﻿flowchart TD\r\n  A --> B\r\n%% .\r\n');
   });
 
+  test('keeps each line\'s own ending in a file that mixes them (bug hunt S1)', async () => {
+    const mixed = await fixFile('flow.mmd', 'flowchart TD\r\n  A --> B\n%%\r\n%% x\n', reading);
+    expect(mixed.raw).toBe('flowchart TD\r\n  A --> B\n%% .\r\n%% x\n');
+    const loneCr = await fixFile('flow.mmd', 'flowchart TD\r  A --> B\r%%\r', reading);
+    expect(loneCr.raw).toBe('flowchart TD\r  A --> B\r%% .\r');
+    const md = '# Title\r\nintro\r\n\n```mermaid\nflowchart TD\n  A --> B\n%%\n```\nafter\r\n';
+    expect((await fixFile('doc.md', md, reading)).raw).toBe(md.replace('%%\n', '%% .\n'));
+  });
+
   test('a file with nothing to fix comes back as it was', async () => {
     for (const text of Object.values(fixtures)) {
       const fixed = await fixFile('flow.mmd', text, reading);

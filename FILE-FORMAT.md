@@ -139,8 +139,10 @@ More text.
 ## What Naiad changes in a file, and what it never does
 
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
-  other line, its spacing and its comments stay byte for byte as they were. Line endings
-  (LF or CRLF) and a byte-order mark are kept as found.
+  other line, its spacing and its comments stay byte for byte as they were.
+- Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
+  them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
+  the ending of the line above it. A byte-order mark is kept.
 - Before an edit is applied, Naiad asks Mermaid's own parser what the flowchart means
   before and after. If the result does not parse, or differs from the edit that was
   asked for, the edit is refused and the file is not touched.

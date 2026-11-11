@@ -6,6 +6,7 @@ import type { Backend } from './backend';
 import { Chart, configureMermaid, type Target } from './chart';
 import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
+import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleHighlight } from './core/highlights';
 import { findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
@@ -53,8 +54,6 @@ export class App {
   private md: MarkdownFile | null = null;
   private blockError: string | null = null;
   private path: string | null = null;
-  private crlf = false;
-  private bom = false;
   private doc: Doc = parseDoc('');
   private snap: Snap | null = null;
   private error: string | null = null;
@@ -192,17 +191,6 @@ export class App {
 
   // ------------------------------------------------------------------ file
 
-  private decode(raw: string): string {
-    this.bom = raw.startsWith('﻿');
-    const body = this.bom ? raw.slice(1) : raw;
-    this.crlf = /\r\n/.test(body);
-    return body.replace(/\r\n?/g, '\n');
-  }
-
-  private encode(text: string): string {
-    return (this.bom ? '﻿' : '') + (this.crlf ? text.replace(/\n/g, '\r\n') : text);
-  }
-
   async open(path: string): Promise<void> {
     let raw: string;
     try {
@@ -214,7 +202,7 @@ export class App {
     let index = -1;
     if (isMarkdownPath(path)) {
       // Looked at before anything is changed, so a file with no flowchart leaves the open one as it is.
-      index = findBlocks(this.decodeQuiet(raw)).findIndex((b) => b.flowchart);
+      index = findBlocks(plainText(raw)).findIndex((b) => b.flowchart);
       if (index < 0) {
         this.toast(`${basename(path)} holds no Mermaid flowchart block.`);
         return;
@@ -223,7 +211,7 @@ export class App {
     await this.flushSave();
     this.stopWatch?.();
     this.path = path;
-    const body = this.decode(raw);
+    const body = plainText(raw);
     this.md = index < 0 ? null : { file: body, blocks: findBlocks(body), index, gone: false };
     this.text = this.saved = this.md ? this.md.blocks[index].text : body;
     this.undoStack = [];
@@ -340,7 +328,7 @@ export class App {
     if (!this.path) return;
     let disk: string;
     try {
-      disk = this.decode(await this.backend.read(this.path));
+      disk = plainText(await this.backend.read(this.path));
     } catch {
       this.note = 'The file cannot be read (moved or deleted?)';
       this.paintBar();
@@ -429,11 +417,12 @@ export class App {
     const text = this.text;
     try {
       // If the file changed since it was last read, take that change in rather than overwrite it.
-      const disk = this.decodeQuiet(await this.backend.read(this.path));
-      if (disk !== (this.md ? this.md.file : this.saved)) { await this.diskChanged(); return; }
+      const raw = await this.backend.read(this.path);
+      if (plainText(raw) !== (this.md ? this.md.file : this.saved)) { await this.diskChanged(); return; }
       // In a Markdown file only the block's own lines are replaced; putBlock reads the result back.
       const out = this.md ? putBlock(this.md.file, this.md.index, text) : text;
-      await this.backend.write(this.path, this.encode(out));
+      // Every line keeps the line ending it has on disk now.
+      await this.backend.write(this.path, withEndingsOf(raw, out));
       if (this.md) this.md = { ...this.md, file: out, blocks: findBlocks(out) };
       this.saved = text;
       this.note = '';
@@ -441,10 +430,6 @@ export class App {
       this.note = `Could not save: ${errorText(e)}`;
     }
     this.paintBar();
-  }
-
-  private decodeQuiet(raw: string): string {
-    return (raw.startsWith('﻿') ? raw.slice(1) : raw).replace(/\r\n?/g, '\n');
   }
 
   // ------------------------------------------------------------------ changes
