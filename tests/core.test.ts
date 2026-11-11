@@ -51,6 +51,25 @@ describe('scanner', () => {
   });
 });
 
+describe('only lower-case subgraph and end open and close a group, as in Mermaid (bug hunt A8)', () => {
+  // Mermaid 12.3.0 reads END, End, SUBGRAPH or Subgraph on a line of its own as a node.
+  for (const word of ['END', 'End', 'END;', 'SUBGRAPH', 'Subgraph']) {
+    test(`${word} on a line of its own is a node`, () => {
+      const doc = parseDoc(`flowchart TD\n  a[A] --> b[B]\n  ${word}\n`);
+      expect(doc.problems).toEqual([]);
+      expect(nodeLabel(doc, word.replace(';', ''))).not.toBeNull();
+      expect(doc.subs).toEqual([]);
+    });
+  }
+
+  test('a group closed by end, with an END node inside it', () => {
+    const doc = parseDoc('flowchart TD\n  subgraph g [G]\n    a\n    END\n  end\n  a --> END\n');
+    expect(doc.problems).toEqual([]);
+    expect(doc.subs.map((s) => [s.id, s.line, s.endLine])).toEqual([['g', 1, 4]]);
+    expect(nodeLabel(doc, 'END')).not.toBeNull();
+  });
+});
+
 describe('description blocks', () => {
   test('reads the sample', () => {
     const d = getDescriptions(sample);

@@ -181,6 +181,21 @@ describe('a directive in a description or a title never changes the chart\'s set
   });
 });
 
+describe('a node named END or SUBGRAPH on a line of its own (bug hunt A8)', () => {
+  // Mermaid reads `end` and `subgraph` as keywords in lower case only.
+  for (const word of ['END', 'SUBGRAPH']) {
+    test(`${word}: chart edits work, the node's included`, async () => {
+      const before = `flowchart TD\n  a[A] --> b[B]\n  ${word}\n`;
+      expect((await applyChecked(before, { kind: 'setTitle', id: 'a', title: 'Renamed' })).text)
+        .toBe(before.replace('a[A]', 'a[Renamed]'));
+      expect((await applyChecked(before, { kind: 'addEdge', from: 'b', to: word })).text)
+        .toBe(`${before}  b --> ${word}\n`);
+      expect((await applyChecked(before, { kind: 'deleteNode', id: word })).text)
+        .toBe('flowchart TD\n  a[A] --> b[B]\n');
+    });
+  }
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

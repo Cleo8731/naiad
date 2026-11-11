@@ -287,7 +287,7 @@ const HEADER_RE = /^(flowchart(?:-elk)?|graph)(?:\s+(TB|TD|BT|RL|LR))?\s*;?$/i;
 const DIRS = 'TB|TD|BT|RL|LR';
 
 export function parseSubgraphLine(trimmed: string): { id: string | null; title: string } | null {
-  const m = /^subgraph\s+(.*?)\s*;?$/i.exec(trimmed);
+  const m = /^subgraph\s+(.*?)\s*;?$/.exec(trimmed);
   if (!m || !m[1]) return null;
   const rest = m[1];
   let mm = /^([^\s[\]"]+)\s*\[(.*)\]$/.exec(rest);
@@ -369,14 +369,15 @@ export function parseDoc(text: string): Doc {
       else problems.push({ line: i, message: 'The header line carries more than the diagram type and direction.' });
       continue;
     }
-    if (/^subgraph(\s|$)/i.test(t)) {
+    // Only in lower case, as Mermaid reads them: `END` or `SUBGRAPH` alone is a node (bug hunt A8).
+    if (/^subgraph(\s|$)/.test(t)) {
       const parsed = parseSubgraphLine(t);
       if (!parsed) { problems.push({ line: i, message: 'A subgraph line with no name.' }); continue; }
       li.kind = 'subgraph';
       stack.push({ line: i, parsed });
       continue;
     }
-    if (/^end\s*;?$/i.test(t)) {
+    if (/^end\s*;?$/.test(t)) {
       const top = stack.pop();
       if (!top) { problems.push({ line: i, message: 'An "end" with no subgraph to close.' }); continue; }
       li.kind = 'end';
