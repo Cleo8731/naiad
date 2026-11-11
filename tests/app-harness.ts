@@ -119,6 +119,7 @@ export async function startApp(disk: FakeDisk, path: string) {
     /** A chart edit: the direction list in the toolbar. */
     direction(dir: string) { const s = q<HTMLSelectElement>('[data-act="dir"]'); s.value = dir; s.dispatchEvent(new Event('change')); },
     undo() { q<HTMLButtonElement>('[data-act="undo"]').click(); },
+    redo() { q<HTMLButtonElement>('[data-act="redo"]').click(); },
     undoEnabled: () => !q<HTMLButtonElement>('[data-act="undo"]').disabled,
     /** Ctrl+S, pressed outside the text pane. */
     ctrlS() { window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true })); },

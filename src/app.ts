@@ -15,6 +15,7 @@ import { NEW_GROUP, Sidebar, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
 
 type Source = 'chart' | 'text' | 'disk' | 'history';
+interface Step { text: string; disk: boolean }
 
 const NEW_FILE = 'flowchart TD\n    start[Start]\n';
 const NODE_TEXT = '#1c2026';
@@ -58,8 +59,12 @@ export class App {
   private snap: Snap | null = null;
   private error: string | null = null;
   private selection: Target | null = null;
-  private undoStack: string[] = [];
-  private redoStack: string[] = [];
+  /**
+   * One step back (Undo) or forward (Redo): the text to put in, and whether the step
+   * between it and the text shown was a change taken from disk (bug hunt C3).
+   */
+  private undoStack: Step[] = [];
+  private redoStack: Step[] = [];
   private work: Promise<void> = Promise.resolve();
   private saveTimer: number | undefined;
   private textTimer: number | undefined;
@@ -420,7 +425,7 @@ export class App {
         this.note = `Reloaded from disk ${new Date().toLocaleTimeString()}`;
         if (hadUnsaved) {
           this.displaced = true;
-          this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
+          this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back, in place of the change on disk.');
         }
       }
       this.paintBar();
@@ -544,7 +549,7 @@ export class App {
     if (source !== 'disk' && this.locked()) return;
     if (source !== 'disk') this.displaced = false; // the person has acted since: their own change is now the last
     if (source !== 'history') {
-      this.undoStack.push(this.text);
+      this.undoStack.push({ text: this.text, disk: source === 'disk' });
       if (this.undoStack.length > 300) this.undoStack.shift();
       this.redoStack = [];
     }
@@ -643,22 +648,26 @@ export class App {
   /**
    * Undo (back) or Redo, as one job of the queue. The stacks are looked up in it, after
    * the typing is taken in, since taking it in (or a reload) empties Redo. While the
-   * flowchart is locked both stacks stay as they are (bug hunt C9).
+   * flowchart is locked both stacks stay as they are (bug hunt C9). An Undo that would
+   * take back a change made on disk asks first, since it saves over that change (C3).
    */
   private async history(back: boolean): Promise<void> {
     await this.takeTyping();
     await this.queue(async () => {
       const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
-      if (!from.length) return;
+      const step = from[from.length - 1];
+      if (!step) return;
       const why = this.locked();
       if (why) {
         this.toast(`This flowchart can be shown but not changed here: ${why}`);
         return;
       }
-      const next = from.pop();
-      if (next === undefined) return;
-      to.push(this.text);
-      await this.apply(next, 'history');
+      if (back && step.disk && !(await this.backend.confirm(
+        `The last change to ${basename(this.path ?? '')} was made on disk, by an agent or another program. Undo takes it back and saves your earlier version over it; Redo brings it back. Undo it?`,
+      ))) return;
+      from.pop();
+      to.push({ text: this.text, disk: step.disk });
+      await this.apply(step.text, 'history');
     });
   }
 

@@ -40,6 +40,7 @@ describe('what was just typed is never lost (bug hunt S16: C1, C12, C13)', () =>
     await sleep(600);
     expect(ui.area().value).toContain('%% agent');
     expect(ui.toast()).toMatch(/Undo brings it back/);
+    disk.answer = true; // Undo asks before it takes back the change on disk (C3)
     ui.undo();
     expect(await ui.until((t) => t.includes('typed[Typed by the person]'))).toBe(true);
   });
@@ -166,6 +167,74 @@ describe('a save never overwrites a change made on disk meanwhile (bug hunt S17:
   });
 });
 
+describe('Undo asks before it takes back a change made on disk (bug hunt C3)', () => {
+  const AGENT = BASE + '\n%% agent\n';
+  const QUESTION = /^The last change to flow\.mmd was made on disk, by an agent or another program\. Undo takes it back and saves your earlier version over it; Redo brings it back\. Undo it\?$/;
+
+  /** The person's chart edit is waiting to be saved when the agent's write is taken in. */
+  async function displaced() {
+    const s = await start();
+    s.ui.direction('LR');
+    await s.ui.until((t) => t.startsWith('flowchart LR'));
+    s.disk.outside(FILE, AGENT); // lands inside the 350 ms wait: the person's edit goes to Undo
+    await sleep(600);
+    return s;
+  }
+
+  it('C3: Undo right after the disk\'s version was taken asks, and No keeps the agent\'s change', async () => {
+    const { disk, ui } = await displaced();
+    const toast = ui.toast();
+    ui.undo();
+    await sleep(800);
+    expect(disk.files.get(FILE)).toBe(AGENT);
+    expect(ui.area().value).toBe(AGENT);
+    expect(disk.asked).toHaveLength(1);
+    expect(disk.asked[0]).toMatch(QUESTION);
+    expect(ui.undoEnabled()).toBe(true);
+    expect(toast).toMatch(/Undo brings it back, in place of the change on disk\.$/);
+  });
+
+  it('Yes brings the person\'s edit back over it, and Redo brings the agent\'s change back', async () => {
+    const { disk, ui } = await displaced();
+    disk.answer = true;
+    ui.undo();
+    expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
+    await sleep(800);
+    expect(disk.files.get(FILE)).toBe(BASE.replace('flowchart TD', 'flowchart LR'));
+    ui.redo();
+    expect(await ui.until((t) => t === AGENT)).toBe(true);
+    await sleep(800);
+    expect(disk.files.get(FILE)).toBe(AGENT);
+    // Taking it back a second time asks again.
+    ui.undo();
+    await sleep(300);
+    expect(disk.asked).toHaveLength(2);
+  });
+
+  it('Undo of a change on disk asks even when nothing was unsaved', async () => {
+    const { disk, ui } = await start();
+    disk.outside(FILE, AGENT);
+    expect(await ui.until((t) => t === AGENT)).toBe(true);
+    ui.undo();
+    await sleep(600);
+    expect(disk.asked).toHaveLength(1);
+    expect(disk.files.get(FILE)).toBe(AGENT);
+  });
+
+  it('Undo of the person\'s own edits asks nothing', async () => {
+    const { disk, ui } = await start();
+    ui.direction('LR');
+    await ui.until((t) => t.startsWith('flowchart LR'));
+    ui.direction('RL');
+    await ui.until((t) => t.startsWith('flowchart RL'));
+    ui.undo();
+    expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
+    await sleep(800);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toMatch(/^flowchart LR/);
+  });
+});
+
 describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', () => {
   const NOTES = 'C:/hunt/notes.md';
   const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n\n%% @a\n%% Desc of A.\n```\n\nAfter.\n';
@@ -192,6 +261,7 @@ describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', (
     disk.outside(NOTES, CLOSED);
     await sleep(600);
     expect(ui.area().readOnly).toBe(false);
+    disk.answer = true; // each step back over a change on disk asks (C3)
     const seen: string[] = [];
     for (let i = 0; i < 5 && ui.undoEnabled(); i++) { ui.undo(); await sleep(150); seen.push(ui.area().value); }
     expect(seen.some((t) => t.startsWith('flowchart LR'))).toBe(true);
@@ -220,6 +290,7 @@ describe('leaving a flowchart asks before an edit is lost (bug hunt S19: C10)', 
     expect(disk.asked[0]).toMatch(/^Your last edit to flow\.mmd was not written: the file changed on disk first\..*Open other\.mmd and lose it\?$/);
     expect(ui.area().value).toBe(AGENT);
     expect(ui.undoEnabled()).toBe(true);
+    disk.answer = true; // Undo asks before it takes back the change on disk (C3)
     ui.undo();
     expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
   });
@@ -287,6 +358,7 @@ describe('showing another flowchart of a Markdown file asks before an edit is lo
     expect(disk.asked).toHaveLength(1);
     expect(disk.asked[0]).toMatch(/^Your last edit to two\.md was not written: .*Show another flowchart and lose it\?$/);
     expect(ui.area().value).toContain('%% agent');
+    disk.answer = true; // Undo asks before it takes back the change on disk (C3)
     ui.undo();
     expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
   });
