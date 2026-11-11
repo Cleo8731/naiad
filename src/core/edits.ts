@@ -188,25 +188,36 @@ function requireNode(doc: Doc, id: string) {
 
 // ---------------------------------------------------------------- linkStyle indexes
 
-/** Keeps `linkStyle` lines pointing at the same edges after edges move or go. */
+/**
+ * Keeps `linkStyle` lines pointing at the same edges after edges move or go. An edge is
+ * found again by its two ends and its arrow as written; an edge whose arrow the edit
+ * rewrote, by its two ends alone, in order. Edges alike in both are alike to Mermaid, so
+ * which of them a line lands on changes nothing.
+ */
 function fixLinkStyles(oldDoc: Doc, newText: string, removed: Set<number> = new Set()): string {
   if (!oldDoc.info.some((li) => li.kind === 'linkStyle' && li.ids!.some((x) => /^\d+$/.test(x)))) return newText;
   const newDoc = parseDoc(newText);
-  const key = (e: { from: NodeRef; to: NodeRef }) => `${e.from.id}\u0000${e.to.id}`;
-  const slots = new Map<string, number[]>();
-  newDoc.edges.forEach((e, i) => {
-    if (!slots.has(key(e))) slots.set(key(e), []);
-    slots.get(key(e))!.push(i);
-  });
-  const seen = new Map<string, number>();
+  type EdgeAt = Doc['edges'][number];
+  const ends = (e: EdgeAt) => `${e.from.id}\u0000${e.to.id}`;
+  const written = (doc: Doc) => (e: EdgeAt) => `${ends(e)}\u0000${doc.info[e.line].chains![e.chain].links[e.link].raw.trim()}`;
   const map = new Map<number, number>();
-  oldDoc.edges.forEach((e, i) => {
-    if (removed.has(i)) return;
-    const n = seen.get(key(e)) ?? 0;
-    seen.set(key(e), n + 1);
-    const target = slots.get(key(e))?.[n];
-    if (target !== undefined) map.set(i, target);
-  });
+  const taken = new Set<number>();
+  for (const [oldKey, newKey] of [[written(oldDoc), written(newDoc)], [ends, ends]]) {
+    const slots = new Map<string, number[]>();
+    newDoc.edges.forEach((e, i) => {
+      if (taken.has(i)) return;
+      const k = newKey(e);
+      if (!slots.has(k)) slots.set(k, []);
+      slots.get(k)!.push(i);
+    });
+    oldDoc.edges.forEach((e, i) => {
+      if (removed.has(i) || map.has(i)) return;
+      const target = slots.get(oldKey(e))?.shift();
+      if (target === undefined) return;
+      map.set(i, target);
+      taken.add(target);
+    });
+  }
   const lines = newDoc.lines.slice();
   const drop: number[] = [];
   newDoc.info.forEach((li, i) => {

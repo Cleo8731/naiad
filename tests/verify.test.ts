@@ -87,6 +87,12 @@ describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S1
     expect(await edit('flowchart TD\n  a -->|"`**bold** x`"| b\n', { kind: 'setEdgeLabel', index: 0, label: 'say "hi"' }))
       .toBe('flowchart TD\n  a -->|"`say #quot;hi#quot;`"| b\n');
   });
+
+  test('moving a node keeps each linkStyle line on the arrow it was written for (A5)', async () => {
+    const before = 'flowchart TD\n  subgraph g [G]\n    a -->|one| b\n  end\n  a -->|two| b\n  linkStyle 0 interpolate step\n';
+    expect(await edit(before, { kind: 'moveNode', id: 'a', target: null }))
+      .toBe('flowchart TD\n  subgraph g [G]\n    b\n  end\n  a -->|two| b\n  a -->|one| b\n  linkStyle 1 interpolate step\n');
+  });
 });
 
 test('a second edit works on the first edit\'s output', async () => {
