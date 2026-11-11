@@ -7,7 +7,7 @@ import {
   allRefs, findSub, isDecorated, parseDoc, SHAPES, unquote, usedIds,
   type Chain, type Doc, type LinkTok, type NodeRef, type Sub,
 } from './scan';
-import { removeDescription } from './descriptions';
+import { parseDescriptions, removeDescription } from './descriptions';
 
 export class EditError extends Error {}
 
@@ -172,8 +172,11 @@ function innerIndent(doc: Doc, sub: Sub): string {
   return doc.info[sub.line].indent + unit;
 }
 
+/** An id no node, group or description block has. A block whose id matches no node is
+ * kept for later (FILE-FORMAT.md, rule 8): a new node or group must not take it. */
 function newId(doc: Doc, prefix: string): string {
   const used = usedIds(doc);
+  for (const block of parseDescriptions(doc.lines)) used.add(block.id);
   for (let n = 1; ; n++) if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`;
 }
 

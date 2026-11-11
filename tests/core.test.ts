@@ -137,6 +137,16 @@ describe('edits change only the lines they must', () => {
     expect(changed(sample, E.addEdge(sample, 'ship', 'collect'))).toEqual({ removed: [], added: ['    ship --> collect'] });
   });
 
+  test('a new node or group never takes the id of a kept description block (bug hunt S12, A3)', () => {
+    const kept = 'flowchart TD\n  a --> b\n\n%% @n1\n%% An old note kept on purpose.\n%% @group1\n%% Another.\n';
+    const n = E.addNode(kept, 'New node');
+    expect(n.id).toBe('n2');
+    expect(E.deleteNode(n.text, n.id)).toBe(kept);
+    const g = E.addSubgraph(kept, 'G');
+    expect(g.id).toBe('group2');
+    expect(getDescriptions(g.text).get('group1')).toBe('Another.');
+  });
+
   test('delete node keeps the rest of its lines', () => {
     const out = E.deleteNode(sample, 'clean');
     expect(changed(sample, out)).toEqual({

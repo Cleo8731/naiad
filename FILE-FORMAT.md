@@ -86,7 +86,8 @@ Rules:
    new blocks at the end of the file, after every line already there (blank lines
    too), with one empty line before the block unless the file already ends with one.
 7. If two blocks name the same id, the first one is used.
-8. A block whose id matches no node is kept as it is and shown nowhere.
+8. A block whose id matches no node is kept as it is and shown nowhere, and Naiad never
+   gives its id to a node or group it adds.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
    alone. `%%{ ... }%%` directives are not description lines.
 
