@@ -76,6 +76,19 @@ describe.each(Object.keys(fixtures))('every edit on fixture "%s"', (name) => {
   });
 });
 
+describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S14)', () => {
+  const edit = async (text: string, op: Op) => (await applyChecked(text, op)).text;
+
+  test('changing an arrow\'s style or label keeps a Markdown label Markdown (A4)', async () => {
+    expect(await edit('flowchart TD\n  a -->|"`**bold** x`"| b\n', { kind: 'setEdgeStyle', index: 0, stroke: 'dotted' }))
+      .toBe('flowchart TD\n  a -.->|"`**bold** x`"| b\n');
+    expect(await edit('flowchart TD\n  a -- "`**bold** x`" --> b\n', { kind: 'setEdgeStyle', index: 0, arrow: 'none' }))
+      .toBe('flowchart TD\n  a ---|"`**bold** x`"| b\n');
+    expect(await edit('flowchart TD\n  a -->|"`**bold** x`"| b\n', { kind: 'setEdgeLabel', index: 0, label: 'say "hi"' }))
+      .toBe('flowchart TD\n  a -->|"`say #quot;hi#quot;`"| b\n');
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

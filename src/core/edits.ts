@@ -339,8 +339,12 @@ export interface LinkParts {
   length: number;
   right: '' | '>' | 'x' | 'o';
   label: string;
+  /** The label is a Markdown string, written `"\`...\`"`; it stays one when rewritten. */
+  markdown: boolean;
   form: 'none' | 'pipe' | 'inline';
 }
+
+const isMarkdownLabel = (raw: string): boolean => /^"`[\s\S]*`"$/.test(raw.trim());
 
 function arrowParts(startTok: string, endTok: string): Pick<LinkParts, 'left' | 'stroke' | 'length' | 'right'> {
   const left = (/^[xo<]/.exec(startTok)?.[0] ?? '') as LinkParts['left'];
@@ -359,11 +363,13 @@ export function parseLink(raw: string): LinkParts {
   const idm = /^([\p{L}\p{N}_]+)@/u.exec(s);
   if (idm) { edgeId = idm[1]; s = s.slice(idm[0].length); }
   const full = /^(?:[xo<]?--+[-xo>]|[xo<]?==+[=xo>]|[xo<]?-?\.+-[xo>]?|~~~+)$/;
-  if (full.test(s)) return { edgeId, ...arrowParts(s, s), label: '', form: 'none' };
+  if (full.test(s)) return { edgeId, ...arrowParts(s, s), label: '', markdown: false, form: 'none' };
   const pipe = /^(\S+?)\s*\|(.*)\|$/.exec(s);
-  if (pipe && full.test(pipe[1])) return { edgeId, ...arrowParts(pipe[1], pipe[1]), label: unquote(pipe[2]), form: 'pipe' };
+  if (pipe && full.test(pipe[1])) {
+    return { edgeId, ...arrowParts(pipe[1], pipe[1]), label: unquote(pipe[2]), markdown: isMarkdownLabel(pipe[2]), form: 'pipe' };
+  }
   const inl = /^([xo<]?(?:--|==|-\.))(.*?)([xo<]?(?:--+[-xo>]|==+[=xo>]|-?\.+-[xo>]?))$/.exec(s);
-  if (inl) return { edgeId, ...arrowParts(inl[1], inl[3]), label: unquote(inl[2]), form: 'inline' };
+  if (inl) return { edgeId, ...arrowParts(inl[1], inl[3]), label: unquote(inl[2]), markdown: isMarkdownLabel(inl[2]), form: 'inline' };
   throw new EditError(`Cannot read the arrow "${raw}".`);
 }
 
@@ -375,7 +381,8 @@ export function buildLink(p: Omit<LinkParts, 'form'>): string {
     const ch = p.stroke === 'thick' ? '=' : '-';
     arrow = p.left + ch.repeat(p.length + (p.right ? 1 : 2)) + p.right;
   }
-  const label = p.stroke !== 'invisible' && p.label.trim() ? `|${encodeLabel(p.label)}|` : '';
+  const md = (t: string) => `"\`${t.replace(/\r?\n/g, '<br/>').trim().replace(/"/g, '#quot;')}\``;
+  const label = p.stroke !== 'invisible' && p.label.trim() ? `|${p.markdown ? `${md(p.label)}"` : encodeLabel(p.label)}|` : '';
   return `${p.edgeId ? `${p.edgeId}@` : ''}${arrow}${label}`;
 }
 
