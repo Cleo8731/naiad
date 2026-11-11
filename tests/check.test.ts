@@ -183,6 +183,29 @@ describe('fix', () => {
     expect((await fixFile('doc.md', md, reading)).raw).toBe(md.replace('%%\n', '%% .\n'));
   });
 
+  test('leaves a "%%" line inside a quoted title that runs over several lines (bug hunt S3)', async () => {
+    for (const text of [
+      'flowchart TD\n  A["line1\n%%\nline2"] --> B\n',
+      'flowchart TD\n  A["multi\n  %%\n  line"] --> B\n%% @A\n%% one\n%%\n%% two\n',
+    ]) {
+      const fixed = await fixFile('flow.mmd', text, reading);
+      const inside = text.split('\n').findIndex((l) => l.trim() === '%%') + 1;
+      expect(fixed.lines).not.toContain(inside);
+      expect(fixed.raw.split('\n')[inside - 1]).toBe(text.split('\n')[inside - 1]);
+      expect(brief(await check(text))).not.toContain(`${inside} bare-comment`);
+    }
+  });
+
+  test('leaves a "%%" line inside front matter (bug hunt S4)', async () => {
+    const text = '---\ntitle: |\n  one\n%%\n---\nflowchart TD\n  A --> B\n';
+    const fixed = await fixFile('flow.mmd', text, reading);
+    expect(fixed.raw).toBe(text);
+    expect(fixed.lines).toEqual([]);
+    const md = '---\ntitle: x\ndesc: |\n  ```mermaid\n  flowchart TD\n  %%\n  ```\n---\n\n```mermaid\nflowchart TD\n  A --> B\n%%\n```\n';
+    const inMd = await fixFile('doc.md', md, reading);
+    expect(inMd.raw).toBe(md.replace('%%\n```', '%% .\n```'));
+  });
+
   test('a file with nothing to fix comes back as it was', async () => {
     for (const text of Object.values(fixtures)) {
       const fixed = await fixFile('flow.mmd', text, reading);

@@ -198,28 +198,29 @@ export async function fixFile(name: string, raw: string, read: Reader): Promise<
   const text = lines.join('\n');
   const none: Fixed = { raw, lines: [], refused: null };
 
-  // [first line, line after the last] of each flowchart, as indexes into `lines`.
-  let spans: [number, number][];
+  // The bare "%%" lines, as indexes into `lines`: those the scanner reads as comment
+  // lines, so never a line of front matter or of a quoted text that runs over lines.
+  const bare = (chart: string, first: number) => parseDoc(chart).warnings.map((w) => first + w.line);
+  let targets: number[];
   if (isMarkdownPath(name)) {
     const blocks = findBlocks(text).filter((b) => b.flowchart);
     if (blocks.some((b) => b.locked)) {
-      const fixable = blocks.some((b) => b.text.split('\n').some((l) => BARE_COMMENT.test(l)));
+      const fixable = blocks.some((b) => bare(b.text, 0).length > 0);
       return fixable ? { ...none, refused: 'a flowchart block in this file is one Naiad does not change (see the check).' } : none;
     }
-    spans = blocks.map((b) => [b.open + 1, b.close]);
+    // Line 0 of a block's text is the line after its opening fence.
+    targets = blocks.flatMap((b) => bare(b.text, b.open + 1));
   } else {
-    spans = [[0, lines.length]];
+    targets = bare(text, 0);
   }
 
   const out = [...lines];
   const changed: number[] = [];
-  for (const [from, to] of spans) {
-    for (let i = from; i < to; i++) {
-      const m = BARE_COMMENT.exec(lines[i]);
-      if (!m) continue;
-      out[i] = `${m[1]}%% .`;
-      changed.push(i + 1);
-    }
+  for (const i of targets) {
+    const m = BARE_COMMENT.exec(lines[i]);
+    if (!m) continue;
+    out[i] = `${m[1]}%% .`;
+    changed.push(i + 1);
   }
   if (!changed.length) return none;
 

@@ -319,6 +319,10 @@ export function parseDoc(text: string): Doc {
   let inFront = false;
   let seenContent = false;
   let openBlock: '' | 'directive' | 'acc' = '';
+  // Inside a quoted text that runs over several lines: Mermaid reads every line up to
+  // the closing quote as part of the text, a "%%" line included.
+  let inString = false;
+  const opensOrCloses = (line: string) => (line.match(/"/g)?.length ?? 0) % 2 === 1;
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -338,6 +342,11 @@ export function parseDoc(text: string): Doc {
       if (t === '---') inFront = false;
       continue;
     }
+    if (inString) {
+      problems.push({ line: i, message: 'A line inside a quoted text that runs over several lines.' });
+      if (opensOrCloses(raw)) inString = false;
+      continue;
+    }
     if (t === '') { li.kind = 'blank'; continue; }
     if (!seenContent && t === '---') { li.kind = 'frontmatter'; inFront = true; seenContent = true; continue; }
     if (t.startsWith('%%{')) {
@@ -353,6 +362,7 @@ export function parseDoc(text: string): Doc {
       continue;
     }
     seenContent = true;
+    if (opensOrCloses(raw)) inString = true;
     if (header < 0 && /^(flowchart|graph)\b/i.test(t)) {
       const m = HEADER_RE.exec(t);
       if (m) { li.kind = 'header'; li.dir = m[2]?.toUpperCase(); header = i; }

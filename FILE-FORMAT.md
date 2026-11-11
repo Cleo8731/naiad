@@ -160,7 +160,8 @@ More text.
   other Mermaid blocks were added, removed or changed), it changes nothing more in the
   file until the file is opened again.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
-  `%% .`, in place. It asks Mermaid's parser what the flowchart means before and after,
+  `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
+  several lines, is never changed: Mermaid reads it as part of that. It asks Mermaid's parser what the flowchart means before and after,
   and changes nothing when Mermaid cannot read the flowchart, when the meaning or a
   description would differ, or when the file changed while it was being checked. The
   checker's `check` never writes.
