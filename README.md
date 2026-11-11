@@ -66,7 +66,8 @@ that address is Naiad itself and saves by the same rules; Naiad's own window can
 open on the same file at the same time. The server behind it can be reached from this
 computer only, answers only at the address it printed (which holds a secret), refuses
 requests that come from other web pages, reads and writes only the file it was started
-for, and ends by itself ten minutes after the page is closed.
+for and that file's highlights ([FILE-FORMAT.md](FILE-FORMAT.md), "Highlights"), and
+ends by itself ten minutes after the page is closed.
 
 ## For AI agents
 
