@@ -113,3 +113,28 @@ describe('the dev page never leaves or reuses a temporary file (bug hunt S22: C1
     expect(fs.readdirSync(path.join(b.dir, '.naiad', 'flow.mmd'))).toEqual(['highlights.txt']);
   });
 });
+
+describe('the dev page reads only UTF-8 text (bug hunt S23: C16)', () => {
+  const LATIN1 = Buffer.from('flowchart TD\n    a[Caf\xe9] --> b\n', 'latin1');
+
+  it('C16: a file that is not UTF-8 is refused, not read with its bytes replaced', async () => {
+    const b = await bridge({ 'flow.mmd': LATIN1 });
+    const read = await b.call('/file', { shows: b.file });
+    expect(read.status).toBe(422);
+    expect(read.body.error).toMatch(/not UTF-8/);
+    expect(fs.readFileSync(b.file).equals(LATIN1)).toBe(true);
+  });
+
+  it('a highlights file that is not UTF-8 is refused too', async () => {
+    const b = await bridge();
+    fs.mkdirSync(path.join(b.dir, '.naiad', 'flow.mmd'), { recursive: true });
+    fs.writeFileSync(path.join(b.dir, '.naiad', 'flow.mmd', 'highlights.txt'), Buffer.from('caf\xe9\n', 'latin1'));
+    expect((await b.call('/highlights', { shows: b.file })).status).toBe(422);
+  });
+
+  it('UTF-8 with a byte-order mark is read as it is, mark included', async () => {
+    const text = '﻿flowchart TD\n    a[Café] --> b\n';
+    const b = await bridge({ 'flow.mmd': text });
+    expect((await b.call('/file', { shows: b.file })).body.text).toBe(text);
+  });
+});

@@ -23,6 +23,23 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+/** Thrown for a file that is not UTF-8 text; answered with 422. */
+class NotUtf8 extends Error {}
+
+/**
+ * Reads a file as UTF-8, its byte-order mark kept. Bytes that are not UTF-8 are refused,
+ * as the desktop shell does: read with them replaced, a save would write the
+ * replacements over them (bug hunt C16).
+ */
+function readText(file: string): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(fs.readFileSync(file));
+  } catch (e) {
+    if (e instanceof TypeError) throw new NotUtf8(`${path.basename(file)} is not UTF-8 text, so Naiad leaves it alone.`);
+    throw e;
+  }
+}
+
 let saves = 0;
 
 /**
@@ -112,7 +129,7 @@ export function fileBridge(): Plugin {
           }
           if (url === '/file' && req.method === 'GET') {
             if (!fs.existsSync(current)) return send(404, { error: 'not found', path: current });
-            return send(200, { path: current, text: fs.readFileSync(current, 'utf8') });
+            return send(200, { path: current, text: readText(current) });
           }
           if (url === '/file' && req.method === 'PUT') {
             // The hash of the text the page read (src/core/hash.ts): refused if the file
@@ -134,7 +151,7 @@ export function fileBridge(): Plugin {
           const folder = path.join(naiad, path.basename(current));
           const highlights = path.join(folder, 'highlights.txt');
           if (url === '/highlights' && req.method === 'GET') {
-            return send(200, { text: fs.existsSync(highlights) ? fs.readFileSync(highlights, 'utf8') : null });
+            return send(200, { text: fs.existsSync(highlights) ? readText(highlights) : null });
           }
           if (url === '/highlights' && req.method === 'PUT') {
             const text = await readBody(req);
@@ -164,7 +181,7 @@ export function fileBridge(): Plugin {
           }
           send(404, { error: 'unknown' });
         } catch (e) {
-          send(500, { error: String((e as Error).message ?? e) });
+          send(e instanceof NotUtf8 ? 422 : 500, { error: String((e as Error).message ?? e) });
         }
       });
     },
