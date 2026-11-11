@@ -104,7 +104,9 @@ flowchart TD
    full stop). Never write a line holding only `%%`: Mermaid reads it as a node named
    `%%`.
 5. A description line whose whole text is `.` or `@something`, spaces in front or not,
-   gets a backslash in front: `%% \.`, `%% \@something`, `%% \    @something`.
+   gets a backslash in front: `%% \.`, `%% \@something`, `%% \    @something`. And
+   `%%{` inside a description line is written `%%\{`: Mermaid reads `%%{` anywhere,
+   comments included, as a directive that changes the chart's settings.
 6. A comment is always on a line of its own. A comment after a statement on the same
    line (`a --> b %% note`) is a syntax error.
 7. One description block per id; if two name the same id, only the first is used.

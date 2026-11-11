@@ -90,6 +90,11 @@ Rules:
    gives its id to a node or group it adds.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
    alone. `%%{ ... }%%` directives are not description lines.
+10. **`%%{` inside a description line is written `%%\{`.** Mermaid reads `%%{` anywhere
+    in the file, comment lines included, as a directive that sets the chart's settings
+    (its theme, for example). Where backslashes already stand between `%%` and `{`, one
+    more is written (`%%\{` is written `%%\\{`). Reading takes one backslash off, so
+    `%% Use %%\{init}%%` is the description "Use %%{init}%%".
 
 A comment must be on a line of its own. Mermaid 12 rejects a comment after a statement
 on the same line (`a --> b %% note` is a syntax error).
@@ -163,7 +168,10 @@ More text.
   before and after. If the result does not parse, or differs from the edit that was
   asked for, the edit is refused and the file is not touched. The same goes for the
   descriptions: an edit that would change any description other than the one being
-  written, or the one of the node being deleted, is refused.
+  written, or the one of the node being deleted, is refused. So is an edit that would
+  add, change or remove a `%%{ ... }%%` directive anywhere in the flowchart (one in a
+  title, or one written by hand inside a description), since Mermaid takes the chart's
+  settings from it.
 - A line Naiad's scanner cannot read is left alone, and chart edits are refused (with a
   message naming the line) until it is fixed in the text pane. Typing in the text pane
   always works.

@@ -169,6 +169,9 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
     }
   }
   const res = runOp(text, op);
+  if (directives(text) !== directives(res.text)) {
+    throw new E.EditError('That change would have changed the chart\'s settings (a %%{ }%% directive), so it was not made. Make it in the text pane instead.');
+  }
   let after: Snap;
   try {
     after = await snapshot(res.text);
@@ -182,6 +185,18 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
     throw new E.EditError('That change would have altered a description, so it was not made. Make it in the text pane instead.');
   }
   return res;
+}
+
+/**
+ * Mermaid's own pattern for a directive (`directiveRegex`, Mermaid 12.3.0). Mermaid looks
+ * for it in the whole text, comment lines and titles included, and takes the chart's
+ * settings from it, which `snapshot` does not compare (bug hunt A7).
+ */
+const DIRECTIVE_RE = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+/** Every directive Mermaid finds in the text, in order. */
+function directives(text: string): string {
+  return JSON.stringify(text.match(DIRECTIVE_RE) ?? []);
 }
 
 /**

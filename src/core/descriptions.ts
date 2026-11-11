@@ -18,12 +18,19 @@ export interface DescBlock {
   text: string;
 }
 
+// Mermaid reads `%%{` anywhere in the file as the start of a directive that sets the
+// chart's settings, inside a comment line too (bug hunt A7). In a description it is
+// written `%%\{`; where backslashes already stand between `%%` and `{`, one more is
+// added. Reading takes one off, so every text reads back exactly as it was written.
+const escapeDirectives = (s: string): string => s.replace(/%%(\\*)\{/g, '%%\\$1{');
+const unescapeDirectives = (s: string): string => s.replace(/%%\\(\\*)\{/g, '%%$1{');
+
 function decodeLine(body: string): string {
   let s = body.startsWith(' ') ? body.slice(1) : body;
   s = s.replace(/\s+$/, '');
   if (s === '.' || s === '') return '';
-  if (s.startsWith('\\@') || /^\\\s+@\S+$/.test(s) || s === '\\.') return s.slice(1);
-  return s;
+  if (s.startsWith('\\@') || /^\\\s+@\S+$/.test(s) || s === '\\.') s = s.slice(1);
+  return unescapeDirectives(s);
 }
 
 function encodeLine(line: string): string {
@@ -31,8 +38,8 @@ function encodeLine(line: string): string {
   if (s === '') return '%% .';
   // A line that would read as a block's first line (`@id`, spaces in front or not) or
   // as an empty line gets a backslash in front.
-  if (/^\s*@\S+$/.test(s) || s === '.') return `%% \\${s}`;
-  return `%% ${s}`;
+  if (/^\s*@\S+$/.test(s) || s === '.') return `%% \\${escapeDirectives(s)}`;
+  return `%% ${escapeDirectives(s)}`;
 }
 
 export function parseDescriptions(lines: string[]): DescBlock[] {

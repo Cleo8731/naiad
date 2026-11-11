@@ -148,6 +148,39 @@ describe('a comment never joins a description block (bug hunt S24)', () => {
   });
 });
 
+describe('a directive in a description or a title never changes the chart\'s settings (bug hunt A7)', () => {
+  // Mermaid finds `%%{ ... }%%` anywhere in the text, inside a comment line too.
+  const settings = async (text: string) => JSON.stringify(await mermaid.parse(text));
+  const BASE = 'flowchart TD\n  a[A] --> b[B]\n';
+  const DARK = '%%{init: {"theme": "dark"}}%%';
+  const refused = /settings/;
+
+  test('typed into a description: written with a backslash, read back as typed', async () => {
+    const typed = [`Set the look with ${DARK} on a line of its own.`, DARK, 'Already %%\\{once}%%', '%%\\\\{twice}%%', '%%%{odd}'];
+    for (const description of typed) {
+      const { text } = await applyChecked(BASE, { kind: 'setDescription', id: 'a', description });
+      expect(await settings(text)).toBe(await settings(BASE));
+      expect(getDescriptions(text).get('a')).toBe(description);
+    }
+    expect((await applyChecked(BASE, { kind: 'setDescription', id: 'a', description: DARK })).text)
+      .toBe(`${BASE}\n%% @a\n%% %%\\{init: {"theme": "dark"}}%%\n`);
+  });
+
+  test('a description written by hand that holds one: replacing or deleting it is refused', async () => {
+    const before = `${BASE}\n%% @a\n%% ${DARK}\n`;
+    expect(getDescriptions(before).get('a')).toBe(DARK);
+    expect(await settings(before)).not.toBe(await settings(BASE)); // Mermaid does read it
+    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: 'New text.' })).rejects.toThrow(refused);
+    await expect(applyChecked(before, { kind: 'deleteNode', id: 'a' })).rejects.toThrow(refused);
+    const other = (await applyChecked(before, { kind: 'setTitle', id: 'b', title: 'Bee' })).text;
+    expect(await settings(other)).toBe(await settings(before));
+  });
+
+  test('a title holding one is refused', async () => {
+    await expect(applyChecked(BASE, { kind: 'setTitle', id: 'a', title: "%%{init: {'theme': 'dark'}}%%" })).rejects.toThrow(refused);
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

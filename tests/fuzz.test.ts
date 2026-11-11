@@ -462,12 +462,6 @@ async function checkEdit(before: string, beforeSnap: Snap, op: Op, res: OpResult
  */
 const KNOWN: { id: string; kind: string; what: string; matches: (op: Op, before: string) => boolean }[] = [
   {
-    id: 'A7', kind: 'config-changed:setDescription',
-    what: 'a description line holding %%{...}%% changes the configuration (typed, or replaced)',
-    matches: (op, before) => op.kind === 'setDescription'
-      && `${op.description}\n${getDescriptions(before).get(op.id) ?? ''}`.includes('%%{'),
-  },
-  {
     id: 'A9', kind: 'description-not-as-typed',
     what: 'a description line typed with a backslash in front reads back without it',
     matches: (op) => op.kind === 'setDescription' && /^\s*\\/m.test(op.description),
