@@ -79,6 +79,25 @@ describe.each(Object.keys(fixtures))('every edit on fixture "%s"', (name) => {
 describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S14)', () => {
   const edit = async (text: string, op: Op) => (await applyChecked(text, op)).text;
 
+  test('splitting an & list keeps the arrow\'s own id on the pair Mermaid gives it to (A2)', async () => {
+    // Mermaid gives `e1` to the last node before the arrow and the first after it: b --> c.
+    const before = 'flowchart TD\n  a & b e1@--> c & d\n  e1@{ animate: true }\n';
+    expect(await edit(before, { kind: 'setEdgeLabel', index: 0, label: 'x' }))
+      .toBe('flowchart TD\n  a -->|x| c\n  a --> d\n  b e1@--> c\n  b --> d\n  e1@{ animate: true }\n');
+    expect(await edit(before, { kind: 'setEdgeLabel', index: 2, label: 'x' }))
+      .toBe('flowchart TD\n  a --> c\n  a --> d\n  b e1@-->|x| c\n  b --> d\n  e1@{ animate: true }\n');
+  });
+
+  test('deleting a node of an & list never gives the arrow\'s own id to another pair (A2)', async () => {
+    const classed = 'flowchart TD\n  a & b e1@--> c\n  class e1 k\n  classDef k stroke:#f00\n';
+    expect(await edit(classed, { kind: 'deleteNode', id: 'b' })).toBe('flowchart TD\n  a --> c\n  class e1 k\n  classDef k stroke:#f00\n');
+    expect(await edit(classed, { kind: 'deleteNode', id: 'a' })).toBe(classed.replace('a & b', 'b'));
+    // With a settings line for the arrow that goes, the edit is refused: the line would
+    // turn into a node, and it is never moved onto another arrow.
+    const animated = 'flowchart TD\n  a & b e1@--> c\n  e1@{ animate: true }\n';
+    await expect(applyChecked(animated, { kind: 'deleteNode', id: 'b' })).rejects.toThrow(EditError);
+  });
+
   test('changing an arrow\'s style or label keeps a Markdown label Markdown (A4)', async () => {
     expect(await edit('flowchart TD\n  a -->|"`**bold** x`"| b\n', { kind: 'setEdgeStyle', index: 0, stroke: 'dotted' }))
       .toBe('flowchart TD\n  a -.->|"`**bold** x`"| b\n');

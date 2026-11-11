@@ -104,6 +104,12 @@ class Rewriter {
 
 function refRaw(line: string, ref: NodeRef): string { return line.slice(ref.start, ref.end); }
 
+// An arrow's own id, written in front of it (`a & b e1@--> c & d`). Mermaid gives it to
+// one pair only: the last node before the arrow and the first after it (b --> c).
+const LINK_ID = /^\s*([\p{L}\p{N}_]+)@/u;
+function withoutLinkId(raw: string): string { return raw.replace(LINK_ID, ''); }
+function idPair(left: NodeRef[], right: NodeRef[]): string { return `${left[left.length - 1].id}\u0000${right[0].id}`; }
+
 /** Prints part of a chain as lines, splitting it where a group empties or a link is cut. */
 function rebuild(
   line: string, indent: string, groups: NodeRef[][], links: LinkTok[],
@@ -126,7 +132,12 @@ function rebuild(
       let text = indent;
       const ids: string[] = [];
       for (let k = i; k <= j; k++) {
-        if (k > i) text += ` ${links[k - 1].raw} `;
+        if (k > i) {
+          // The arrow's own id stays only while Mermaid would give it to the same pair.
+          const raw = links[k - 1].raw;
+          const same = idPair(kept[k - 1], kept[k]) === idPair(groups[k - 1], groups[k]);
+          text += ` ${same ? raw : withoutLinkId(raw)} `;
+        }
         text += kept[k].map((r) => refRaw(line, r)).join(' & ');
         kept[k].forEach((r) => ids.push(r.id));
       }
@@ -434,12 +445,16 @@ function rewriteEdge(text: string, index: number, change: (raw: string) => strin
       pieces.push(...rebuild(line, li.indent, ch.groups, ch.links, undefined, new Set([k])));
       return;
     }
-    // One arrow written for several node pairs: write each pair out on its own line.
+    // One arrow written for several node pairs: write each pair out on its own line. Only
+    // the pair Mermaid gave the arrow's own id keeps it.
     pieces.push(...rebuild(line, li.indent, ch.groups.slice(0, k + 1), ch.links.slice(0, k)));
+    const owner = idPair(left, right);
     for (const a of left) for (const b of right) {
       const isTarget = a === edge.from && b === edge.to;
       const raw = isTarget ? next : link.raw;
-      if (raw !== null) pieces.push({ text: `${li.indent}${a.id} ${raw} ${b.id}`, ids: [a.id, b.id] });
+      if (raw === null) continue;
+      const own = `${a.id}\u0000${b.id}` === owner ? raw : withoutLinkId(raw);
+      pieces.push({ text: `${li.indent}${a.id} ${own} ${b.id}`, ids: [a.id, b.id] });
     }
     pieces.push(...rebuild(line, li.indent, ch.groups.slice(k + 1), ch.links.slice(k + 1)));
   });

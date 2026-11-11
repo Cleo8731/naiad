@@ -147,6 +147,11 @@ More text.
 
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
   other line, its spacing and its comments stay byte for byte as they were.
+- An arrow written for several pairs at once (`a & b --> c`) is written out one pair per
+  line when an edit changes one of its pairs. An arrow's own id (`a & b e1@--> c`) stays
+  on the one pair Mermaid gives it to, the last node before the arrow and the first
+  after it (`b e1@--> c`). A `linkStyle` line follows its arrow when arrows move, and a
+  Markdown label (`` "`...`" ``) stays Markdown.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
   the ending of the line above it. A byte-order mark is kept.
