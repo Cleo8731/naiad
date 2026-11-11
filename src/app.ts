@@ -18,6 +18,8 @@ type Source = 'chart' | 'text' | 'disk' | 'history';
 interface Step { text: string; disk: boolean }
 
 const NEW_FILE = 'flowchart TD\n    start[Start]\n';
+/** How long the file must have been quiet after a change from outside before a save (`saveNow`). */
+const SETTLE_MS = 1000;
 const NODE_TEXT = '#1c2026';
 
 function basename(path: string): string {
@@ -399,8 +401,9 @@ export class App {
     await this.queue(async () => {
       if (path !== this.path) return; // another file is shown now
       let disk = plainText(raw);
+      if (disk === (this.md ? this.md.file : this.saved)) return; // our own save, or nothing really changed
+      this.changedOutside = Date.now();
       if (this.md) {
-        if (disk === this.md.file) return; // our own save, or nothing really changed
         const blocks = findBlocks(disk);
         const index = findAgain(this.md.blocks, blocks, this.md.index);
         if (index < 0) {
@@ -411,7 +414,7 @@ export class App {
         }
         this.md = { file: disk, blocks, index, gone: false };
         disk = blocks[index].text;
-      } else if (disk === this.saved) return; // our own save, or nothing really changed
+      }
       const hadUnsaved = this.text !== this.saved;
       if (disk === this.saved) {
         // Only the Markdown around the flowchart changed: an unsaved edit still stands.
@@ -483,9 +486,19 @@ export class App {
     return this.fileQueue(() => this.saveNow(force));
   }
 
+  /**
+   * When a change from outside was last taken in (ms). A save waits until the file has
+   * been quiet that long (`SETTLE_MS`), so a program that writes the file in two steps
+   * (writes and closes it, then adds the rest) finishes before Naiad writes: its whole
+   * text is then taken in, never joined to a save made in between (bug hunt C19).
+   */
+  private changedOutside = 0;
+
   /** `save`, run in the file queue. */
   private async saveNow(force: boolean): Promise<void> {
     await this.takeTyping(); // and the changes queued before it
+    const wait = this.changedOutside + SETTLE_MS - Date.now();
+    if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
     const path = this.path;
     const md = this.md;
     if (!path || this.text === this.saved || this.locked()) return;

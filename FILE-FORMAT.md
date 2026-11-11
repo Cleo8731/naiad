@@ -185,7 +185,9 @@ More text.
   still holds exactly what Naiad last read; if it changed in between, the save is
   refused, the version on disk is taken in the same way, and the edit stays in Undo.
   An Undo that would take back a change made on disk asks first, since it saves the
-  earlier version over that change; Redo brings the change back.
+  earlier version over that change; Redo brings the change back. After a change on
+  disk Naiad saves nothing until the file has been quiet for a second, so a program
+  still writing it finishes first.
   In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
   touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain
@@ -305,5 +307,8 @@ naiad fix flow.mmd
 - In a Markdown file, keep description blocks inside the flowchart block, and keep
   every line of an indented flowchart block at its indent.
 - Naiad reloads the file as soon as you save it; nothing else needs doing.
+- Write the whole file in one step. Naiad waits a second after a change on disk before
+  it saves, so a second step that adds to the file within that second is taken in;
+  one that comes later is added to whatever Naiad saved in between.
 - To point the user at items, highlight them in the highlights file
   ([Highlights](#highlights)), never by changing the flowchart.

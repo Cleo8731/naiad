@@ -235,6 +235,39 @@ describe('Undo asks before it takes back a change made on disk (bug hunt C3)', (
   });
 });
 
+describe('a program that writes the file in two steps is not cut in on (bug hunt C19)', () => {
+  // The first step closes the file; the second adds the rest (`echo a > f; echo b >> f`).
+  const FIRST = BASE + '    train --> report[Report]\n';
+  const REST = '\n%% @report\n%% Written by the agent in a second step.\n';
+
+  /** Writes FIRST, then appends REST to whatever the file holds `gap` ms later. */
+  function twoSteps(disk: FakeDisk, gap: number) {
+    disk.outside(FILE, FIRST);
+    setTimeout(() => disk.outside(FILE, disk.files.get(FILE)! + REST), gap);
+  }
+
+  it('C19: a chart edit made between the two steps is not saved in between, so the halves are never joined', async () => {
+    const { disk, ui } = await start();
+    twoSteps(disk, 500);
+    expect(await ui.until((t) => t === FIRST)).toBe(true);
+    ui.direction('LR'); // saved 350 ms later without the fix: before the second step
+    await sleep(1600);
+    expect(disk.files.get(FILE)).toBe(FIRST + REST);
+    expect(ui.area().value).toBe(FIRST + REST);
+    expect(ui.toast()).toMatch(/Undo brings it back/);
+  });
+
+  it('an edit made a second after the change on disk is saved as usual', async () => {
+    const { disk, ui } = await start();
+    disk.outside(FILE, FIRST);
+    expect(await ui.until((t) => t === FIRST)).toBe(true);
+    await sleep(1000);
+    ui.direction('LR');
+    await sleep(500);
+    expect(disk.files.get(FILE)).toBe(FIRST.replace('flowchart TD', 'flowchart LR'));
+  });
+});
+
 describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', () => {
   const NOTES = 'C:/hunt/notes.md';
   const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n\n%% @a\n%% Desc of A.\n```\n\nAfter.\n';
