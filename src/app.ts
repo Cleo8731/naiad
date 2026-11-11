@@ -187,6 +187,21 @@ export class App {
     // that comes and goes.
     window.setInterval(() => { void this.readHighlights(); }, 1000);
     document.addEventListener('visibilitychange', () => { void this.readHighlights(); });
+    this.backend.guardClose(() => this.canClose());
+  }
+
+  /** Whether the window may close: saves what waits to be saved, and asks before a change is lost. */
+  private async canClose(): Promise<boolean> {
+    await this.flushSave();
+    if (!this.path || this.text === this.saved) return true;
+    return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. Close Naiad and lose it?`);
+  }
+
+  /** Why the text shown cannot be saved, for a question: ' (…)' or ''. */
+  private unsavedWhy(): string {
+    if (this.blockError) return ' (the text would end the Mermaid block early)';
+    if (this.error) return ' (Mermaid cannot read the text)';
+    return '';
   }
 
   // ------------------------------------------------------------------ file
@@ -327,6 +342,7 @@ export class App {
 
   private async diskChanged(): Promise<void> {
     if (!this.path) return;
+    await this.takeTyping(); // so that it counts as an unsaved edit below
     let disk: string;
     try {
       disk = plainText(await this.backend.read(this.path));
@@ -404,6 +420,7 @@ export class App {
 
   /** Writes the text to the file. A text with a syntax error is written only on Ctrl+S. */
   private async save(force: boolean): Promise<void> {
+    await this.takeTyping();
     if (!this.path || this.text === this.saved || this.locked()) return;
     if ((this.error || this.blockError) && !force) { this.paintBar(); return; }
     const text = this.text;
@@ -430,6 +447,22 @@ export class App {
   private queue(job: () => Promise<void>): Promise<void> {
     this.work = this.work.then(job).catch((e) => { console.error(e); this.toast(errorText(e)); });
     return this.work;
+  }
+
+  /** The text pane's text, with its line endings made plain. */
+  private typed(): string {
+    return this.el.area.value.replace(/\r\n?/g, '\n');
+  }
+
+  /**
+   * Takes in what was typed in the text pane and is still waiting (typing is taken in
+   * 220 ms after the last key), so that a save, a reload, an edit or Undo acts on it.
+   */
+  private takeTyping(): Promise<void> {
+    if (this.textTimer === undefined) return this.work;
+    window.clearTimeout(this.textTimer);
+    this.textTimer = undefined;
+    return this.change(this.typed(), 'text');
   }
 
   private change(next: string, source: Source): Promise<void> {
@@ -490,7 +523,7 @@ export class App {
   }
 
   private async edit(op: Op): Promise<OpResult | null> {
-    await this.work;
+    await this.takeTyping();
     const before = this.snap;
     const why = this.locked();
     if (why) {
@@ -531,8 +564,10 @@ export class App {
     if (res) this.sidebar.focusTitle();
   }
 
-  private async history(from: string[], to: string[]): Promise<void> {
-    await this.work;
+  /** Undo (back) or Redo. The stacks are looked up after the typing is taken in, which empties Redo. */
+  private async history(back: boolean): Promise<void> {
+    await this.takeTyping();
+    const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
     const next = from.pop();
     if (next === undefined) return;
     to.push(this.text);
@@ -701,8 +736,8 @@ export class App {
       if (act === 'open') void this.pickAndOpen();
       if (act === 'new') void this.newFile();
       if (act === 'add') void this.addNode(null);
-      if (act === 'undo') void this.history(this.undoStack, this.redoStack);
-      if (act === 'redo') void this.history(this.redoStack, this.undoStack);
+      if (act === 'undo') void this.history(true);
+      if (act === 'redo') void this.history(false);
       if (act === 'fit') this.chart.fit();
       if (act === 'text') this.toggleText();
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
@@ -713,7 +748,7 @@ export class App {
 
     this.el.area.addEventListener('input', () => {
       window.clearTimeout(this.textTimer);
-      this.textTimer = window.setTimeout(() => { void this.change(this.el.area.value.replace(/\r\n?/g, '\n'), 'text'); }, 220);
+      this.textTimer = window.setTimeout(() => { this.textTimer = undefined; void this.change(this.typed(), 'text'); }, 220);
     });
     this.el.area.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
@@ -744,14 +779,23 @@ export class App {
       if (mod && key === 'o') { e.preventDefault(); if (this.backend.kind !== 'served') void this.pickAndOpen(); return; }
       const typing = (e.target as Element).closest('input, textarea, select, [contenteditable]');
       if (typing) return;
-      if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.history(this.undoStack, this.redoStack); }
-      else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.history(this.redoStack, this.undoStack); }
+      if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.history(true); }
+      else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.history(false); }
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.deleteSelection(); }
       else if (key === 'escape') { if (this.hlOn) this.setHighlighting(false); else this.select(null); }
       else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled) this.setHighlighting(!this.hlOn);
       else if ((key === 'enter' || key === 'f2') && this.selection) { e.preventDefault(); this.sidebar.focusTitle(); }
     });
 
-    window.addEventListener('beforeunload', () => { void this.flushSave(); });
+    window.addEventListener('beforeunload', (e) => {
+      // A change not yet on disk: the browser asks before the page goes. (The desktop
+      // app's window asks in canClose, before the page is unloaded.)
+      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved);
+      void this.flushSave();
+      if (waiting && this.backend.kind !== 'desktop') {
+        e.preventDefault();
+        e.returnValue = true;
+      }
+    });
   }
 }

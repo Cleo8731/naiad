@@ -37,6 +37,13 @@ export interface Backend {
   pickSave(suggestedName: string): Promise<string | null>;
   openLink(url: string): void;
   setWindowTitle(title: string): void;
+  /** Asks the person a yes-or-no question; true for yes. */
+  confirm(message: string): Promise<boolean>;
+  /**
+   * The desktop app's window closes only once `canClose` says so (in a browser the page
+   * asks through `beforeunload` instead). If `canClose` fails, the window closes.
+   */
+  guardClose(canClose: () => Promise<boolean>): void;
 }
 
 const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
@@ -83,6 +90,18 @@ async function desktop(): Promise<Backend> {
     pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: NEW_FILTERS }),
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
+    confirm: (message) => dialog.ask(message, { title: 'Naiad', kind: 'warning' }),
+    guardClose(canClose) {
+      void getCurrentWindow().onCloseRequested(async (event) => {
+        let close = true;
+        try {
+          close = await canClose();
+        } catch (e) {
+          console.error(e); // never keep the window from closing
+        }
+        if (!close) event.preventDefault();
+      });
+    },
   };
 }
 
@@ -135,6 +154,8 @@ function browser(): Backend {
     pickSave: async () => null,
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
     setWindowTitle: (title) => { document.title = title; },
+    confirm: async (message) => window.confirm(message),
+    guardClose: () => {},
   };
 }
 

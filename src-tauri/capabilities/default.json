@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the app's one window may ask the shell for: its own commands, the open/save dialogs, and setting the window title.",
+  "description": "What the app's one window may ask the shell for: its own commands, the open/save dialogs, a yes-or-no question, setting the window title, and closing itself once the page has saved.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-set-title",
+    "core:window:allow-destroy",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "dialog:allow-ask"
   ]
 }
