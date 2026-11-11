@@ -63,6 +63,8 @@ export class App {
   private work: Promise<void> = Promise.resolve();
   private saveTimer: number | undefined;
   private textTimer: number | undefined;
+  /** A change on disk displaced the person's last edit before it was saved: only Undo holds it. */
+  private displaced = false;
   private stopWatch: (() => void) | null = null;
   private note = '';
   /** The highlights file's text as last read or written ('' when there is none). */
@@ -191,10 +193,28 @@ export class App {
   }
 
   /** Whether the window may close: saves what waits to be saved, and asks before a change is lost. */
-  private async canClose(): Promise<boolean> {
+  private canClose(): Promise<boolean> {
+    return this.leave('Close Naiad');
+  }
+
+  /**
+   * Before another file is shown, or Naiad closes: saves what waits to be saved, then
+   * asks before an edit is lost, whether it cannot be saved or a change on disk
+   * displaced it and only Undo holds it (bug hunt C10). `what` names the step: "Open x".
+   */
+  private async leave(what: string): Promise<boolean> {
     await this.flushSave();
-    if (!this.path || this.text === this.saved) return true;
-    return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. Close Naiad and lose it?`);
+    if (!this.path) return true;
+    if (this.text !== this.saved) {
+      return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
+    }
+    if (this.displaced) return this.backend.confirm(this.displacedQuestion(what));
+    return true;
+  }
+
+  /** The question asked before an edit that only Undo holds (`displaced`) is lost. */
+  private displacedQuestion(what: string): string {
+    return `Your last edit to ${basename(this.path ?? '')} was not written: the file changed on disk first. Undo brings it back until you leave this flowchart. ${what} and lose it?`;
   }
 
   /** Why the text shown cannot be saved, for a question: ' (…)' or ''. */
@@ -223,9 +243,10 @@ export class App {
         return;
       }
     }
-    await this.flushSave();
+    if (!(await this.leave(`Open ${basename(path)}`))) return;
     this.stopWatch?.();
     this.path = path;
+    this.displaced = false;
     const body = plainText(raw);
     this.md = index < 0 ? null : { file: body, blocks: findBlocks(body), index, gone: false };
     this.text = this.saved = this.md ? this.md.blocks[index].text : body;
@@ -397,7 +418,10 @@ export class App {
       if (disk !== this.text) {
         await this.apply(disk, 'disk');
         this.note = `Reloaded from disk ${new Date().toLocaleTimeString()}`;
-        if (hadUnsaved) this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
+        if (hadUnsaved) {
+          this.displaced = true;
+          this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
+        }
       }
       this.paintBar();
     });
@@ -420,8 +444,16 @@ export class App {
       this.paintBar();
       return;
     }
+    if (this.displaced && !(await this.backend.confirm(this.displacedQuestion('Show another flowchart')))) {
+      this.paintBar();
+      return;
+    }
+    // Looked up again: the file may have changed on disk while the question was open.
+    const now = this.md?.blocks[index];
+    if (!this.md || !now?.flowchart || this.text !== this.saved) { this.paintBar(); return; }
     this.md = { ...this.md, index }; // a new object: a save under way sees the change (saveNow)
-    this.text = this.saved = block.text;
+    this.text = this.saved = now.text;
+    this.displaced = false;
     this.undoStack = [];
     this.redoStack = [];
     this.selection = null;
@@ -510,6 +542,7 @@ export class App {
     if (this.md && next !== '' && !next.endsWith('\n')) next += '\n';
     if (next === this.text) return;
     if (source !== 'disk' && this.locked()) return;
+    if (source !== 'disk') this.displaced = false; // the person has acted since: their own change is now the last
     if (source !== 'history') {
       this.undoStack.push(this.text);
       if (this.undoStack.length > 300) this.undoStack.shift();
@@ -845,7 +878,7 @@ export class App {
     window.addEventListener('beforeunload', (e) => {
       // A change not yet on disk: the browser asks before the page goes. (The desktop
       // app's window asks in canClose, before the page is unloaded.)
-      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved);
+      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced);
       void this.flushSave();
       if (waiting && this.backend.kind !== 'desktop') {
         e.preventDefault();

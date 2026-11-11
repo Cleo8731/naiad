@@ -197,3 +197,104 @@ describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', (
     expect(seen.some((t) => t.startsWith('flowchart LR'))).toBe(true);
   });
 });
+
+describe('leaving a flowchart asks before an edit is lost (bug hunt S19: C10)', () => {
+  const AGENT = BASE + '\n%% agent\n';
+  const SHOWN_OTHER = 'flowchart LR\n    o[O]\n';
+
+  /** A chart edit waiting to be saved when the agent's write lands; the watcher has not fired yet. */
+  async function displaced() {
+    const s = await start();
+    s.disk.watchDelay = 2000;
+    s.ui.direction('LR');
+    await s.ui.until((t) => t.startsWith('flowchart LR'));
+    s.disk.outside(FILE, AGENT);
+    return s;
+  }
+
+  it('C10: Open right after a change on disk displaced the edit asks, and No keeps the edit in Undo', async () => {
+    const { disk, ui } = await displaced();
+    disk.answer = false;
+    await ui.app.open(OTHER);
+    expect(disk.asked).toHaveLength(1);
+    expect(disk.asked[0]).toMatch(/^Your last edit to flow\.mmd was not written: the file changed on disk first\..*Open other\.mmd and lose it\?$/);
+    expect(ui.area().value).toBe(AGENT);
+    expect(ui.undoEnabled()).toBe(true);
+    ui.undo();
+    expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
+  });
+
+  it('C10: and Yes opens the other file', async () => {
+    const { disk, ui } = await displaced();
+    disk.answer = true;
+    await ui.app.open(OTHER);
+    expect(disk.asked).toHaveLength(1);
+    expect(ui.area().value).toBe(SHOWN_OTHER);
+    expect(disk.files.get(FILE)).toBe(AGENT);
+  });
+
+  it('Open while the text holds a change Mermaid cannot read asks first', async () => {
+    const { disk, ui } = await start();
+    ui.type(BROKEN);
+    await sleep(400);
+    await ui.app.open(OTHER);
+    expect(disk.asked).toEqual(['flow.mmd holds a change that is not saved (Mermaid cannot read the text). Open other.mmd and lose it?']);
+    expect(ui.area().value).toBe(BROKEN);
+    expect(disk.files.get(FILE)).toBe(BASE);
+  });
+
+  it('Open with nothing unsaved asks nothing', async () => {
+    const { disk, ui } = await start();
+    ui.direction('LR');
+    await ui.until((t) => t.startsWith('flowchart LR'));
+    await ui.app.open(OTHER);
+    expect(disk.asked).toEqual([]);
+    expect(ui.area().value).toBe(SHOWN_OTHER);
+    expect(disk.files.get(FILE)).toMatch(/^flowchart LR/);
+  });
+
+  it('closing right after a change on disk displaced the edit asks', async () => {
+    const { disk } = await displaced();
+    disk.answer = false;
+    await expect(disk.closeGuard!()).resolves.toBe(false);
+    expect(disk.asked[0]).toMatch(/^Your last edit to flow\.mmd was not written: .*Close Naiad and lose it\?$/);
+  });
+});
+
+describe('showing another flowchart of a Markdown file asks before an edit is lost (bug hunt S19)', () => {
+  const NOTES = 'C:/hunt/two.md';
+  const DOC = '# Two\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n```\n\n```mermaid\nflowchart TD\n    x[X] --> y[Y]\n```\n';
+  const AGENT = DOC.replace('    a[A] --> b[B]\n', '    a[A] --> b[B]\n    %% agent\n');
+
+  async function displacedThenPick(answer: boolean) {
+    const disk = new FakeDisk();
+    disk.files.set(NOTES, DOC);
+    const ui = await startApp(disk, NOTES);
+    disk.watchDelay = 2000;
+    disk.answer = answer;
+    ui.direction('LR');
+    await ui.until((t) => t.startsWith('flowchart LR'));
+    disk.outside(NOTES, AGENT);
+    const pick = document.querySelector<HTMLSelectElement>('[data-act="block"]')!;
+    pick.value = '1';
+    pick.dispatchEvent(new Event('change'));
+    await sleep(500);
+    return { disk, ui };
+  }
+
+  it('No keeps the flowchart shown and the edit in Undo', async () => {
+    const { disk, ui } = await displacedThenPick(false);
+    expect(disk.asked).toHaveLength(1);
+    expect(disk.asked[0]).toMatch(/^Your last edit to two\.md was not written: .*Show another flowchart and lose it\?$/);
+    expect(ui.area().value).toContain('%% agent');
+    ui.undo();
+    expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
+  });
+
+  it('Yes shows the other flowchart, and the file keeps the agent\'s change', async () => {
+    const { disk, ui } = await displacedThenPick(true);
+    expect(disk.asked).toHaveLength(1);
+    expect(ui.area().value).toBe('flowchart TD\n    x[X] --> y[Y]\n');
+    expect(disk.files.get(NOTES)).toBe(AGENT);
+  });
+});
