@@ -268,6 +268,40 @@ describe('a program that writes the file in two steps is not cut in on (bug hunt
   });
 });
 
+describe('a Markdown flowchart block that disappears and comes back (bug hunt C5)', () => {
+  const NOTES = 'C:/hunt/back.md';
+  const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n```\n\nAfter.\n';
+  const WITHOUT = '# Notes\n\nAfter.\n';
+
+  async function goneThenBack(back: string) {
+    const disk = new FakeDisk();
+    disk.files.set(NOTES, DOC);
+    const ui = await startApp(disk, NOTES);
+    disk.outside(NOTES, WITHOUT);
+    await sleep(300);
+    expect(ui.area().readOnly).toBe(true);
+    expect(ui.status()).toMatch(/cannot be found/);
+    disk.outside(NOTES, back);
+    await sleep(300);
+    return { disk, ui };
+  }
+
+  it('C5: back exactly as it was, it can be changed again', async () => {
+    const { disk, ui } = await goneThenBack(DOC);
+    expect(ui.area().readOnly).toBe(false);
+    expect(ui.status()).not.toMatch(/cannot be found/);
+    ui.direction('LR');
+    await sleep(1500); // a second's wait after a change on disk (C19), then the save
+    expect(disk.files.get(NOTES)).toBe(DOC.replace('flowchart TD', 'flowchart LR'));
+  });
+
+  it('back with other text around it, it can be changed again', async () => {
+    const { ui } = await goneThenBack(DOC.replace('After.', 'After, changed.'));
+    expect(ui.area().readOnly).toBe(false);
+    expect(ui.status()).not.toMatch(/cannot be found/);
+  });
+});
+
 describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', () => {
   const NOTES = 'C:/hunt/notes.md';
   const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n\n%% @a\n%% Desc of A.\n```\n\nAfter.\n';

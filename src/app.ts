@@ -401,9 +401,12 @@ export class App {
     await this.queue(async () => {
       if (path !== this.path) return; // another file is shown now
       let disk = plainText(raw);
-      if (disk === (this.md ? this.md.file : this.saved)) return; // our own save, or nothing really changed
+      // Our own save, or nothing really changed. While the block shown is gone, `md.file`
+      // is the file from before it went: the file coming back as it was is a change (C5).
+      if (disk === (this.md ? this.md.file : this.saved) && !this.md?.gone) return;
       this.changedOutside = Date.now();
       if (this.md) {
+        if (this.md.gone) this.note = '';
         const blocks = findBlocks(disk);
         const index = findAgain(this.md.blocks, blocks, this.md.index);
         if (index < 0) {
