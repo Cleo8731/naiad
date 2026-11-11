@@ -62,5 +62,5 @@ export const fixtures: Record<string, string> = {
     '    linkStyle 6 interpolate step',
     '',
   ].join('\n'),
-  noTrailingNewline:'flowchart TD\n    one --> two\n    two --> three:::hot\n    classDef hot fill:#f00',
+  noTrailingNewline: 'flowchart TD\n    one --> two\n    two --> three:::hot\n    classDef hot fill:#f00',
 };
