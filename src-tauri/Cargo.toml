@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "A lightweight viewer/editor for plain Mermaid flowchart files"
 license = "MIT"
 edition = "2021"
+# Two programs: the app (src/main.rs) and the `naiad` command (src/bin/naiad-cli.rs).
+default-run = "naiad"
 
 [lib]
 name = "naiad_lib"

@@ -62,6 +62,12 @@ export async function snapshot(text: string): Promise<Snap> {
   return snap;
 }
 
+/** Mermaid's reading of a flowchart in the form the checker takes (src/core/check.ts). */
+export async function reading(text: string): Promise<{ ids: string[]; shape: string }> {
+  const snap = await snapshot(text);
+  return { ids: [...Object.keys(snap.nodes), ...Object.keys(snap.subs)], shape: canon(snap) };
+}
+
 function sortKeys<T>(rec: Record<string, T>): Record<string, T> {
   return Object.fromEntries(Object.keys(rec).sort().map((k) => [k, rec[k]]));
 }

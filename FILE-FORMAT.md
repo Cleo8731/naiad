@@ -143,6 +143,11 @@ More text.
   unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
   touching the flowchart or an unsaved edit to it.
+- The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
+  `%% .`, in place. It asks Mermaid's parser what the flowchart means before and after,
+  and changes nothing when Mermaid cannot read the flowchart, when the meaning or a
+  description would differ, or when the file changed while it was being checked. The
+  checker's `check` never writes.
 
 ## Mermaid syntax Naiad can edit from the chart
 
@@ -163,8 +168,33 @@ but must be edited as text:
 - Styling: `style id fill:#...,stroke:#...,color:#...`.
 - Inside a quoted title, a double quote is written `#quot;`.
 
+## Checking a file from a terminal
+
+Where Naiad is installed, a terminal can check a file without opening a window:
+
+```
+naiad check flow.mmd
+naiad fix flow.mmd
+```
+
+- `naiad check` prints each place a file breaks this format, with its line number and
+  how to put it right, and ends with a count. It reads `.mmd`, `.mermaid` and every
+  flowchart block of a `.md` file, and takes several files at once. Its exit code is 0
+  when there are no problems, 1 when there are, and 2 when a file could not be checked.
+- It reports: text Mermaid's flowchart parser rejects; a line holding nothing but `%%`;
+  a comment after a statement on the same line; a description block whose id matches
+  no node or group; a second description block for one id; a line Naiad's scanner
+  cannot read. It reports nothing about style.
+- `naiad fix` first puts right what cannot change the flowchart (see "What Naiad
+  changes in a file"), then checks.
+- On Windows the installer adds the `naiad` command to the user's PATH. A terminal that
+  was open during the install does not know the command yet: open a new one, or run it
+  by its full path, by default `%LOCALAPPDATA%\Naiad\bin\naiad.exe`.
+
 ## Advice for an agent editing a file
 
+- After changing a file, run `naiad check` on it where Naiad is installed, and put
+  right what it reports.
 - Change only the lines your edit needs; do not reformat or reorder the rest.
 - Give every node a short, stable id (letters, digits, `_`); the id ties a node to its
   description block. If you rename an id, rename its `%% @id` line too.

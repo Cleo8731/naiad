@@ -7,8 +7,74 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
+
+/// `naiad check <file>...` and `naiad fix <file>...`: the checker, run from a terminal.
+/// The page does the work with Mermaid's own parser (src/cli.ts) in a window that is
+/// never shown, and hands the result to `cli_done`. Returns the word and, for each
+/// file, the name as it was typed and its full path.
+fn cli_args() -> Option<(String, Vec<(String, String)>)> {
+    let mut args = std::env::args().skip(1);
+    let mode = args.next()?;
+    if mode != "check" && mode != "fix" {
+        return None;
+    }
+    let files = args
+        .filter(|a| !a.starts_with('-'))
+        .map(|a| {
+            let full = std::path::absolute(&a)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| a.clone());
+            (a, full)
+        })
+        .collect();
+    Some((mode, files))
+}
+
+#[tauri::command]
+fn cli_job() -> Option<(String, Vec<(String, String)>)> {
+    cli_args()
+}
+
+/// Prints the checker's result and ends the program with its exit code.
+#[tauri::command]
+fn cli_done(code: i32, output: String, app: AppHandle) {
+    print_out(&output);
+    app.exit(code);
+}
+
+/// Writes to the terminal the program was started from. The release program is built
+/// without a console (src/main.rs), so it has an output only when the caller gave it
+/// one (a pipe or a file, which is what an agent's tools and the `naiad` command do);
+/// started bare from a terminal, it borrows that terminal's.
+fn print_out(text: &str) {
+    use std::io::Write;
+    let mut line = text.to_string();
+    if !line.ends_with('\n') {
+        line.push('\n');
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        let handle = std::io::stdout().as_raw_handle();
+        if handle.is_null() || handle as isize == -1 {
+            extern "system" {
+                fn AttachConsole(process: u32) -> i32;
+            }
+            // u32::MAX is ATTACH_PARENT_PROCESS.
+            if unsafe { AttachConsole(u32::MAX) } != 0 {
+                if let Ok(mut console) = fs::OpenOptions::new().write(true).open("CONOUT$") {
+                    let _ = console.write_all(line.as_bytes());
+                }
+            }
+            return;
+        }
+    }
+    let mut out = std::io::stdout();
+    let _ = out.write_all(line.as_bytes());
+    let _ = out.flush();
+}
 
 /// The one file watcher; replaced whenever another file is opened.
 #[derive(Default)]
@@ -110,7 +176,26 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Watching::default())
+        .setup(|app| {
+            if cli_args().is_none() {
+                // The window is made hidden (tauri.conf.json) so that the checker never
+                // shows one; in ordinary use it is shown here, before the page loads.
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                }
+            } else {
+                // The checker must always end: if the page never reports, give up.
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                    print_out("naiad: the check did not finish within 60 seconds.");
+                    std::process::exit(2);
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            cli_job,
+            cli_done,
             initial_file,
             read_file,
             write_file,

@@ -1,8 +1,19 @@
 // File access. The desktop app talks to the Rust shell (src-tauri/src/lib.rs); in a
 // browser during development the same calls go to the Vite file bridge (dev/bridge.ts).
 
+/** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
+export interface CliJob {
+  mode: 'check' | 'fix';
+  /** Each file as it was typed, and its full path. */
+  files: { name: string; path: string }[];
+}
+
 export interface Backend {
   kind: 'desktop' | 'browser';
+  /** The checker's job, when the app was started as `naiad check` or `naiad fix`. */
+  cliJob(): Promise<CliJob | null>;
+  /** Prints the checker's result and ends the program. */
+  cliDone(code: number, output: string): Promise<void>;
   /** The file the app was started with, if any. */
   initialPath(): Promise<string | null>;
   read(path: string): Promise<string>;
@@ -29,6 +40,12 @@ async function desktop(): Promise<Backend> {
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   return {
     kind: 'desktop',
+    async cliJob() {
+      const job = await invoke<[string, [string, string][]] | null>('cli_job');
+      if (!job) return null;
+      return { mode: job[0] as CliJob['mode'], files: job[1].map(([name, path]) => ({ name, path })) };
+    },
+    cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
     read: (path) => invoke<string>('read_file', { path }),
     write: (path, text) => invoke<void>('write_file', { path, contents: text }),
@@ -62,6 +79,8 @@ function browser(): Backend {
   };
   return {
     kind: 'browser',
+    cliJob: async () => null,
+    cliDone: async () => {},
     initialPath: async () => (await call('/api/file')).path,
     read: async () => (await call('/api/file')).text,
     write: async (_path, text) => { await call('/api/file', { method: 'PUT', body: text }); },

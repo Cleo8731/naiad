@@ -44,6 +44,20 @@ node's id. The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORM
 
 The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
 
+## From a terminal
+
+The Windows installer adds a `naiad` command (open a new terminal after installing):
+
+```bash
+naiad flow.mmd          # open the file in Naiad
+naiad check flow.mmd    # report where the file breaks the format; no window opens
+naiad fix flow.mmd      # put right what cannot change the flowchart, then check
+```
+
+`naiad check` is made for agents and scripts: it prints each problem with its line and
+how to put it right, and its exit code is 0 only when there are none. Details:
+[FILE-FORMAT.md](FILE-FORMAT.md), "Checking a file from a terminal".
+
 ## Building from source
 
 Needs [Node.js](https://nodejs.org), [Rust](https://rustup.rs) and, on Windows, the

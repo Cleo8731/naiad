@@ -16,7 +16,8 @@
         "width": 1320,
         "height": 840,
         "minWidth": 720,
-        "minHeight": 480
+        "minHeight": 480,
+        "visible": false
       }
     ],
     "security": {
@@ -34,6 +35,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    },
     "fileAssociations": [
       {
         "ext": ["mmd", "mermaid"],
