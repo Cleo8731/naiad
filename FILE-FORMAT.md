@@ -125,7 +125,8 @@ More text.
   `mermaid`, and closed by a line of the same character, at least as many of them.
   Fenced blocks in other languages, and `mermaid` blocks that are not flowcharts (their
   first line is not `flowchart` or `graph`), are left alone. A flowchart block inside a
-  quote (`>`) is not found.
+  quote (`>`) is not found, nor is a fence inside YAML front matter at the top of the
+  file (from a first line of `---` to the next `---` or `...`).
 - A file with several flowchart blocks shows one at a time; a list in the toolbar
   switches between them.
 - A flowchart block may be indented, for example inside a list. Every line of it must

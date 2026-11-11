@@ -193,3 +193,15 @@ describe('finding the shown block again after a change on disk (bug hunt S2)', (
     expect(again(file('a', 'b', 'c'), file('A', 'B', 'c'), 1)).toBe(-1);
   });
 });
+
+describe('what is not a flowchart block (bug hunt S4, S5)', () => {
+  test('a fence inside YAML front matter at the top of the file', () => {
+    const md = '---\ntitle: x\ndesc: |\n  ```mermaid\n  flowchart TD\n  A\n  ```\n---\n\n```mermaid\nflowchart TD\n  B\n```\n';
+    const blocks = findBlocks(md);
+    expect(blocks.map((b) => b.open)).toEqual([9]);
+    // The same lines further down are not front matter.
+    expect(findBlocks('text\n\n' + md).length).toBe(2);
+    // Front matter that never closes is not front matter.
+    expect(findBlocks('---\n```mermaid\nflowchart TD\n  A\n```\n').length).toBe(1);
+  });
+});

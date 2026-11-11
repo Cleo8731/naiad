@@ -54,6 +54,12 @@ export function findBlocks(file: string): Block[] {
   const blocks: Block[] = [];
   let heading = '';
   let i = 0;
+  // YAML front matter at the top of the file ("---" to "---" or "..."): its lines are
+  // data, so a fence written inside it opens no block.
+  if (/^---[ \t]*$/.test(lines[0] ?? '')) {
+    const end = lines.findIndex((l, k) => k > 0 && /^(---|\.\.\.)[ \t]*$/.test(l));
+    if (end > 0) i = end + 1;
+  }
   while (i < lines.length) {
     const m = FENCE.exec(lines[i]);
     // A backtick fence's first line cannot hold another backtick (that is inline code).
