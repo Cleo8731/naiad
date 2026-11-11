@@ -158,6 +158,9 @@ More text.
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file
   of yours is never overwritten by it, and two saves at once never share one.
+- Naiad opens only whole files. On Windows a path with a `:` inside a name
+  (`notes.txt:flow.mmd`) names a hidden part, a stream, of another file: it is refused
+  whatever its ending.
 - When the file changes on disk (an agent or another editor saved it), Naiad reloads
   it. If Naiad holds an unsaved edit at that moment, the version on disk wins and the
   unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the

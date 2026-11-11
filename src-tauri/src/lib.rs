@@ -87,9 +87,15 @@ fn print_out(text: &str) {
 struct Watching(Mutex<Option<RecommendedWatcher>>);
 
 /// The shell only ever touches flowchart files and Markdown files (which can hold a
-/// flowchart block), whatever the page asks for.
+/// flowchart block), whatever the page asks for. On Windows a ':' inside a name names a
+/// hidden part (a stream) of another file (`notes.txt:flow.mmd`), so such a path is
+/// refused whatever its extension.
 fn check(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
+    let stream = |c: std::path::Component| matches!(c, std::path::Component::Normal(n) if n.to_string_lossy().contains(':'));
+    if cfg!(windows) && p.components().any(stream) {
+        return Err("A name in this path holds a ':', which names a hidden part (a stream) of another file. Naiad opens only whole files.".into());
+    }
     let ext = p
         .extension()
         .and_then(|e| e.to_str())
@@ -342,6 +348,37 @@ mod tests {
         replace_file(&flow, b"new").unwrap();
         assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
         assert_eq!(names(&dir).len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_flowchart_and_markdown_files_are_touched() {
+        assert!(check(r"C:\a\flow.mmd").is_ok());
+        assert!(check(r"C:\a\flow.Mermaid").is_ok());
+        assert!(check(r"\\?\C:\a\notes.MD").is_ok());
+        assert!(check("notes.markdown").is_ok());
+        assert!(check(r"C:\a\notes.txt").is_err());
+        assert!(check(r"C:\a\flow").is_err());
+    }
+
+    /// Bug hunt S9 (E2): a path naming a stream of another file is refused, and so
+    /// nothing is read, written or made beside it.
+    #[cfg(windows)]
+    #[test]
+    fn a_stream_of_a_file_is_refused() {
+        for path in [r"C:\a\notes.txt:flow.mmd", r"C:\a\flow.mmd:x.mmd", r"C:\a\flow.mmd::$DATA", r"C:\a\b:c\flow.mmd", r"\\?\C:\a\notes.txt:flow.md"] {
+            assert!(check(path).is_err(), "{path}");
+        }
+        let dir = folder("stream");
+        let notes = dir.join("notes.txt");
+        fs::write(&notes, "the user's notes").unwrap();
+        let stream = format!("{}:flow.mmd", notes.display());
+        assert!(read_file(stream.clone()).is_err());
+        assert!(write_file(stream.clone(), "flowchart TD\n".into()).is_err());
+        assert!(write_highlights(stream.clone(), "a\n".into()).is_err());
+        assert!(read_highlights(stream).is_err());
+        assert_eq!(names(&dir), ["notes.txt"], "nothing made beside it");
+        assert_eq!(fs::read_to_string(&notes).unwrap(), "the user's notes");
         fs::remove_dir_all(&dir).unwrap();
     }
 
