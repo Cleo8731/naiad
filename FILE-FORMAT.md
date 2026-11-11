@@ -45,6 +45,13 @@ the title `Collect data`. The chart shows only the title. A node with no label
 
 Keep titles short; put everything else in the description.
 
+A title that holds parentheses, brackets, braces or a double quote is written in double
+quotes, in any shape: `id["Title with (punctuation)"]`, `id{"Sure (really)?"}`. Other
+punctuation needs no quotes.
+
+The word `end` in lower case cannot be a node's id: Mermaid reads it as the end of a
+group.
+
 ## Description blocks
 
 A node's **description** is the text shown under its title in the sidebar when the node
@@ -61,7 +68,8 @@ Rules:
 1. The block starts with a line holding only `%% @` and the node's id, exactly as the id
    is written in the flowchart (`%% @collect`).
 2. Every following line that starts with `%%` belongs to the description. One space
-   after `%%` is dropped; the rest of the line is the text.
+   after `%%` is dropped; the rest of the line is the text. The sidebar shows each
+   line as a line of its own, so a paragraph is written as one line, however long.
 3. The block ends at the first line that is not a `%%` comment (an empty line ends it),
    or at the next `%% @id` line.
 4. **An empty line inside a description is written `%% .`** (two percent signs, a space,
@@ -178,8 +186,9 @@ naiad fix flow.mmd
 ```
 
 - `naiad check` prints each place a file breaks this format, with its line number and
-  how to put it right, and ends with a count. It reads `.mmd`, `.mermaid` and every
-  flowchart block of a `.md` file, and takes several files at once. Its exit code is 0
+  how to put it right, and ends each file with the number of its problems, or
+  `no problems`. It reads `.mmd`, `.mermaid` and every flowchart block of a `.md` or
+  `.markdown` file, and takes several files at once. Its exit code is 0
   when there are no problems, 1 when there are, and 2 when a file could not be checked.
 - It reports: text Mermaid's flowchart parser rejects; a line holding nothing but `%%`;
   a comment after a statement on the same line; a description block whose id matches
@@ -199,6 +208,7 @@ naiad fix flow.mmd
 - Give every node a short, stable id (letters, digits, `_`); the id ties a node to its
   description block. If you rename an id, rename its `%% @id` line too.
 - Put long text in a description block, never in the title.
+- Write each paragraph of a description as one line; do not wrap it.
 - Write an empty description line as `%% .`.
 - In a Markdown file, keep description blocks inside the flowchart block, and keep
   every line of an indented flowchart block at its indent.

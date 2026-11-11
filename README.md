@@ -58,6 +58,39 @@ naiad fix flow.mmd      # put right what cannot change the flowchart, then check
 how to put it right, and its exit code is 0 only when there are none. Details:
 [FILE-FORMAT.md](FILE-FORMAT.md), "Checking a file from a terminal".
 
+## For AI agents
+
+The folder [skills/naiad](skills/naiad) is a skill: instructions an agent loads when a
+task calls for a flowchart. It teaches the agent the file format, has it check its work
+with `naiad check`, and has it open the file in Naiad for you to see.
+
+Install it with the [skills](https://github.com/vercel-labs/skills) installer, which
+knows where each agent tool keeps its skills:
+
+```bash
+npx skills add Cleo8731/naiad
+```
+
+Or copy the folder `skills/naiad` by hand: for Claude Code, to `~/.claude/skills/naiad`
+(every project on your computer) or to `.claude/skills/naiad` inside a project (commit
+it and everyone working on the project has it).
+
+### Keeping flowcharts up to date (optional)
+
+A flowchart that describes a project goes stale when the project changes. To have
+agents keep it true, add this section to the project's instruction file (`CLAUDE.md`,
+`AGENTS.md` or its like), with one line for each flowchart:
+
+```
+## Naiad flowcharts
+Keep these flowcharts true: when a change alters what one shows, update it in
+the same change, following the naiad skill, and say so in your report.
+- `docs/architecture.mmd`: the import pipeline
+- `docs/release.mmd`: the release steps
+```
+
+The skill offers to add this for you when an agent creates a flowchart of the project.
+
 ## Building from source
 
 Needs [Node.js](https://nodejs.org), [Rust](https://rustup.rs) and, on Windows, the
