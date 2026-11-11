@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { fnv1a64 } from '../src/core/hash';
+import { fnv1a64 } from '../src/core/hash.ts';
 
 const ALLOWED = new Set(['.mmd', '.mermaid', '.md', '.markdown']);
 
