@@ -52,17 +52,28 @@ The Windows installer adds a `naiad` command (open a new terminal after installi
 naiad flow.mmd          # open the file in Naiad
 naiad check flow.mmd    # report where the file breaks the format; no window opens
 naiad fix flow.mmd      # put right what cannot change the flowchart, then check
+naiad serve flow.mmd    # show the file in a browser on this computer; prints the address
 ```
 
 `naiad check` is made for agents and scripts: it prints each problem with its line and
 how to put it right, and its exit code is 0 only when there are none. Details:
 [FILE-FORMAT.md](FILE-FORMAT.md), "Checking a file from a terminal".
 
+`naiad serve` is for an agent whose tool has a browser beside the conversation: it
+shows the flowchart there, where you can also change it, with no separate window. The
+command prints an address (`http://127.0.0.1:` and a port) and returns. The page at
+that address is Naiad itself and saves by the same rules; Naiad's own window can be
+open on the same file at the same time. The server behind it can be reached from this
+computer only, answers only at the address it printed (which holds a secret), refuses
+requests that come from other web pages, reads and writes only the file it was started
+for, and ends by itself ten minutes after the page is closed.
+
 ## For AI agents
 
 The folder [skills/naiad](skills/naiad) is a skill: instructions an agent loads when a
 task calls for a flowchart. It teaches the agent the file format, has it check its work
-with `naiad check`, and has it open the file in Naiad for you to see.
+with `naiad check`, and has it show you the result: in the browser beside the
+conversation where the agent's tool has one, otherwise in Naiad's window.
 
 Install it with the [skills](https://github.com/vercel-labs/skills) installer, which
 knows where each agent tool keeps its skills:

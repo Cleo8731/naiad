@@ -199,7 +199,33 @@ naiad check flow.mmd
 
 ## 4. Show
 
-After a change, where `naiad` can run, open the file in Naiad so the user sees it:
+After a change, where `naiad` can run, show the flowchart to the user. How depends on
+your tool.
+
+**Your tool has a browser pane** (a browser beside the conversation that you can open
+pages in, as the Claude desktop app has): show the flowchart there.
+
+```
+naiad serve flow.mmd
+```
+
+- It prints one line, an address that starts with `http://127.0.0.1:`, and returns at
+  once. Open that address in the browser pane, in the background if your tool lets you
+  choose, and leave the tab open. The page is Naiad itself: it redraws each time the
+  file is saved, and the user can change the flowchart in it.
+- Keep one tab per file. After every later change to the file, run `naiad serve` on it
+  again: while the file is still being served, it prints the same address. If a tab at
+  that address (the same port) is open, do nothing more; if not, open one.
+- The address holds a secret that lets a page read and change that one file. Use it to
+  open the tab and for nothing else: do not write it into a file or send it anywhere.
+- The server behind the page can be reached from this computer only, and ends by
+  itself ten minutes after the page is closed.
+- If the command prints no address, the installed Naiad is older than this command and
+  has opened its own window on the file instead. That shows the flowchart too; do not
+  run `naiad serve` again in this task.
+
+**Your tool has no browser pane** (a terminal, for example): open the file in Naiad's
+own window.
 
 ```
 naiad flow.mmd

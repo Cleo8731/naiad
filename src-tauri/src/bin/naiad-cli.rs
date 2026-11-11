@@ -5,6 +5,7 @@
 //   naiad <file>            opens the file in Naiad and returns at once
 //   naiad check <file>...   checks the files; prints the problems; exit code 0, 1 or 2
 //   naiad fix <file>...     puts right what is safe to, then checks
+//   naiad serve <file>      serves the file to a browser on this computer; prints the address
 //   naiad --version
 //   naiad --add-to-path, naiad --remove-from-path   run by the installer (see below)
 
@@ -17,6 +18,9 @@ const USAGE: &str = "Naiad, a viewer and editor for Mermaid flowchart files.
   naiad check <file>...   report where the files break the Naiad file format
                           (exit code 0: no problems, 1: problems, 2: not checked)
   naiad fix <file>...     put right what cannot change the flowchart, then check
+  naiad serve <file>      show the file in a browser on this computer: prints the
+                          address to open; it ends by itself ten minutes after
+                          the page is closed
   naiad --version";
 
 /// The app: one folder up when installed (`<install>\\bin\\naiad.exe`), or beside this
@@ -325,6 +329,49 @@ fn change_path(add: bool) -> ! {
     }
 }
 
+/// `naiad serve <file>`: starts the app as a server, apart from this terminal, and
+/// passes on its first line: the address to open, or why it could not start. The
+/// server goes on running after this command has returned.
+fn serve(app: &PathBuf, args: &[std::ffi::OsString]) -> ! {
+    use std::io::{BufRead, BufReader, Write};
+    let mut command = Command::new(app);
+    command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = match detached(&mut command).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("naiad: could not start the app: {e}");
+            exit(2);
+        }
+    };
+    let (send, receive) = std::sync::mpsc::channel();
+    if let Some(out) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let _ = BufReader::new(out).read_line(&mut line);
+            let _ = send.send(line);
+        });
+    }
+    match receive.recv_timeout(std::time::Duration::from_secs(20)) {
+        Ok(line) if line.starts_with("http://127.0.0.1:") => {
+            println!("{}", line.trim_end());
+            let _ = std::io::stdout().flush();
+            exit(0);
+        }
+        Ok(line) => {
+            if !line.trim().is_empty() {
+                eprintln!("{}", line.trim_end());
+            }
+            let code = child.wait().ok().and_then(|status| status.code()).unwrap_or(2);
+            exit(if code == 0 { 2 } else { code });
+        }
+        Err(_) => {
+            let _ = child.kill();
+            eprintln!("naiad: the app did not answer within 20 seconds.");
+            exit(2);
+        }
+    }
+}
+
 fn main() {
     keep_my_handles();
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
@@ -346,6 +393,9 @@ fn main() {
         eprintln!("naiad: the Naiad app was not found next to this command. Install Naiad again.");
         exit(2);
     };
+    if first == "serve" {
+        serve(&app, &args);
+    }
     if first != "check" && first != "fix" {
         // Open the file in the app's window; do not wait for the window to close.
         let mut command = Command::new(&app);

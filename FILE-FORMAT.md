@@ -156,6 +156,8 @@ More text.
   and changes nothing when Mermaid cannot read the flowchart, when the meaning or a
   description would differ, or when the file changed while it was being checked. The
   checker's `check` never writes.
+- All of this holds in Naiad's window and in the page that `naiad serve <file>` shows
+  in a browser: they are the same program and follow the same rules.
 
 ## Mermaid syntax Naiad can edit from the chart
 

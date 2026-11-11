@@ -1,5 +1,7 @@
-// File access. The desktop app talks to the Rust shell (src-tauri/src/lib.rs); in a
-// browser during development the same calls go to the Vite file bridge (dev/bridge.ts).
+// File access. The desktop app talks to the Rust shell (src-tauri/src/lib.rs). In a
+// browser the same calls go to a server: the app itself, started as
+// `naiad serve <file>` (src-tauri/src/serve.rs), or, during development, the Vite file
+// bridge (dev/bridge.ts).
 
 /** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
 export interface CliJob {
@@ -9,7 +11,8 @@ export interface CliJob {
 }
 
 export interface Backend {
-  kind: 'desktop' | 'browser';
+  /** "served": in a browser, from `naiad serve <file>`: that one file, no Open and no New. */
+  kind: 'desktop' | 'browser' | 'served';
   /** The checker's job, when the app was started as `naiad check` or `naiad fix`. */
   cliJob(): Promise<CliJob | null>;
   /** Prints the checker's result and ends the program. */
@@ -70,29 +73,45 @@ async function desktop(): Promise<Backend> {
   };
 }
 
+// The addresses are relative: the app's server keeps the page and its calls under a
+// folder named by its secret, which every request must carry.
 function browser(): Backend {
+  // A built page that is not in the desktop app can only have come from `naiad serve`.
+  const served = !import.meta.env.DEV;
   const call = async (url: string, init?: RequestInit) => {
-    const res = await fetch(url, { ...init, headers: { 'x-naiad': '1', ...(init?.headers ?? {}) } });
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, headers: { 'x-naiad': '1', ...(init?.headers ?? {}) } });
+    } catch (e) {
+      if (!served) throw e;
+      // The server ends by itself ten minutes after its last page was closed.
+      throw new Error('the connection to Naiad is lost. Ask the agent to show the flowchart again.');
+    }
     const body = await res.json();
     if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
     return body;
   };
   return {
-    kind: 'browser',
+    kind: served ? 'served' : 'browser',
     cliJob: async () => null,
     cliDone: async () => {},
-    initialPath: async () => (await call('/api/file')).path,
-    read: async () => (await call('/api/file')).text,
-    write: async (_path, text) => { await call('/api/file', { method: 'PUT', body: text }); },
+    initialPath: async () => (await call('api/file')).path,
+    read: async () => (await call('api/file')).text,
+    write: async (_path, text) => { await call('api/file', { method: 'PUT', body: text }); },
     async watch(_path, onChange) {
-      const es = new EventSource('/api/watch');
+      const es = new EventSource('api/watch');
       es.onmessage = () => onChange();
+      // After a break in the connection (the computer slept), look at the file again.
+      let broken = false;
+      es.onerror = () => { broken = true; };
+      es.onopen = () => { if (broken) { broken = false; onChange(); } };
       return () => es.close();
     },
     async pickOpen() {
+      if (served) return null;
       const typed = window.prompt('Full path of the .mmd or .md file to open:');
       if (!typed) return null;
-      return (await call('/api/open', { method: 'POST', body: typed })).path;
+      return (await call('api/open', { method: 'POST', body: typed })).path;
     },
     pickSave: async () => null,
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },

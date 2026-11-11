@@ -1,6 +1,10 @@
 // The desktop shell. It gives the web front end (src/) the few things a web page cannot
 // do on its own: read, write and watch the open flowchart file, and open a link in the
 // user's browser. The front end's side of these calls is src/backend.ts.
+// Started as `naiad serve <file>` it makes no window and serves the page instead
+// (serve.rs).
+
+mod serve;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -172,6 +176,15 @@ fn open_link(url: String, app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    if let Some(args) = serve::asked() {
+        // The in-browser version: no window; the page's files are the ones built
+        // into this program for the window.
+        let context: &'static tauri::Context = Box::leak(Box::new(context));
+        let assets = context.assets();
+        let code = serve::run(args, move |name| assets.get(&name.into()).map(|bytes| bytes.into_owned()));
+        std::process::exit(code);
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -202,6 +215,6 @@ pub fn run() {
             watch_file,
             open_link
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Naiad");
 }

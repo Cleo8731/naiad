@@ -120,7 +120,12 @@ export class App {
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="text"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), block: q('[data-act="block"]'),
     };
-    if (this.backend.kind === 'browser') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
+    if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
+    if (this.backend.kind === 'served') {
+      // The in-browser version shows the one file it was started for.
+      this.root.querySelectorAll('[data-act="open"]').forEach((b) => b.remove());
+      this.el.empty.innerHTML = '<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>';
+    }
 
     const dark = window.matchMedia('(prefers-color-scheme: dark)');
     configureMermaid(dark.matches);
@@ -660,7 +665,7 @@ export class App {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && key === 's') { e.preventDefault(); void this.save(true); return; }
-      if (mod && key === 'o') { e.preventDefault(); void this.pickAndOpen(); return; }
+      if (mod && key === 'o') { e.preventDefault(); if (this.backend.kind !== 'served') void this.pickAndOpen(); return; }
       const typing = (e.target as Element).closest('input, textarea, select, [contenteditable]');
       if (typing) return;
       if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.history(this.undoStack, this.redoStack); }

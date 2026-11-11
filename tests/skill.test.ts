@@ -91,8 +91,18 @@ describe('what the skill repeats from other files', () => {
     expect(flat(format)).toContain('a paragraph is written as one line');
   });
 
+  test('the two ways of showing a file are in the skill and the README', () => {
+    const flat = (doc: string): string => doc.replace(/\s+/g, ' ');
+    for (const text of ['naiad serve flow.mmd', 'naiad flow.mmd', 'http://127.0.0.1:', 'ten minutes after the page is closed']) {
+      expect(flat(section(skill, '4. Show'))).toContain(text);
+      expect(flat(readme)).toContain(text);
+    }
+  });
+
   test('the skill names one place to install Naiad from', () => {
-    const links = [...skill.matchAll(/https?:\/\/[^\s>)]+/g)].map((m) => m[0]);
+    // The address of this computer itself, in the showing step, is not a place to install from.
+    const links = [...skill.matchAll(/https?:\/\/[^\s>)`]+/g)].map((m) => m[0])
+      .filter((link) => !link.startsWith('http://127.0.0.1'));
     expect(links).toEqual(['https://github.com/Cleo8731/naiad/releases']);
   });
 });

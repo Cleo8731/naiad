@@ -1,0 +1,800 @@
+// The in-browser version: `naiad serve <file>`. The app, with no window, serves its
+// own page and one flowchart file to this computer, so that the flowchart can be seen
+// and changed in a browser pane beside a conversation with an agent. It prints one
+// line, the address to open, and ends by itself ten minutes after its last page was
+// closed.
+//
+// A web server on a computer can be reached by every program on it and, unless it is
+// guarded, by any web page open in any browser. The guard (`route`, below):
+//   1. it listens on 127.0.0.1 only;
+//   2. every address it answers starts with a secret made at start, which exists
+//      only in the address that is printed (and in this user's temporary folder);
+//   3. a request that another web page caused is refused (Host, Origin,
+//      Sec-Fetch-Site), and it never lets another site read an answer;
+//   4. it reads and writes the one file it was started for; no request names a path;
+//   5. it ends by itself.
+// A program already running under the user's account is not guarded against: it can
+// read and change the file directly, so this server gives it nothing new.
+
+use std::fs;
+use std::io::{Read, Write};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use notify::{RecursiveMode, Watcher};
+
+/// How long the server lives with no page open.
+const IDLE: Duration = Duration::from_secs(600);
+/// How often each open page is pinged, which is how a closed one is noticed.
+const PING: Duration = Duration::from_secs(10);
+/// A connection that sends or takes nothing for this long is dropped.
+const SLOW: Duration = Duration::from_secs(10);
+const LONGEST_HEAD: usize = 16 * 1024;
+const LONGEST_BODY: usize = 64 * 1024 * 1024;
+const MOST_CONNECTIONS: usize = 64;
+const MOST_PAGES: usize = 32;
+
+/// What every answer carries. Nothing here lets another site read an answer, and the
+/// page may load scripts from this server alone and may not be put in a frame.
+const ALWAYS: &str = "Cache-Control: no-store\r\n\
+X-Content-Type-Options: nosniff\r\n\
+Referrer-Policy: no-referrer\r\n\
+Cross-Origin-Resource-Policy: same-origin\r\n\
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; \
+frame-ancestors 'none'; base-uri 'none'; form-action 'none'\r\n\
+Connection: close\r\n";
+
+/// The arguments after `serve`, if that is how the program was started.
+pub fn asked() -> Option<Vec<String>> {
+    let mut args = std::env::args().skip(1);
+    (args.next()? == "serve").then(|| args.collect())
+}
+
+// ---- Reading a request --------------------------------------------------------------
+
+/// The first line and the headers of a request. Header names are in lower case.
+#[derive(Debug)]
+struct Head {
+    method: String,
+    target: String,
+    headers: Vec<(String, String)>,
+}
+
+impl Head {
+    /// A header's value: `Ok(None)` if it was not sent, `Err` if it was sent twice.
+    fn one(&self, name: &str) -> Result<Option<&str>, ()> {
+        let mut found = self.headers.iter().filter(|(n, _)| n == name).map(|(_, v)| v.as_str());
+        let first = found.next();
+        if found.next().is_some() {
+            return Err(());
+        }
+        Ok(first)
+    }
+}
+
+fn parse_head(text: &str) -> Option<Head> {
+    let mut lines = text.split("\r\n");
+    let mut first = lines.next()?.split(' ');
+    let (method, target, version) = (first.next()?, first.next()?, first.next()?);
+    if first.next().is_some()
+        || method.is_empty()
+        || !method.bytes().all(|b| b.is_ascii_uppercase())
+        || !target.starts_with('/')
+        || !version.starts_with("HTTP/1.")
+    {
+        return None;
+    }
+    let mut headers = Vec::new();
+    for line in lines {
+        let (name, value) = line.split_once(':')?;
+        if name.is_empty() || name.bytes().any(|b| b <= b' ' || b >= 0x7f) {
+            return None;
+        }
+        headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
+    }
+    Some(Head { method: method.to_string(), target: target.to_string(), headers })
+}
+
+/// Reads a request's head. Gives it with whatever bytes of the body came with it,
+/// or the status to answer with (0: say nothing, the connection is dead or silent).
+fn read_head(stream: &mut TcpStream) -> Result<(Head, Vec<u8>), u16> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let end = loop {
+        if let Some(at) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            break at;
+        }
+        if buf.len() > LONGEST_HEAD {
+            return Err(431);
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => return Err(0),
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+        }
+    };
+    let head = std::str::from_utf8(&buf[..end]).ok().and_then(parse_head).ok_or(400u16)?;
+    Ok((head, buf[end + 4..].to_vec()))
+}
+
+/// Reads the body of a write: its length must be stated, and it has a limit.
+fn read_body(stream: &mut TcpStream, head: &Head, mut body: Vec<u8>) -> Result<Vec<u8>, u16> {
+    if head.one("transfer-encoding") != Ok(None) {
+        return Err(400);
+    }
+    let length: usize = head.one("content-length").map_err(|_| 400u16)?.ok_or(411u16)?.parse().map_err(|_| 400u16)?;
+    if length > LONGEST_BODY {
+        return Err(413);
+    }
+    if body.len() > length {
+        return Err(400);
+    }
+    let mut chunk = vec![0u8; 64 * 1024];
+    while body.len() < length {
+        let want = chunk.len().min(length - body.len());
+        match stream.read(&mut chunk[..want]) {
+            Ok(0) | Err(_) => return Err(0),
+            Ok(n) => body.extend_from_slice(&chunk[..n]),
+        }
+    }
+    Ok(body)
+}
+
+// ---- The guard ----------------------------------------------------------------------
+
+#[derive(Debug, PartialEq)]
+enum Route {
+    /// The secret with no `/` after it: sent on to the folder.
+    ToFolder,
+    Page,
+    Asset(String),
+    Read,
+    Write,
+    Watch,
+    Ping,
+}
+
+/// Whether two texts are the same, in a time that does not depend on where they differ.
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// Decides what a request may do, or the status that refuses it. Everything the guard
+/// checks about a request is checked here, before any of its body is read.
+fn route(head: &Head, port: u16, secret: &str) -> Result<Route, u16> {
+    // Another site's page reaching this server under a name of its own (DNS rebinding)
+    // sends that name as Host.
+    if head.one("host") != Ok(Some(format!("127.0.0.1:{port}").as_str())) {
+        return Err(403);
+    }
+    // A browser names the page a request came from; only this server's own page may ask.
+    let own = format!("http://127.0.0.1:{port}");
+    let origin = head.one("origin").map_err(|_| 403u16)?;
+    if origin.is_some_and(|o| o != own) {
+        return Err(403);
+    }
+    match head.one("sec-fetch-site") {
+        Ok(None) | Ok(Some("same-origin")) | Ok(Some("none")) => {}
+        _ => return Err(403),
+    }
+    // The secret is the first folder of every address.
+    let path = head.target.split('?').next().unwrap_or("");
+    let path = path.strip_prefix('/').ok_or(404u16)?;
+    let (first, rest) = match path.split_once('/') {
+        Some((first, rest)) => (first, Some(rest)),
+        None => (path, None),
+    };
+    if !same(first, secret) {
+        return Err(404);
+    }
+    if head.method != "GET" && head.method != "PUT" {
+        return Err(405);
+    }
+    let get = head.method == "GET";
+    match rest {
+        None if get => Ok(Route::ToFolder),
+        Some("" | "index.html") if get => Ok(Route::Page),
+        Some("api/file") if get => Ok(Route::Read),
+        Some("api/file") => {
+            // A write must come from this server's own page: a browser always names
+            // the origin of a PUT, and the extra header cannot be sent across sites.
+            if origin.is_none() || head.one("x-naiad") != Ok(Some("1")) {
+                return Err(403);
+            }
+            Ok(Route::Write)
+        }
+        Some("api/watch") if get => Ok(Route::Watch),
+        Some("api/ping") if get => Ok(Route::Ping),
+        Some(rest) if get => {
+            let name = rest.strip_prefix("assets/").ok_or(404u16)?;
+            let plain = !name.is_empty()
+                && !name.contains("..")
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+            if plain { Ok(Route::Asset(rest.to_string())) } else { Err(404) }
+        }
+        _ => Err(405),
+    }
+}
+
+// ---- Answering ----------------------------------------------------------------------
+
+fn status_text(status: u16) -> &'static str {
+    match status {
+        200 => "OK",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        411 => "Length Required",
+        413 => "Content Too Large",
+        431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
+        _ => "Internal Server Error",
+    }
+}
+
+fn respond(stream: &mut TcpStream, status: u16, kind: &str, extra: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 {status} {}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n{ALWAYS}{extra}\r\n",
+        status_text(status),
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+}
+
+/// A refusal says its status and nothing about why.
+fn refuse(stream: &mut TcpStream, status: u16) {
+    if status != 0 {
+        respond(stream, status, "text/plain; charset=utf-8", "", status_text(status).as_bytes());
+    }
+}
+
+/// A text as a JSON string.
+fn json_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn respond_json(stream: &mut TcpStream, status: u16, json: String) {
+    respond(stream, status, "application/json; charset=utf-8", "", json.as_bytes());
+}
+
+fn kind_of(name: &str) -> &'static str {
+    match name.rsplit('.').next().unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "js" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "ico" => "image/x-icon",
+        "woff2" => "font/woff2",
+        _ => "application/octet-stream",
+    }
+}
+
+// ---- The server ---------------------------------------------------------------------
+
+type Asset = Box<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
+
+struct Server {
+    port: u16,
+    secret: String,
+    /// The one file, as a full path.
+    file: String,
+    asset: Asset,
+    /// The open pages: one stream each, told when the file changes.
+    pages: Mutex<Vec<TcpStream>>,
+    /// When a page was last open or last asked for the file.
+    active: Mutex<Instant>,
+    connections: AtomicUsize,
+}
+
+impl Server {
+    fn touch(&self) {
+        if let Ok(mut active) = self.active.lock() {
+            *active = Instant::now();
+        }
+    }
+
+    /// Writes to every open page and forgets the ones that are gone. The ten minutes
+    /// are counted from the moment the last page is found gone, not from an earlier
+    /// one: after the computer has slept, a page must get the time to connect again.
+    fn tell(&self, text: &[u8]) {
+        let Ok(mut pages) = self.pages.lock() else { return };
+        let before = pages.len();
+        pages.retain_mut(|page| page.write_all(text).and_then(|_| page.flush()).is_ok());
+        if before > 0 {
+            drop(pages);
+            self.touch();
+        }
+    }
+
+    fn idle(&self) -> Option<Duration> {
+        let none_open = self.pages.lock().map(|p| p.is_empty()).unwrap_or(true);
+        none_open.then(|| self.active.lock().map(|a| a.elapsed()).unwrap_or(Duration::ZERO))
+    }
+
+    fn address(&self) -> String {
+        format!("http://127.0.0.1:{}/{}/", self.port, self.secret)
+    }
+}
+
+/// Whether the server's time is up: no page is open and none has been for `IDLE`.
+fn time_is_up(idle: Option<Duration>) -> bool {
+    idle.is_some_and(|d| d >= IDLE)
+}
+
+fn handle(mut stream: TcpStream, server: &Server) {
+    let (head, early) = match read_head(&mut stream) {
+        Ok(read) => read,
+        Err(status) => return refuse(&mut stream, status),
+    };
+    let route = match route(&head, server.port, &server.secret) {
+        Ok(route) => route,
+        Err(status) => return refuse(&mut stream, status),
+    };
+    match route {
+        Route::ToFolder => {
+            let to = format!("Location: /{}/\r\n", server.secret);
+            respond(&mut stream, 308, "text/plain; charset=utf-8", &to, b"");
+        }
+        Route::Page => match (server.asset)("index.html") {
+            Some(body) => respond(&mut stream, 200, kind_of("index.html"), "", &body),
+            None => refuse(&mut stream, 404),
+        },
+        Route::Asset(name) => match (server.asset)(&name) {
+            Some(body) => respond(&mut stream, 200, kind_of(&name), "", &body),
+            None => refuse(&mut stream, 404),
+        },
+        Route::Ping => {
+            server.touch();
+            respond(&mut stream, 200, "text/plain; charset=utf-8", "", server.file.as_bytes());
+        }
+        Route::Read => {
+            server.touch();
+            match super::read_file(server.file.clone()) {
+                Ok(text) => {
+                    let json = format!("{{\"path\":{},\"text\":{}}}", json_string(&server.file), json_string(&text));
+                    respond_json(&mut stream, 200, json);
+                }
+                Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
+            }
+        }
+        Route::Write => {
+            server.touch();
+            let body = match read_body(&mut stream, &head, early) {
+                Ok(body) => body,
+                Err(status) => return refuse(&mut stream, status),
+            };
+            let written = String::from_utf8(body)
+                .map_err(|_| "The text is not valid UTF-8.".to_string())
+                .and_then(|text| super::write_file(server.file.clone(), text));
+            match written {
+                Ok(()) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
+            }
+        }
+        Route::Watch => {
+            let Ok(mut pages) = server.pages.lock() else { return };
+            if pages.len() >= MOST_PAGES {
+                drop(pages);
+                return refuse(&mut stream, 503);
+            }
+            let start = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n{ALWAYS}\r\n: open\n\n");
+            if stream.write_all(start.as_bytes()).and_then(|_| stream.flush()).is_ok() {
+                let _ = stream.set_nodelay(true);
+                pages.push(stream);
+                drop(pages);
+                server.touch();
+            }
+        }
+    }
+}
+
+// ---- The record of running servers -----------------------------------------------------
+// One small file per served flowchart file, in the user's temporary folder, so that
+// `naiad serve` asked again for the same file gives the address it gave before.
+
+/// A full path without the `\\?\` in front that Windows gives when it resolves one.
+fn plain_path(path: &Path) -> String {
+    let text = path.to_string_lossy().into_owned();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        text
+    }
+}
+
+fn record_of(file: &str) -> PathBuf {
+    // FNV-1a over the path in lower case: a name for the record, not a secret.
+    let hash = file
+        .to_lowercase()
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    std::env::temp_dir().join("naiad-serve").join(format!("{hash:016x}.txt"))
+}
+
+/// The address of a server on record for this file, if it still answers for it.
+fn running(file: &str) -> Option<String> {
+    let record = fs::read_to_string(record_of(file)).ok()?;
+    let mut lines = record.lines();
+    let (_pid, port, secret, path) = (lines.next()?, lines.next()?, lines.next()?, lines.next()?);
+    let port: u16 = port.parse().ok()?;
+    if path != file || secret.len() != 32 || !secret.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let to = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let mut stream = TcpStream::connect_timeout(&to, Duration::from_millis(500)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    stream.set_write_timeout(Some(Duration::from_secs(2))).ok()?;
+    let ask = format!("GET /{secret}/api/ping HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n");
+    stream.write_all(ask.as_bytes()).ok()?;
+    let mut answer = Vec::new();
+    let _ = stream.read_to_end(&mut answer);
+    let answer = String::from_utf8(answer).ok()?;
+    let (head, body) = answer.split_once("\r\n\r\n")?;
+    (head.starts_with("HTTP/1.1 200 ") && body == file).then(|| format!("http://127.0.0.1:{port}/{secret}/"))
+}
+
+fn write_record(server: &Server) {
+    let record = record_of(&server.file);
+    let Some(dir) = record.parent() else { return };
+    if fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let text = format!("{}\n{}\n{}\n{}\n", std::process::id(), server.port, server.secret, server.file);
+    let tmp = record.with_extension("tmp");
+    if fs::write(&tmp, text).is_ok() && fs::rename(&tmp, &record).is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+}
+
+/// Deletes the record, unless a newer server for the same file has put its own there.
+fn delete_record(server: &Server) {
+    let record = record_of(&server.file);
+    let mine = fs::read_to_string(&record)
+        .ok()
+        .and_then(|text| text.lines().next().map(|pid| pid == std::process::id().to_string()))
+        .unwrap_or(false);
+    if mine {
+        let _ = fs::remove_file(&record);
+    }
+}
+
+// ---- Starting ---------------------------------------------------------------------------
+
+fn fail(why: &str) -> i32 {
+    super::print_out(&format!("naiad: {why}"));
+    2
+}
+
+/// `naiad serve <file>`. `asset` gives one of the page's own files by its name
+/// ("index.html", "assets/..."). Returns only to end the program, with its exit code:
+/// at once if the file is already being served, or if serving cannot start.
+pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + Sync + 'static) -> i32 {
+    let files: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
+    let [typed] = files[..] else {
+        return fail("serve takes one file: naiad serve <file>");
+    };
+    if let Err(why) = super::check(typed) {
+        return fail(&why);
+    }
+    let file = match fs::canonicalize(typed) {
+        Ok(path) if path.is_file() => plain_path(&path),
+        Ok(_) => return fail(&format!("{typed} is not a file.")),
+        Err(e) => return fail(&format!("{typed} cannot be opened: {e}")),
+    };
+    if asset("index.html").is_none() {
+        return fail("this program holds no page to serve (it is a development build).");
+    }
+    if let Some(address) = running(&file) {
+        super::print_out(&address);
+        return 0;
+    }
+
+    let listener = match TcpListener::bind((Ipv4Addr::LOCALHOST, 0)) {
+        Ok(listener) => listener,
+        Err(e) => return fail(&format!("could not start serving: {e}")),
+    };
+    let Ok(port) = listener.local_addr().map(|a| a.port()) else {
+        return fail("could not start serving: no port.");
+    };
+    let mut random = [0u8; 16];
+    if getrandom::fill(&mut random).is_err() {
+        return fail("could not start serving: no random numbers for the secret.");
+    }
+    let server = Arc::new(Server {
+        port,
+        secret: random.iter().map(|b| format!("{b:02x}")).collect(),
+        file,
+        asset: Box::new(asset),
+        pages: Mutex::new(Vec::new()),
+        active: Mutex::new(Instant::now()),
+        connections: AtomicUsize::new(0),
+    });
+
+    // Tell the open pages when the file changes. The folder is watched rather than
+    // the file, because many editors save by replacing the file.
+    let path = PathBuf::from(&server.file);
+    let name = path.file_name().map(|n| n.to_os_string());
+    let teller = server.clone();
+    let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if let Ok(event) = res {
+            if event.paths.iter().any(|q| q.file_name().map(|n| n.to_os_string()) == name) {
+                teller.tell(b"data: changed\n\n");
+            }
+        }
+    })
+    .and_then(|mut watcher| {
+        let dir = path.parent().unwrap_or(Path::new("."));
+        watcher.watch(dir, RecursiveMode::NonRecursive).map(|_| watcher)
+    });
+    let _watcher = match watcher {
+        Ok(watcher) => watcher,
+        Err(e) => return fail(&format!("could not watch the file: {e}")),
+    };
+    // Do not hold the folder the command was run in.
+    let _ = std::env::set_current_dir(std::env::temp_dir());
+
+    write_record(&server);
+    super::print_out(&server.address());
+
+    // Ping the open pages, and end when none has been open for long enough.
+    let pinger = server.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(PING);
+        pinger.tell(b": ping\n\n");
+        if time_is_up(pinger.idle()) {
+            delete_record(&pinger);
+            std::process::exit(0);
+        }
+    });
+
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else { continue };
+        if !stream.peer_addr().map(|a| a.ip().is_loopback()).unwrap_or(false) {
+            continue;
+        }
+        let _ = stream.set_read_timeout(Some(SLOW));
+        let _ = stream.set_write_timeout(Some(SLOW));
+        if server.connections.fetch_add(1, Ordering::SeqCst) >= MOST_CONNECTIONS {
+            server.connections.fetch_sub(1, Ordering::SeqCst);
+            continue;
+        }
+        let server = server.clone();
+        std::thread::spawn(move || {
+            handle(stream, &server);
+            server.connections.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PORT: u16 = 50123;
+    const SECRET: &str = "0123456789abcdef0123456789abcdef";
+
+    fn head(method: &str, target: &str, headers: &[(&str, &str)]) -> Head {
+        let mut text = format!("{method} {target} HTTP/1.1");
+        for (name, value) in headers {
+            text.push_str(&format!("\r\n{name}: {value}"));
+        }
+        parse_head(&text).expect("a well-formed request")
+    }
+    const HOST: (&str, &str) = ("Host", "127.0.0.1:50123");
+    const OWN: (&str, &str) = ("Origin", "http://127.0.0.1:50123");
+    fn at(rest: &str) -> String {
+        format!("/{SECRET}/{rest}")
+    }
+    fn ask(method: &str, target: &str, headers: &[(&str, &str)]) -> Result<Route, u16> {
+        route(&head(method, target, headers), PORT, SECRET)
+    }
+
+    #[test]
+    fn the_page_and_its_calls_are_reached_with_the_secret() {
+        assert_eq!(ask("GET", &at(""), &[HOST]), Ok(Route::Page));
+        assert_eq!(ask("GET", &at("index.html"), &[HOST]), Ok(Route::Page));
+        assert_eq!(ask("GET", &format!("/{SECRET}"), &[HOST]), Ok(Route::ToFolder));
+        assert_eq!(ask("GET", &at("assets/index-CLseIhKE.js"), &[HOST]), Ok(Route::Asset("assets/index-CLseIhKE.js".into())));
+        assert_eq!(ask("GET", &at("api/file"), &[HOST, ("Sec-Fetch-Site", "same-origin")]), Ok(Route::Read));
+        assert_eq!(ask("GET", &at("api/watch"), &[HOST]), Ok(Route::Watch));
+        assert_eq!(ask("GET", &at("api/ping"), &[HOST]), Ok(Route::Ping));
+        assert_eq!(ask("PUT", &at("api/file"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::Write));
+        // A page opened by typing its address or by the agent's tool.
+        assert_eq!(ask("GET", &at(""), &[HOST, ("Sec-Fetch-Site", "none")]), Ok(Route::Page));
+    }
+
+    #[test]
+    fn nothing_is_reached_without_the_secret() {
+        for target in [
+            "/".to_string(),
+            "/index.html".to_string(),
+            "/api/file".to_string(),
+            "/assets/index.js".to_string(),
+            format!("/{}/api/file", &SECRET[..31]),
+            format!("/{SECRET}0/api/file"),
+            format!("/{}/api/file", SECRET.to_uppercase()),
+            format!("/x/{SECRET}/api/file"),
+            format!("//{SECRET}/api/file"),
+            format!("/api/file?{SECRET}"),
+        ] {
+            assert_eq!(ask("GET", &target, &[HOST]), Err(404), "{target}");
+            assert_eq!(ask("PUT", &target, &[HOST, OWN, ("X-Naiad", "1")]), Err(404), "{target}");
+        }
+    }
+
+    #[test]
+    fn another_web_page_is_refused_even_with_the_secret() {
+        let file = at("api/file");
+        // Reached under another name (DNS rebinding), or with no or two Host headers.
+        assert_eq!(ask("GET", &file, &[("Host", "evil.example:50123")]), Err(403));
+        assert_eq!(ask("GET", &file, &[("Host", "localhost:50123")]), Err(403));
+        assert_eq!(ask("GET", &file, &[("Host", "127.0.0.1:50124")]), Err(403));
+        assert_eq!(ask("GET", &file, &[("Host", "127.0.0.1")]), Err(403));
+        assert_eq!(ask("GET", &file, &[]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, HOST]), Err(403));
+        // Asked by another site's page.
+        assert_eq!(ask("GET", &file, &[HOST, ("Origin", "https://evil.example")]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, ("Origin", "null")]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, ("Origin", "http://127.0.0.1:50124")]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, ("Origin", "http://localhost:50123")]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, OWN, OWN]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, ("Sec-Fetch-Site", "cross-site")]), Err(403));
+        assert_eq!(ask("GET", &file, &[HOST, ("Sec-Fetch-Site", "same-site")]), Err(403));
+        assert_eq!(ask("GET", &at(""), &[HOST, ("Sec-Fetch-Site", "cross-site")]), Err(403));
+    }
+
+    #[test]
+    fn a_write_must_come_from_the_page_itself() {
+        let file = at("api/file");
+        assert_eq!(ask("PUT", &file, &[HOST]), Err(403));
+        assert_eq!(ask("PUT", &file, &[HOST, OWN]), Err(403));
+        assert_eq!(ask("PUT", &file, &[HOST, ("X-Naiad", "1")]), Err(403));
+        assert_eq!(ask("PUT", &file, &[HOST, OWN, ("X-Naiad", "2")]), Err(403));
+        assert_eq!(ask("PUT", &file, &[HOST, ("Origin", "https://evil.example"), ("X-Naiad", "1")]), Err(403));
+        // Only the file call can be written to, and only with PUT.
+        assert_eq!(ask("PUT", &at(""), &[HOST, OWN, ("X-Naiad", "1")]), Err(405));
+        assert_eq!(ask("PUT", &at("api/watch"), &[HOST, OWN, ("X-Naiad", "1")]), Err(405));
+        for method in ["POST", "DELETE", "PATCH", "OPTIONS", "HEAD"] {
+            assert_eq!(ask(method, &file, &[HOST, OWN, ("X-Naiad", "1")]), Err(405), "{method}");
+        }
+    }
+
+    #[test]
+    fn no_request_names_a_path_on_the_disk() {
+        for rest in [
+            "assets/",
+            "assets/../index.html",
+            "assets/..%2f..%2fsecret.txt",
+            "assets/a/b.js",
+            "assets/a\\b.js",
+            "assets/a%20b.js",
+            "assets/..",
+            "../index.html",
+            "api/open",
+            "api/file/",
+            "api/file/C:/Windows/win.ini",
+            "C:/Windows/win.ini",
+            "index.htm",
+        ] {
+            assert_eq!(ask("GET", &at(rest), &[HOST]), Err(404), "{rest}");
+        }
+        // A query is cut off and ignored: it cannot name another file.
+        assert_eq!(ask("GET", &at("api/file?path=C:/Windows/win.ini"), &[HOST]), Ok(Route::Read));
+    }
+
+    #[test]
+    fn a_malformed_request_is_not_read() {
+        for text in [
+            "",
+            "GET",
+            "GET /",
+            "GET / HTTP/1.1 extra",
+            "get / HTTP/1.1",
+            "GET x HTTP/1.1",
+            "GET / HTTP/2",
+            "GET / HTTP/1.1\r\nno colon",
+            "GET / HTTP/1.1\r\nbad name: x",
+            "GET / HTTP/1.1\r\n: x",
+        ] {
+            assert!(parse_head(text).is_none(), "{text:?}");
+        }
+        let ok = parse_head("PUT /a HTTP/1.1\r\nHost:  127.0.0.1:1 \r\nX-NAIAD:1").unwrap();
+        assert_eq!(ok.one("host"), Ok(Some("127.0.0.1:1")));
+        assert_eq!(ok.one("x-naiad"), Ok(Some("1")));
+        assert_eq!(ok.one("origin"), Ok(None));
+    }
+
+    #[test]
+    fn the_secret_is_compared_whole() {
+        assert!(same(SECRET, SECRET));
+        assert!(!same(SECRET, &SECRET[..31]));
+        assert!(!same(SECRET, "0123456789abcdef0123456789abcdeg"));
+        assert!(!same("", SECRET));
+    }
+
+    #[test]
+    fn a_text_survives_as_json() {
+        assert_eq!(json_string("a\"b\\c\nd\r\te\u{1}\u{feff}é"), "\"a\\\"b\\\\c\\nd\\r\\te\\u0001\u{feff}é\"");
+    }
+
+    #[test]
+    fn a_resolved_path_is_shown_plain() {
+        assert_eq!(plain_path(Path::new(r"\\?\C:\a\b.mmd")), r"C:\a\b.mmd");
+        assert_eq!(plain_path(Path::new(r"\\?\UNC\server\share\b.mmd")), r"\\server\share\b.mmd");
+        assert_eq!(plain_path(Path::new(r"C:\a\b.mmd")), r"C:\a\b.mmd");
+        // The record's name does not depend on upper or lower case.
+        assert_eq!(record_of(r"C:\A\B.mmd"), record_of(r"c:\a\b.MMD"));
+        assert_ne!(record_of(r"C:\a\b.mmd"), record_of(r"C:\a\c.mmd"));
+    }
+
+    #[test]
+    fn the_ten_minutes_start_when_the_last_page_is_found_gone() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let browser = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (page, _) = listener.accept().unwrap();
+        let server = Server {
+            port: 0,
+            secret: String::new(),
+            file: String::new(),
+            asset: Box::new(|_| None),
+            pages: Mutex::new(vec![page]),
+            active: Mutex::new(Instant::now()),
+            connections: AtomicUsize::new(0),
+        };
+        assert_eq!(server.idle(), None); // a page is open
+        // As after a long sleep: the last sign of life is long ago.
+        let Some(long_ago) = Instant::now().checked_sub(IDLE * 2) else { return };
+        drop(browser);
+        for _ in 0..100 {
+            *server.active.lock().unwrap() = long_ago;
+            server.tell(b": ping
+
+");
+            if server.idle().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let idle = server.idle().expect("the closed page is noticed");
+        assert!(!time_is_up(Some(idle)), "{idle:?}");
+        // With no page, time passes.
+        *server.active.lock().unwrap() = long_ago;
+        server.tell(b": ping
+
+");
+        assert!(time_is_up(server.idle()));
+    }
+
+    #[test]
+    fn it_ends_only_after_ten_minutes_with_no_page() {
+        assert!(!time_is_up(None)); // a page is open
+        assert!(!time_is_up(Some(Duration::from_secs(599))));
+        assert!(time_is_up(Some(Duration::from_secs(600))));
+    }
+}
