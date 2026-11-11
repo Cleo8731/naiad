@@ -41,9 +41,9 @@ describe('a save in a browser names the text it read (bug hunt S17, C7)', () => 
     vi.unstubAllEnvs();
   });
 
-  async function pageAnswered(status: number, body: unknown) {
+  async function pageAnswered(status: number, body: unknown, dev = false) {
     const sent: { headers: Record<string, string>; body: unknown }[] = [];
-    vi.stubEnv('DEV', false);
+    vi.stubEnv('DEV', dev);
     vi.stubGlobal('window', {});
     vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
       sent.push({ headers: init.headers as Record<string, string>, body: init.body });
@@ -64,6 +64,24 @@ describe('a save in a browser names the text it read (bug hunt S17, C7)', () => 
     await expect(backend.write('flow.mmd', 'new', 'old')).resolves.toBe(true);
     await expect(backend.write('flow.mmd', 'new')).resolves.toBe(true);
     expect('x-naiad-expect' in sent[1].headers).toBe(false);
+  });
+
+  it('the dev page names the file it shows on every read and write (bug hunt S21: C14)', async () => {
+    const { backend, sent } = await pageAnswered(200, { text: '' }, true);
+    const file = 'C:/Users/me/Flow charts/plan é.mmd';
+    await backend.read(file);
+    await backend.write(file, 'new', 'old');
+    await backend.readHighlights(file);
+    await backend.writeHighlights(file, 'a\n');
+    expect(sent.map((s) => decodeURIComponent(s.headers['x-naiad-path']))).toEqual([file, file, file, file]);
+    expect(sent[1].headers['x-naiad-expect']).toBe(fnv1a64(new TextEncoder().encode('old')));
+  });
+
+  it('a page from naiad serve does not send it (that server serves one file)', async () => {
+    const { backend, sent } = await pageAnswered(200, { text: '' });
+    await backend.read('flow.mmd');
+    await backend.write('flow.mmd', 'new');
+    expect(sent.every((s) => !('x-naiad-path' in s.headers))).toBe(true);
   });
 
   it('still fails on any other error', async () => {

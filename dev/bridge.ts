@@ -46,6 +46,18 @@ export function fileBridge(): Plugin {
       watch();
       server.httpServer?.on('close', () => watcher?.close());
 
+      // Open in one view changes the file for every view of this server, so the page names
+      // the file it shows (header x-naiad-path) and a page still showing another is
+      // refused (bug hunt C14). `required`: a write must name it.
+      const otherFile = (req: IncomingMessage, required: boolean): string | null => {
+        const named = req.headers['x-naiad-path'];
+        if (typeof named !== 'string') return required ? 'The page did not say which file it shows. Reload this page.' : null;
+        let shows: string;
+        try { shows = path.resolve(decodeURIComponent(named)); } catch { shows = ''; }
+        if (shows === current) return null;
+        return `This page shows another file than the one the development server now serves (${path.basename(current)}, opened in another view). Reload this page.`;
+      };
+
       server.middlewares.use('/api', async (req, res) => {
         const send = (code: number, body: unknown) => {
           res.statusCode = code;
@@ -59,6 +71,11 @@ export function fileBridge(): Plugin {
           const guarded = req.method !== 'GET';
           if (guarded && req.headers['x-naiad'] !== '1') return send(403, { error: 'missing header' });
 
+          const route = `${req.method} ${url}`;
+          if (['GET /file', 'PUT /file', 'GET /highlights', 'PUT /highlights'].includes(route)) {
+            const other = otherFile(req, req.method === 'PUT');
+            if (other) return send(400, { error: other });
+          }
           if (url === '/file' && req.method === 'GET') {
             if (!fs.existsSync(current)) return send(404, { error: 'not found', path: current });
             return send(200, { path: current, text: fs.readFileSync(current, 'utf8') });

@@ -133,15 +133,18 @@ function browser(): Backend {
     if (!res.ok) throw Object.assign(new Error(body.error ?? `Request failed (${res.status})`), { status: res.status });
     return body;
   };
+  // The file the page shows, so that the dev page's server refuses a request meant for
+  // another (dev/bridge.ts). `naiad serve` serves one file only: it is not sent there.
+  const shows = (path: string): Record<string, string> => (served ? {} : { 'x-naiad-path': encodeURIComponent(path) });
   return {
     kind: served ? 'served' : 'browser',
     cliJob: async () => null,
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
-    read: async () => (await call('api/file')).text,
-    async write(_path, text, expected) {
+    read: async (path) => (await call('api/file', { headers: shows(path) })).text,
+    async write(path, text, expected) {
       // The text read is named by its hash; the server answers 409 if the file's bytes differ.
-      const headers: Record<string, string> = expected === undefined ? {} : { 'x-naiad-expect': fnv1a64(new TextEncoder().encode(expected)) };
+      const headers: Record<string, string> = expected === undefined ? shows(path) : { ...shows(path), 'x-naiad-expect': fnv1a64(new TextEncoder().encode(expected)) };
       try {
         await call('api/file', { method: 'PUT', body: text, headers });
         return true;
@@ -159,8 +162,8 @@ function browser(): Backend {
       es.onopen = () => { if (broken) { broken = false; onChange(); } };
       return () => es.close();
     },
-    readHighlights: async () => (await call('api/highlights')).text,
-    writeHighlights: async (_path, text) => { await call('api/highlights', { method: 'PUT', body: text }); },
+    readHighlights: async (path) => (await call('api/highlights', { headers: shows(path) })).text,
+    writeHighlights: async (path, text) => { await call('api/highlights', { method: 'PUT', body: text, headers: shows(path) }); },
     viewing: () => {},
     async pickOpen() {
       if (served) return null;
