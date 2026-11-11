@@ -41,8 +41,8 @@ pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
     }
 }
 
-/// Writes the highlights file whole, through a temporary file and a rename. A text with
-/// nothing but blank lines deletes it instead.
+/// Writes the highlights file whole, through a temporary file and a rename
+/// (`replace_file`, lib.rs). A text with nothing but blank lines deletes it instead.
 pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
         return delete(flowchart);
@@ -53,12 +53,7 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if let Some(naiad) = folder.parent() {
         hide(naiad);
     }
-    let tmp = folder.join(".highlights.txt.naiad-tmp");
-    fs::write(&tmp, text).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &file).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        e.to_string()
-    })
+    super::replace_file(&file, text.as_bytes())
 }
 
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
@@ -239,7 +234,8 @@ mod tests {
         write(&flow, "a\na --> b\n").unwrap();
         assert_eq!(read(&flow).unwrap().as_deref(), Some("a\na --> b\n"));
         let naiad = dir.join(".naiad");
-        assert!(!naiad.join("flow.mmd").join(".highlights.txt.naiad-tmp").exists());
+        let left: Vec<_> = fs::read_dir(naiad.join("flow.mmd")).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["highlights.txt"], "no temporary file left");
         #[cfg(windows)]
         {
             use std::os::windows::fs::MetadataExt;
@@ -251,6 +247,20 @@ mod tests {
         assert!(!naiad.exists());
         // The flowchart's own file is untouched.
         assert_eq!(fs::read_to_string(&flow).unwrap(), "flowchart TD\n    a --> b\n");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt S6 (F3): a file named like the old temporary file is the user's.
+    #[test]
+    fn a_file_named_like_a_temporary_file_is_kept() {
+        let dir = folder("tmpname");
+        let flow = dir.join("flow.mmd");
+        let theirs = dir.join(".naiad").join("flow.mmd").join(".highlights.txt.naiad-tmp");
+        fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        fs::write(&theirs, "theirs\n").unwrap();
+        write(&flow, "a\n").unwrap();
+        assert_eq!(fs::read_to_string(&theirs).unwrap(), "theirs\n");
+        assert_eq!(read(&flow).unwrap().as_deref(), Some("a\n"));
         fs::remove_dir_all(&dir).unwrap();
     }
 

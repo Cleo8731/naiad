@@ -154,6 +154,10 @@ More text.
   message naming the line) until it is fixed in the text pane. Typing in the text pane
   always works.
 - The file is saved only while it is a valid Mermaid flowchart (Ctrl+S saves it anyway).
+- A save writes the whole text to a new temporary file beside it, named
+  `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
+  never left half written. The temporary name is always one no file has yet: a file
+  of yours is never overwritten by it, and two saves at once never share one.
 - When the file changes on disk (an agent or another editor saved it), Naiad reloads
   it. If Naiad holds an unsaved edit at that moment, the version on disk wins and the
   unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the
@@ -204,7 +208,7 @@ collect --> clean
 - Anyone may write the file: Naiad shows a change to it within a second, and need not
   be running when it is written.
 - When Naiad changes the list it writes the whole file, through a temporary file and a
-  rename, and keeps every line it was not asked to change. A file Naiad cannot read
+  rename as for a save, and keeps every line it was not asked to change. A file Naiad cannot read
   (one that is not UTF-8) is never replaced: switching a highlight then shows the
   error and writes nothing. When the last item is taken
   off it deletes the file, and the folders it leaves empty. When it makes the `.naiad`

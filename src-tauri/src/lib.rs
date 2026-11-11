@@ -120,21 +120,44 @@ fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&p).map_err(|e| e.to_string())
 }
 
-/// Writes through a temporary file in the same folder and then renames it over the
-/// target, so a crash mid-write cannot leave a half-written flowchart.
+/// Writes a flowchart's file whole (see `replace_file`).
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
     let p = check(&path)?;
-    let name = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("The path has no file name.")?;
-    let tmp = p.with_file_name(format!(".{name}.naiad-tmp"));
-    fs::write(&tmp, contents).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &p).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        e.to_string()
-    })
+    replace_file(&p, contents.as_bytes())
+}
+
+/// The number in the next temporary file's name (`replace_file`).
+static NEXT_TMP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Writes `contents` to `target` through a temporary file in the same folder, then
+/// renames it over the target, so a crash mid-write cannot leave a half-written file.
+/// The temporary file is made new, under a short name no file has
+/// (`.naiad-<process>-<n>.tmp`): a file that happens to have such a name is never
+/// overwritten, two writes at once never share one, and a long file name still fits.
+pub(crate) fn replace_file(target: &Path, contents: &[u8]) -> Result<(), String> {
+    use std::io::{ErrorKind, Write};
+    use std::sync::atomic::Ordering;
+    if target.file_name().is_none() {
+        return Err("The path has no file name.".into());
+    }
+    let me = std::process::id();
+    for _ in 0..100 {
+        let n = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
+        let tmp = target.with_file_name(format!(".naiad-{me}-{n}.tmp"));
+        let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        let written = file.write_all(contents);
+        drop(file);
+        return written.and_then(|()| fs::rename(&tmp, target)).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            e.to_string()
+        });
+    }
+    Err("No free name for a temporary file next to the file.".into())
 }
 
 /// Starts watching a file. Emits "file-changed" with the path whenever it changes on
@@ -253,4 +276,96 @@ pub fn run() {
                 highlights::show(None);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    fn folder(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("naiad-lib-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_write_replaces_the_file_and_leaves_nothing_beside_it() {
+        let dir = folder("replace");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "old").unwrap();
+        write_file(flow.to_string_lossy().into_owned(), "new".into()).unwrap();
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
+        assert_eq!(names(&dir), ["flow.mmd"]);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt S6 (D5, F3): a file that has the name of a temporary file is the user's.
+    #[test]
+    fn a_file_named_like_a_temporary_file_is_never_touched() {
+        let dir = folder("clash");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "old").unwrap();
+        // The name used before the fix, and the next 20 names this program would use.
+        fs::write(dir.join(".flow.mmd.naiad-tmp"), "the user's").unwrap();
+        let (me, next) = (std::process::id(), NEXT_TMP.load(Ordering::Relaxed));
+        let taken: Vec<PathBuf> = (0..20).map(|k| dir.join(format!(".naiad-{me}-{}.tmp", next + k))).collect();
+        for (k, path) in taken.iter().enumerate() {
+            fs::write(path, format!("the user's {k}")).unwrap();
+        }
+        replace_file(&flow, b"new").unwrap();
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
+        assert_eq!(fs::read_to_string(dir.join(".flow.mmd.naiad-tmp")).unwrap(), "the user's");
+        for (k, path) in taken.iter().enumerate() {
+            assert_eq!(fs::read_to_string(path).unwrap(), format!("the user's {k}"));
+        }
+        assert_eq!(names(&dir).len(), 22, "nothing left behind");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt S6 (E4): the temporary name must fit beside a file name of 250 characters.
+    #[test]
+    fn a_long_file_name_can_be_written() {
+        let dir = folder("long");
+        let flow = dir.join(format!("{}.mmd", "g".repeat(246)));
+        fs::write(&flow, "old").unwrap();
+        replace_file(&flow, b"new").unwrap();
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
+        assert_eq!(names(&dir).len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt S6 (E1): two writes at once each leave a whole text, never a mix.
+    #[test]
+    fn writes_at_once_never_mix() {
+        let dir = folder("race");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "old").unwrap();
+        let texts: Vec<String> = (0..4).map(|k| format!("{k}").repeat(200_000)).collect();
+        let mut failed = 0;
+        for _ in 0..25 {
+            let runs: Vec<_> = texts
+                .iter()
+                .map(|text| {
+                    let (flow, text) = (flow.clone(), text.clone());
+                    std::thread::spawn(move || replace_file(&flow, text.as_bytes()))
+                })
+                .collect();
+            failed += runs.into_iter().map(|r| r.join().unwrap()).filter(Result::is_err).count();
+            let now = fs::read_to_string(&flow).unwrap();
+            assert!(texts.contains(&now), "the file holds one whole text");
+        }
+        assert_eq!(names(&dir), ["flow.mmd"], "nothing left behind ({failed} writes refused)");
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
