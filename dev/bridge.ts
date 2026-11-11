@@ -23,6 +23,40 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+let saves = 0;
+
+/**
+ * Writes `text` to a new temporary file beside `target` and renames it over `target`, so
+ * the file is never left half written. The temporary name is one no file has yet (made
+ * with 'wx'), and the temporary file is removed whenever the write does not finish (bug
+ * hunt C15). `unchanged` runs just before the rename: false refuses the write.
+ */
+function replaceFile(target: string, text: string, unchanged: () => boolean = () => true): boolean {
+  let tmp = '';
+  let fd = -1;
+  for (let tries = 0; fd < 0; tries++) {
+    tmp = path.join(path.dirname(target), `.naiad-${process.pid}-${saves++}.tmp`);
+    try {
+      fd = fs.openSync(tmp, 'wx');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || tries > 100) throw e;
+    }
+  }
+  let done = false;
+  try {
+    fs.writeFileSync(fd, text, 'utf8');
+    fs.closeSync(fd);
+    fd = -1;
+    if (!unchanged()) return false;
+    fs.renameSync(tmp, target);
+    done = true;
+    return true;
+  } finally {
+    if (fd >= 0) fs.closeSync(fd);
+    if (!done) fs.rmSync(tmp, { force: true });
+  }
+}
+
 export function fileBridge(): Plugin {
   return {
     name: 'naiad-file-bridge',
@@ -84,16 +118,14 @@ export function fileBridge(): Plugin {
             // The hash of the text the page read (src/core/hash.ts): refused if the file
             // holds anything else now, as `naiad serve` does.
             const expect = req.headers['x-naiad-expect'];
-            const tmp = `${current}.${process.pid}.tmp`;
-            fs.writeFileSync(tmp, await readBody(req), 'utf8');
-            if (expect !== undefined) {
+            const unchanged = () => {
+              if (expect === undefined) return true;
               const now = fs.existsSync(current) ? fnv1a64(fs.readFileSync(current)) : null;
-              if (typeof expect !== 'string' || now !== expect.trim().toLowerCase()) {
-                fs.rmSync(tmp, { force: true });
-                return send(409, { error: 'The file changed on disk after it was read.', changed: true });
-              }
+              return typeof expect === 'string' && now === expect.trim().toLowerCase();
+            };
+            if (!replaceFile(current, await readBody(req), unchanged)) {
+              return send(409, { error: 'The file changed on disk after it was read.', changed: true });
             }
-            fs.renameSync(tmp, current);
             return send(200, { ok: true });
           }
           // The highlights file beside the open file (src-tauri/src/highlights.rs does
@@ -111,9 +143,7 @@ export function fileBridge(): Plugin {
               for (const d of [folder, naiad]) { try { fs.rmdirSync(d); } catch { /* not empty, or gone */ } }
             } else {
               fs.mkdirSync(folder, { recursive: true });
-              const tmp = `${highlights}.${process.pid}.tmp`;
-              fs.writeFileSync(tmp, text, 'utf8');
-              fs.renameSync(tmp, highlights);
+              replaceFile(highlights, text);
             }
             return send(200, { ok: true });
           }

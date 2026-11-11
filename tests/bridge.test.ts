@@ -84,3 +84,32 @@ describe('the dev page writes only the file it shows (bug hunt S21: C14)', () =>
     expect(b.read(b.file)).toBe(read + '%% agent\n');
   });
 });
+
+describe('the dev page never leaves or reuses a temporary file (bug hunt S22: C15)', () => {
+  const names = (dir: string) => fs.readdirSync(dir).sort();
+
+  it('C15: a save whose rename fails (the file is read-only) leaves nothing beside the file', async () => {
+    const b = await bridge();
+    const before = names(b.dir);
+    fs.chmodSync(b.file, 0o444);
+    try {
+      const save = await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    x\n', shows: b.file });
+      expect(save.status).toBe(500);
+      expect(names(b.dir)).toEqual(before);
+      expect(b.read(b.file)).toBe('flowchart TD\n    a --> b\n');
+    } finally {
+      fs.chmodSync(b.file, 0o644);
+    }
+  });
+
+  it('a file of the user\'s named like a temporary file is never touched', async () => {
+    const mine = { [`flow.mmd.${process.pid}.tmp`]: 'mine\n', [`.naiad-${process.pid}-0.tmp`]: 'mine too\n' };
+    const b = await bridge(mine);
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    x\n', shows: b.file })).status).toBe(200);
+    expect((await b.call('/highlights', { method: 'PUT', body: 'a\n', shows: b.file })).status).toBe(200);
+    for (const [name, text] of Object.entries(mine)) expect(b.read(path.join(b.dir, name))).toBe(text);
+    expect(b.read(b.file)).toBe('flowchart TD\n    x\n');
+    expect(names(b.dir)).toEqual(['.naiad', ...Object.keys(mine), 'flow.mmd', 'other.mmd'].sort());
+    expect(fs.readdirSync(path.join(b.dir, '.naiad', 'flow.mmd'))).toEqual(['highlights.txt']);
+  });
+});
