@@ -213,6 +213,9 @@ collect --> clean
   error and writes nothing. When the last item is taken
   off it deletes the file, and the folders it leaves empty. When it makes the `.naiad`
   folder, or finds one, it sets Windows' hidden mark on it, as git does for `.git`.
+- Naiad never follows a link there. If `.naiad`, the flowchart's folder in it or
+  `highlights.txt` is a symbolic link or a junction, highlighting shows an error and
+  reads, writes and deletes nothing, the link included.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
   the last page `naiad serve` shows of it (within half a minute of that page closing).
   Highlights written while no view was open, or left by a Naiad that was stopped by

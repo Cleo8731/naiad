@@ -25,9 +25,31 @@ pub fn file_of(flowchart: &Path) -> Result<PathBuf, String> {
     Ok(dir.join(".naiad").join(name).join("highlights.txt"))
 }
 
+/// The highlights file of a flowchart's file, once it is clear that nothing on the way
+/// to it is a link. `.naiad`, its folder for the flowchart and `highlights.txt` are
+/// Naiad's own: a link there (a symbolic link, or a junction, which anyone can make on
+/// Windows) would lead reads, writes and deletes to files elsewhere, so it is refused,
+/// never followed and never removed.
+fn checked(flowchart: &Path) -> Result<PathBuf, String> {
+    let file = file_of(flowchart)?;
+    let folder = file.parent().ok_or("No folder.")?;
+    let naiad = folder.parent().ok_or("No folder.")?;
+    for step in [naiad, folder, file.as_path()] {
+        match fs::symlink_metadata(step) {
+            Ok(m) if m.file_type().is_symlink() => {
+                return Err(format!("{} is a link; Naiad does not follow links in its .naiad folder.", step.display()))
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => break,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(file)
+}
+
 /// The highlights file's text, or None if there is none.
 pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
-    let file = file_of(flowchart)?;
+    let file = checked(flowchart)?;
     match fs::read_to_string(&file) {
         Ok(text) => {
             // An agent may have made the folder: hide it as Naiad's own (Q26).
@@ -47,7 +69,7 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
         return delete(flowchart);
     }
-    let file = file_of(flowchart)?;
+    let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     fs::create_dir_all(folder).map_err(|e| e.to_string())?;
     if let Some(naiad) = folder.parent() {
@@ -57,9 +79,10 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
 }
 
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
-/// left empty (Q24: with nothing in it, there is no `.naiad` folder).
+/// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
+/// removed when the way holds a link (`checked`).
 pub fn delete(flowchart: &Path) -> Result<(), String> {
-    let file = file_of(flowchart)?;
+    let file = checked(flowchart)?;
     match fs::remove_file(&file) {
         Ok(()) => {}
         Err(e) if e.kind() == ErrorKind::NotFound => {}
@@ -275,6 +298,48 @@ mod tests {
         assert!(proposal.exists());
         assert!(!dir.join(".naiad").join("flow.mmd").join("highlights.txt").exists());
         delete(&flow).unwrap(); // deleting what is not there is no error
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Makes a junction, a link to a folder that Windows lets anyone make.
+    #[cfg(windows)]
+    fn junction(link: &Path, to: &Path) {
+        let made = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(link)
+            .arg(to)
+            .output()
+            .unwrap();
+        assert!(made.status.success(), "mklink /J failed");
+    }
+
+    /// Bug hunt S7 (F1, F2): a link in the `.naiad` folder is never followed or removed.
+    #[cfg(windows)]
+    #[test]
+    fn a_link_in_the_naiad_folder_is_never_followed() {
+        let dir = folder("link");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        let outside = dir.join("outside");
+        let theirs = outside.join("flow.mmd").join("highlights.txt");
+        fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        fs::write(&theirs, "theirs\n").unwrap();
+        let naiad = dir.join(".naiad");
+
+        // `.naiad` itself, then the flowchart's folder in it, is a junction to elsewhere.
+        for (link, to) in [(naiad.clone(), outside.clone()), (naiad.join("flow.mmd"), outside.join("flow.mmd"))] {
+            fs::create_dir_all(link.parent().unwrap()).unwrap();
+            junction(&link, &to);
+            assert!(read(&flow).is_err(), "read through {}", link.display());
+            assert!(write(&flow, "a\n").is_err(), "write through {}", link.display());
+            assert!(write(&flow, " \n").is_err(), "delete through {}", link.display());
+            assert!(delete(&flow).is_err());
+            show(Some(&flow));
+            show(None); // a closing view deletes highlights: not through a link
+            assert_eq!(fs::read_to_string(&theirs).unwrap(), "theirs\n", "the file elsewhere is untouched");
+            assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "the link is kept");
+            fs::remove_dir(&link).unwrap(); // removes the junction only
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 
