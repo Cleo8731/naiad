@@ -1,16 +1,16 @@
 # Naiad
 
-A lightweight flowchart viewer and editor for plain Mermaid text files.
+Naiad is a Windows desktop app that shows and changes a flowchart kept in one plain
+Mermaid text file, for one person and the AI agents that work on the same file.
 
-- The flowchart is one ordinary `.mmd` file, or a `mermaid` block inside a Markdown
-  file (`.md`), where Naiad touches nothing but the block. It is valid Mermaid, opens in
-  any Mermaid tool, and is the only copy: no positions, no hidden data.
-- On the chart each node shows only a short **title**. Click a node and a **sidebar**
-  opens with its title and its full **description** (Markdown).
-- Edit the file by hand, let an AI agent edit it, or edit in Naiad (on the chart, in the
-  sidebar, or in the text pane). Naiad reloads the file whenever it changes on disk.
-- Naiad never rewrites the file wholesale: an edit changes only the lines it needs, and
-  every edit is checked against Mermaid's own parser before it is applied.
+The chart shows each node's short title. Click a node and a sidebar opens with its full
+description, which the file keeps beside the node as Mermaid comments. In other Mermaid
+tools a node holds only its label, so detail either crowds the chart or lives in a
+second document. With Naiad the file stays the only copy, opens in any Mermaid tool, and
+you, an agent or Naiad can change it.
+
+The example below is made up. GitHub draws the chart; the lines starting `%%` are a
+description, which Mermaid leaves out and Naiad shows in the sidebar:
 
 ```mermaid
 flowchart TD
@@ -25,8 +25,25 @@ flowchart TD
 %% Descriptions are **Markdown**: lists, `code` and links all work.
 ```
 
-The description of a node is a block of Mermaid comments that starts with `%% @` and the
-node's id. The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
+- The flowchart is one `.mmd` file, or a `mermaid` code block inside a Markdown file
+  (`.md`), where Naiad changes nothing outside the code block. A Markdown file with
+  several flowcharts shows one at a time; a list in the toolbar switches between them.
+- Naiad reloads the file whenever it changes on disk, so a change an agent makes shows
+  at once.
+- A change made in Naiad rewrites only the lines it needs, and Mermaid's own parser
+  checks it before it is applied.
+
+A description is a run of Mermaid comments that starts with `%% @` and the node's id.
+The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
+
+## Install
+
+No installer is published yet. To use Naiad now, make the installer yourself
+([Building from source](#building-from-source)) and run
+`src-tauri/target/release/bundle/nsis/Naiad_0.2.0_x64-setup.exe` (2.7 MB). It installs
+Naiad for your Windows user in `%LOCALAPPDATA%\Naiad`, registers it for `.mmd` and
+`.mermaid` files, so a double-click on a `.mmd` file opens it, and adds the `naiad`
+command to your PATH. Then open a file with **Open**, or start one with **New**.
 
 ## Using it
 
@@ -41,22 +58,29 @@ node's id. The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORM
 | Delete | Select, then Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Zoom / pan | Mouse wheel / drag empty space |
+| Point at nodes, arrows or groups with an agent | **Highlight** (key H), then click them; **Clear** takes every highlight off |
+| Show or hide the flowchart's text | **Text** |
 
 The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
+Highlights are kept in a small file of their own beside the flowchart, which an agent
+reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
 
 ## From a terminal
-
-The Windows installer adds a `naiad` command (open a new terminal after installing):
 
 ```bash
 naiad flow.mmd          # open the file in Naiad
 naiad check flow.mmd    # report where the file breaks the format; no window opens
 naiad fix flow.mmd      # put right what cannot change the flowchart, then check
 naiad serve flow.mmd    # show the file in a browser on this computer; prints the address
+naiad --version
 ```
 
+A terminal that was open during the install does not know the command yet: open a new
+one.
+
 `naiad check` is made for agents and scripts: it prints each problem with its line and
-how to put it right, and its exit code is 0 only when there are none. Details:
+how to put it right, or `flow.mmd: no problems`. Its exit code is 0 when there are no
+problems, 1 when there are, and 2 when a file could not be checked. Details:
 [FILE-FORMAT.md](FILE-FORMAT.md), "Checking a file from a terminal".
 
 `naiad serve` is for an agent whose tool has a browser beside the conversation: it
@@ -66,8 +90,7 @@ that address is Naiad itself and saves by the same rules; Naiad's own window can
 open on the same file at the same time. The server behind it can be reached from this
 computer only, answers only at the address it printed (which holds a secret), refuses
 requests that come from other web pages, reads and writes only the file it was started
-for and that file's highlights ([FILE-FORMAT.md](FILE-FORMAT.md), "Highlights"), and
-ends by itself ten minutes after the page is closed.
+for and that file's highlights, and ends by itself ten minutes after the page is closed.
 
 ## For AI agents
 
@@ -76,8 +99,8 @@ task calls for a flowchart. It teaches the agent the file format, has it check i
 with `naiad check`, and has it show you the result: in the browser beside the
 conversation where the agent's tool has one, otherwise in Naiad's window.
 
-Install it with the [skills](https://github.com/vercel-labs/skills) installer, which
-knows where each agent tool keeps its skills:
+The [skills](https://github.com/vercel-labs/skills) installer knows where each agent
+tool keeps its skills. This command has not been tried with Naiad's skill yet:
 
 ```bash
 npx skills add Cleo8731/naiad
@@ -103,20 +126,51 @@ the same change, following the naiad skill, and say so in your report.
 
 The skill offers to add this for you when an agent creates a flowchart of the project.
 
+## What Naiad reads and keeps
+
+- The file you open: read again whenever it changes on disk, and written only as
+  [FILE-FORMAT.md](FILE-FORMAT.md#what-naiad-changes-in-a-file-and-what-it-never-does)
+  describes.
+- Highlights: `.naiad/<file name>/highlights.txt` in the flowchart's folder, with
+  Windows' hidden mark on `.naiad`. The file, and the folders it leaves empty, are
+  deleted when the last Naiad view of the flowchart closes.
+- In your temporary folder, while they run: a small record of each open window
+  (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
+  second `naiad serve` on the same file prints the same address.
+- Whether the text pane is shown, and its width, in the window's own storage.
+- Naiad makes no network requests of its own. An image in a description that points to
+  a web address is loaded from there when the description is shown, and a link in a
+  description opens in your browser.
+
+## Limits
+
+- Naiad 0.2.0 has been made and used on Windows 11 (x64) only. There are no macOS or
+  Linux builds.
+- It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`).
+- Some Mermaid forms are drawn but can be changed only as text; the forms the chart
+  can change are listed in
+  [FILE-FORMAT.md](FILE-FORMAT.md#mermaid-syntax-naiad-can-edit-from-the-chart).
+- Mermaid places the boxes. The file keeps no positions, so a node cannot be moved by
+  hand.
+
 ## Building from source
 
-Needs [Node.js](https://nodejs.org), [Rust](https://rustup.rs) and, on Windows, the
-Visual Studio C++ Build Tools (see the [Tauri prerequisites](https://tauri.app/start/prerequisites/)).
+Made and tested on Windows 11 with Node.js 26.7 (npm 11.19), Rust 1.99.1
+(`stable-x86_64-pc-windows-msvc`) and the Visual Studio 2022 C++ Build Tools (see the
+[Tauri prerequisites](https://tauri.app/start/prerequisites/)).
 
 ```bash
 npm install
-npm run tauri dev      # run the desktop app
-npm run tauri build    # build the app and its installer
 npm test               # run the tests
+npm run dev            # Naiad in a browser, without the desktop window
+npm run tauri build    # the desktop app and its installer, in src-tauri/target/release/
 ```
 
-`npm run dev` runs Naiad in a browser against `examples/sample.mmd`, without the desktop
-shell.
+`npm run dev` opens `examples/sample.mmd`, or the file named by the `NAIAD_FILE`
+environment variable, and saves changes to it.
+
+Report a problem or ask for a change in the
+[issues](https://github.com/Cleo8731/naiad/issues).
 
 Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 
