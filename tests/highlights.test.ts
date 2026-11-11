@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { itemOf, parseHighlights, parseItem, resolveHighlights, toggleHighlight } from '../src/core/highlights';
+import { itemOf, parseHighlights, parseItem, resolveHighlights, toggleHighlight, toggleInFile } from '../src/core/highlights';
 
 const chart = {
   nodes: { collect: {}, clean: {}, review: {} },
@@ -56,5 +56,23 @@ describe('the highlights file', () => {
   it('gives nothing, so the file is deleted, when the last item is taken off', () => {
     expect(toggleHighlight('collect\n', { kind: 'id', id: 'collect' })).toBe('');
     expect(toggleHighlight('# only a note left\ncollect\n\n', { kind: 'id', id: 'collect' })).toBe('');
+  });
+});
+
+describe('switching a highlight in the file on disk (bug hunt S8)', () => {
+  const collect = { kind: 'id', id: 'collect' } as const;
+
+  it('writes the file with the item switched', async () => {
+    const written: string[] = [];
+    await toggleInFile(async () => '# a note\nclean\n', async (t) => { written.push(t); }, collect);
+    await toggleInFile(async () => null, async (t) => { written.push(t); }, collect);
+    expect(written).toEqual(['# a note\nclean\ncollect\n', 'collect\n']);
+  });
+
+  it('writes nothing when the file cannot be read', async () => {
+    const written: string[] = [];
+    const unreadable = async (): Promise<string> => { throw new Error('stream did not contain valid UTF-8'); };
+    await expect(toggleInFile(unreadable, async (t) => { written.push(t); }, collect)).rejects.toThrow(/UTF-8/);
+    expect(written).toEqual([]);
   });
 });

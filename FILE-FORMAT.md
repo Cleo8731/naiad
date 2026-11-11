@@ -204,7 +204,9 @@ collect --> clean
 - Anyone may write the file: Naiad shows a change to it within a second, and need not
   be running when it is written.
 - When Naiad changes the list it writes the whole file, through a temporary file and a
-  rename, and keeps every line it was not asked to change. When the last item is taken
+  rename, and keeps every line it was not asked to change. A file Naiad cannot read
+  (one that is not UTF-8) is never replaced: switching a highlight then shows the
+  error and writes nothing. When the last item is taken
   off it deletes the file, and the folders it leaves empty. When it makes the `.naiad`
   folder, or finds one, it sets Windows' hidden mark on it, as git does for `.git`.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or

@@ -86,3 +86,17 @@ export function toggleHighlight(text: string, item: HighlightItem): string {
   if (kept.length === lines.length) kept.push(itemText(item));
   return kept.some((l) => parseItem(l)) ? `${kept.join('\n')}\n` : '';
 }
+
+/**
+ * Switches one item's highlight in the file as it is on disk now: reads the file (null
+ * when there is none) and writes the result. When the file cannot be read, the error is
+ * thrown and nothing is written: a file Naiad cannot read is never replaced.
+ */
+export async function toggleInFile(
+  read: () => Promise<string | null>,
+  write: (text: string) => Promise<void>,
+  item: HighlightItem,
+): Promise<void> {
+  const disk = (await read()) ?? '';
+  await write(toggleHighlight(disk, item));
+}

@@ -7,7 +7,7 @@ import { Chart, configureMermaid, type Target } from './chart';
 import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
-import { itemOf, parseHighlights, resolveHighlights, toggleHighlight } from './core/highlights';
+import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { findAgain, findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
@@ -272,11 +272,12 @@ export class App {
     const path = this.path;
     const item = this.snap ? itemOf(target, this.snap) : null;
     if (!path || !item) return Promise.resolve();
-    return this.hlQueue(path, async () => {
-      let disk = this.hlText;
-      try { disk = (await this.backend.readHighlights(path)) ?? ''; } catch { /* the last one read */ }
-      await this.writeHighlights(path, toggleHighlight(disk, item));
-    });
+    // A highlights file that cannot be read is left as it is; the queue shows the error.
+    return this.hlQueue(path, () => toggleInFile(
+      () => this.backend.readHighlights(path),
+      (text) => this.writeHighlights(path, text),
+      item,
+    ));
   }
 
   private clearHighlights(): Promise<void> {
