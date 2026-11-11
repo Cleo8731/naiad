@@ -123,6 +123,31 @@ describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S1
   });
 });
 
+describe('a comment never joins a description block (bug hunt S24)', () => {
+  // A description block runs on through every comment line under it, so a line that
+  // kept a comment apart from a block must not simply go: the fuzz test found ungroup
+  // adding "a --> b (commented out)" to a node's description.
+  const edit = async (text: string, op: Op) => (await applyChecked(text, op)).text;
+
+  test('ungrouping, when the group begins with a comment, under a block', async () => {
+    const before = 'flowchart TD\n  %% @a\n  %% About a.\n  subgraph g [G]\n    %% a --> b (commented out)\n    b\n  end\n  a --> b\n';
+    expect(await edit(before, { kind: 'ungroup', id: 'g' }))
+      .toBe('flowchart TD\n  %% @a\n  %% About a.\n\n  %% a --> b (commented out)\n  b\n  a --> b\n');
+  });
+
+  test('ungrouping, when the group ends with a block and a comment follows it', async () => {
+    const before = 'flowchart TD\n  subgraph g [G]\n    b\n    %% @b\n    %% About b.\n  end\n  %% a note\n  b --> c\n';
+    expect(await edit(before, { kind: 'ungroup', id: 'g' }))
+      .toBe('flowchart TD\n  b\n  %% @b\n  %% About b.\n\n  %% a note\n  b --> c\n');
+  });
+
+  test('deleting the node whose line stood between a block and a comment', async () => {
+    const before = 'flowchart TD\n  a --> c\n  %% @a\n  %% About a.\n  b\n  %% a note\n';
+    expect(await edit(before, { kind: 'deleteNode', id: 'b' }))
+      .toBe('flowchart TD\n  a --> c\n  %% @a\n  %% About a.\n\n  %% a note\n');
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

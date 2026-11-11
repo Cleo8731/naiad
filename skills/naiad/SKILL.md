@@ -109,7 +109,9 @@ flowchart TD
    line (`a --> b %% note`) is a syntax error.
 7. One description block per id; if two name the same id, only the first is used.
 8. A `%%` comment that follows no `%% @id` line is an ordinary comment. Leave such
-   comments, and `%%{ ... }%%` directives, as they are.
+   comments, and `%%{ ... }%%` directives, as they are. An ordinary comment written
+   directly under a description block becomes part of it: leave an empty line between
+   them.
 
 Put new description blocks at the end of the flowchart, after one empty line.
 

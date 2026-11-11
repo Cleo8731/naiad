@@ -57,6 +57,11 @@ export function parseDescriptions(lines: string[]): DescBlock[] {
   return blocks;
 }
 
+/** True for a line that, written directly under a description block, becomes part of it. */
+export function joinsBlock(line: string): boolean {
+  return !HEADER_RE.test(line) && COMMENT_RE.test(line);
+}
+
 /** Every description by node id. When an id has two blocks, the first one wins. */
 export function getDescriptions(text: string): Map<string, string> {
   const map = new Map<string, string>();

@@ -3,7 +3,7 @@
 // edit intends. Anything else is refused and the file is left as it was.
 
 import { parseDoc } from './core/scan';
-import { setDescription } from './core/descriptions';
+import { parseDescriptions, setDescription } from './core/descriptions';
 import * as E from './core/edits';
 import { canon, snapshot, type Snap } from './semantics';
 
@@ -178,5 +178,18 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
   if (canon(expectOp(before, op, res)) !== canon(after)) {
     throw new E.EditError('That change would have altered other parts of the chart, so it was not made. Make it in the text pane instead.');
   }
+  if (descriptionsOf(text, op) !== descriptionsOf(res.text, op)) {
+    throw new E.EditError('That change would have altered a description, so it was not made. Make it in the text pane instead.');
+  }
   return res;
+}
+
+/**
+ * Every description block, in order, as Naiad reads it; Mermaid's parser does not see
+ * them. Only a change to a node's description, or deleting the node, may change that
+ * node's blocks (bug hunt S24).
+ */
+function descriptionsOf(text: string, op: Op): string {
+  const own = op.kind === 'setDescription' || op.kind === 'deleteNode' ? op.id : null;
+  return JSON.stringify(parseDescriptions(text.split('\n')).filter((b) => b.id !== own).map((b) => [b.id, b.text]));
 }

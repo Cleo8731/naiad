@@ -155,9 +155,15 @@ More text.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
   the ending of the line above it. A byte-order mark is kept.
+- When an edit removes a line that stood between a description block and a `%%` comment
+  under it (ungrouping removes the `subgraph` and `end` lines; deleting a node removes
+  its line), Naiad puts an empty line where it was, so the comment does not join the
+  description (rule 3 of [Description blocks](#description-blocks)).
 - Before an edit is applied, Naiad asks Mermaid's own parser what the flowchart means
   before and after. If the result does not parse, or differs from the edit that was
-  asked for, the edit is refused and the file is not touched.
+  asked for, the edit is refused and the file is not touched. The same goes for the
+  descriptions: an edit that would change any description other than the one being
+  written, or the one of the node being deleted, is refused.
 - A line Naiad's scanner cannot read is left alone, and chart edits are refused (with a
   message naming the line) until it is fixed in the text pane. Typing in the text pane
   always works.
@@ -292,6 +298,8 @@ naiad fix flow.mmd
 - Put long text in a description block, never in the title.
 - Write each paragraph of a description as one line; do not wrap it.
 - Write an empty description line as `%% .`.
+- Leave an empty line between a description block and an ordinary `%%` comment under
+  it; without one, the comment becomes part of the description.
 - In a Markdown file, keep description blocks inside the flowchart block, and keep
   every line of an indented flowchart block at its indent.
 - Naiad reloads the file as soon as you save it; nothing else needs doing.

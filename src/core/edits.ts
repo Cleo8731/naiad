@@ -7,7 +7,7 @@ import {
   allRefs, findSub, isDecorated, parseDoc, SHAPES, unquote, usedIds,
   type Chain, type Doc, type LinkTok, type NodeRef, type Sub,
 } from './scan';
-import { parseDescriptions, removeDescription } from './descriptions';
+import { joinsBlock, parseDescriptions, removeDescription } from './descriptions';
 
 export class EditError extends Error {}
 
@@ -87,15 +87,27 @@ class Rewriter {
       return out;
     };
 
+    // A description block runs on through every comment line under it, so where a line
+    // that kept a comment apart from a block goes, an empty line takes its place and the
+    // comment stays a comment (bug hunt S24).
+    const blockEnds = new Set(parseDescriptions(doc.lines).map((b) => b.end - 1));
     const out: string[] = [];
+    let underBlock = false;
+    const emit = (lines: string[], from = -1) => {
+      for (const t of lines) {
+        if (underBlock && joinsBlock(t)) out.push('');
+        out.push(t);
+        underBlock = false;
+      }
+      if (lines.length && blockEnds.has(from)) underBlock = joinsBlock(lines[lines.length - 1]);
+    };
     const emitAfter = (i: number) => {
-      for (const g of this.after.get(i) ?? []) out.push(...decide(g.pieces, g.parent));
+      for (const g of this.after.get(i) ?? []) emit(decide(g.pieces, g.parent));
     };
     emitAfter(-1);
     doc.lines.forEach((line, i) => {
       const r = this.repl.get(i);
-      if (r) out.push(...decide(r, doc.info[i].parent));
-      else out.push(line);
+      emit(r ? decide(r, doc.info[i].parent) : [line], i);
       emitAfter(i);
     });
     return out.join('\n');
