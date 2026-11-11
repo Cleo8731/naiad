@@ -95,10 +95,13 @@ function browser(): Backend {
     let res: Response;
     try {
       res = await fetch(url, { ...init, headers: { 'x-naiad': '1', ...(init?.headers ?? {}) } });
-    } catch (e) {
-      if (!served) throw e;
-      // The server ends by itself ten minutes after its last page was closed.
-      throw new Error('the connection to Naiad is lost. Ask the agent to show the flowchart again.');
+    } catch {
+      // No answer at all: the server has stopped. `naiad serve` ends by itself ten
+      // minutes after its last page was closed; `npm run dev` ends when it is stopped,
+      // and its page stays open looking as it did.
+      throw new Error(served
+        ? 'the connection to Naiad is lost. Ask the agent to show the flowchart again.'
+        : 'the connection to the development server is lost. Start it again with npm run dev, then reload this page.');
     }
     const body = await res.json();
     if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
