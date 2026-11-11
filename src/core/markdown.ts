@@ -101,6 +101,24 @@ function readBlock(file: string, lines: string[], open: number, close: number, i
   return block;
 }
 
+/**
+ * After the file changed on disk: the index of the block that was shown, among the
+ * file's Mermaid blocks `after`, or -1 when it cannot be told for certain. `before` are
+ * the blocks as Naiad last read or wrote them, `was` the shown block's index then.
+ * Never a guess: a wrong answer would show another flowchart, and Undo would write the
+ * shown one's old text into it.
+ */
+export function findAgain(before: Block[], after: Block[], was: number): number {
+  const saved = before[was]?.text;
+  if (after[was]?.text === saved) return was;
+  const same = after.flatMap((b, i) => (b.text === saved ? [i] : []));
+  if (same.length === 1) return same[0]; // unchanged, and moved by a block added or removed above it
+  // The shown block itself changed: it is still the one at its place only when no block
+  // was added or taken away and every other block is as it was.
+  const othersAsTheyWere = after.length === before.length && after.every((b, i) => i === was || b.text === before[i].text);
+  return othersAsTheyWere && after[was].flowchart ? was : -1;
+}
+
 /** The file with one block's lines replaced. Lines outside the block are not touched. */
 export function replaceBlock(file: string, block: Block, text: string): string {
   const lines = file.split('\n');

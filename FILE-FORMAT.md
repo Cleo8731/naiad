@@ -154,7 +154,10 @@ More text.
   it. If Naiad holds an unsaved edit at that moment, the version on disk wins and the
   unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
-  touching the flowchart or an unsaved edit to it.
+  touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain
+  which flowchart block it was showing (the block was removed, or it changed while
+  other Mermaid blocks were added, removed or changed), it changes nothing more in the
+  file until the file is opened again.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. It asks Mermaid's parser what the flowchart means before and after,
   and changes nothing when Mermaid cannot read the flowchart, when the meaning or a

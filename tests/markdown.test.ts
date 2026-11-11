@@ -3,7 +3,7 @@
 // and every line outside the block stays exactly as it was.
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
-import { BlockError, findBlocks, isFlowchartText, isMarkdownPath, putBlock, replaceBlock } from '../src/core/markdown';
+import { BlockError, findAgain, findBlocks, isFlowchartText, isMarkdownPath, putBlock, replaceBlock } from '../src/core/markdown';
 import { applyChecked, type Op } from '../src/verify';
 import { snapshot } from '../src/semantics';
 import { fixtures } from './fixtures';
@@ -163,5 +163,33 @@ describe('editing a flowchart inside a Markdown file', () => {
         expect(line === '' || line.startsWith(first.indent), line).toBe(true);
       }
     }
+  });
+});
+
+describe('finding the shown block again after a change on disk (bug hunt S2)', () => {
+  const chart = (name: string) => '```mermaid\nflowchart TD\n  ' + name + '\n```\n';
+  const file = (...names: string[]) => names.map(chart).join('\ntext\n\n');
+  const again = (before: string, after: string, was: number) => findAgain(findBlocks(before), findBlocks(after), was);
+
+  test('the same block, unchanged, moved by a block added or taken away above it', () => {
+    expect(again(file('a', 'b'), file('new', 'a', 'b'), 1)).toBe(2);
+    expect(again(file('a', 'b', 'c'), file('b', 'c'), 1)).toBe(0);
+  });
+
+  test('the shown block changed, and every other block as it was', () => {
+    expect(again(file('a', 'b', 'c'), file('a', 'B', 'c'), 1)).toBe(1);
+  });
+
+  test('the shown block taken away, another flowchart now in its place: not found', () => {
+    expect(again(file('a', 'b', 'c'), file('a', 'c'), 1)).toBe(-1);
+    expect(again(file('a', 'b'), file('a'), 1)).toBe(-1);
+  });
+
+  test('a block added above and the shown block changed: not found', () => {
+    expect(again(file('a', 'b'), file('a', 'new', 'B'), 1)).toBe(-1);
+  });
+
+  test('the shown block and another changed at once: not found', () => {
+    expect(again(file('a', 'b', 'c'), file('A', 'B', 'c'), 1)).toBe(-1);
   });
 });

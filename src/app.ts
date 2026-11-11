@@ -8,7 +8,7 @@ import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleHighlight } from './core/highlights';
-import { findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
+import { findAgain, findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type View } from './sidebar';
@@ -337,10 +337,10 @@ export class App {
     if (this.md) {
       if (disk === this.md.file) return; // our own save, or nothing really changed
       const blocks = findBlocks(disk);
-      const index = this.findAgain(blocks);
+      const index = findAgain(this.md.blocks, blocks, this.md.index);
       if (index < 0) {
         this.md.gone = true;
-        this.note = 'The flowchart block is no longer in the file';
+        this.note = 'The flowchart block shown cannot be found after the change on disk: open the file again';
         this.paint();
         return;
       }
@@ -361,15 +361,6 @@ export class App {
       if (hadUnsaved) this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
     }
     this.paintBar();
-  }
-
-  /** After the file changed on disk: which of its Mermaid blocks is the one shown. */
-  private findAgain(blocks: Block[]): number {
-    const was = this.md!.index;
-    if (blocks[was]?.text === this.saved) return was;
-    const same = blocks.flatMap((b, i) => (b.text === this.saved ? [i] : []));
-    if (same.length === 1) return same[0]; // unchanged, and moved by a block added or removed above it
-    return blocks[was]?.flowchart ? was : -1;
   }
 
   /** Why the flowchart can be shown but not changed, or null. */
