@@ -46,5 +46,21 @@ export const fixtures: Record<string, string> = {
     '%% Deep inside.',
     '',
   ].join('\n'),
-  noTrailingNewline: 'flowchart TD\n    one --> two\n    two --> three:::hot\n    classDef hot fill:#f00',
+  // An arrow's own id on an & list, Markdown labels, and a linkStyle on one of two
+  // arrows with the same ends (bug hunt S11, S13, S14).
+  arrows: [
+    'flowchart LR',
+    '    a & b e1@--> c & d',
+    '    c -->|"`**bold** words`"| d',
+    '    d -- "`*soft*`" --> a',
+    '    subgraph g [G]',
+    '        x -->|one| y',
+    '    end',
+    '    x -->|two| y',
+    '    class e1 k',
+    '    classDef k stroke:#f00',
+    '    linkStyle 6 interpolate step',
+    '',
+  ].join('\n'),
+  noTrailingNewline:'flowchart TD\n    one --> two\n    two --> three:::hot\n    classDef hot fill:#f00',
 };

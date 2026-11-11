@@ -4,7 +4,18 @@
 import mermaid from 'mermaid';
 
 export interface SnapNode { text: string; type: string; styles: string[]; classes: string[] }
-export interface SnapEdge { start: string; end: string; text: string; type: string; stroke: string; length: number; style: string[] }
+export interface SnapEdge {
+  start: string; end: string; text: string; type: string; stroke: string; length: number; style: string[];
+  /** The label is a Markdown string (`"\`...\`"`). */
+  markdown: boolean;
+  /** The curve, from `linkStyle N interpolate` or the arrow's own settings. */
+  interpolate: string;
+  classes: string[];
+  animate: boolean;
+  animation: string;
+  /** The arrow's own id (`e1@-->`); '' for the id Mermaid makes up, which shifts. */
+  id: string;
+}
 export interface SnapSub { title: string; nodes: string[]; dir: string; styles: string[] }
 
 export interface Snap {
@@ -46,6 +57,8 @@ export async function snapshot(text: string): Promise<Snap> {
     snap.edges.push({
       start: e.start, end: e.end, text: normText(e.text), type: e.type ?? '', stroke: e.stroke ?? '',
       length: e.length ?? 1, style: [...(e.style ?? [])].sort(),
+      markdown: e.labelType === 'markdown', interpolate: e.interpolate ?? '', classes: [...(e.classes ?? [])].sort(),
+      animate: !!e.animate, animation: e.animation ?? '', id: e.isUserDefinedId ? e.id : '',
     });
     snap.edgeIds.push(e.id);
   }

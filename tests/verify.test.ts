@@ -112,6 +112,15 @@ describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S1
     expect(await edit(before, { kind: 'moveNode', id: 'a', target: null }))
       .toBe('flowchart TD\n  subgraph g [G]\n    b\n  end\n  a -->|two| b\n  a -->|one| b\n  linkStyle 1 interpolate step\n');
   });
+
+  test('Mermaid\'s reading of an arrow holds its own id, settings, curve and label kind', async () => {
+    const snap = await snapshot('flowchart TD\n  a & b e1@-->|"`**m**`"| c\n  e1@{ animate: true }\n  class e1 k\n  linkStyle 0 interpolate step\n');
+    expect(snap.edges.map(({ start, end, markdown, interpolate, classes, animate, id }) => ({ start, end, markdown, interpolate, classes, animate, id })))
+      .toEqual([
+        { start: 'a', end: 'c', markdown: true, interpolate: 'step', classes: [], animate: false, id: '' },
+        { start: 'b', end: 'c', markdown: true, interpolate: '', classes: ['k'], animate: true, id: 'e1' },
+      ]);
+  });
 });
 
 test('a second edit works on the first edit\'s output', async () => {

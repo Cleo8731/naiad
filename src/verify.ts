@@ -92,14 +92,23 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
       outOfGroups(op.id);
       break;
     case 'addEdge':
-      s.edges.push({ start: op.from, end: op.to, text: '', type: 'arrow_point', stroke: 'normal', length: 1, style: [] });
+      s.edges.push({
+        start: op.from, end: op.to, text: '', type: 'arrow_point', stroke: 'normal', length: 1, style: [],
+        markdown: false, interpolate: '', classes: [], animate: false, animation: '', id: '',
+      });
       break;
     case 'deleteEdge': s.edges.splice(op.index, 1); break;
-    case 'setEdgeLabel': s.edges[op.index].text = enc(op.label); break;
+    case 'setEdgeLabel': {
+      // A Markdown label stays Markdown (as a node's title does); no label is plain.
+      const e = s.edges[op.index];
+      e.text = enc(op.label);
+      e.markdown = e.markdown && e.text !== '';
+      break;
+    }
     case 'setEdgeStyle':
       if (op.stroke) s.edges[op.index].stroke = op.stroke;
       if (op.arrow) s.edges[op.index].type = ARROWS[op.arrow];
-      if (s.edges[op.index].stroke === 'invisible') Object.assign(s.edges[op.index], { type: 'arrow_open', text: '', length: 1 });
+      if (s.edges[op.index].stroke === 'invisible') Object.assign(s.edges[op.index], { type: 'arrow_open', text: '', length: 1, markdown: false });
       break;
     case 'setStyle': {
       const target = s.subs[op.id] ?? s.nodes[op.id];
