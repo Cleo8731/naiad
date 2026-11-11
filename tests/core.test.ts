@@ -67,6 +67,19 @@ describe('description blocks', () => {
     }
   });
 
+  test('a line that is an indented @word stays in its description (bug hunt S10, A1)', () => {
+    const typed = 'Example:\n```python\nclass Loader:\n    @staticmethod\n    def load(path):\n```\nCalled once a day.';
+    for (const desc of [typed, 'Ping:\n  @bob\nlast line', 'Tab:\n\t@x\n.']) {
+      const out = setDescription(sample, 'train', desc);
+      const read = getDescriptions(out);
+      expect(read.get('train'), out).toBe(desc);
+      expect([...read.keys()], 'no block split off').toEqual(['collect', 'clean', 'ship', 'train']);
+      // A second write replaces the whole of the first, and removing it leaves nothing.
+      expect(setDescription(out, 'train', 'Short now.')).toBe(setDescription(sample, 'train', 'Short now.'));
+      expect(setDescription(out, 'train', '')).toBe(sample);
+    }
+  });
+
   test('replaces in place, appends at the end, and removes cleanly', () => {
     const replaced = setDescription(sample, 'clean', 'New text.');
     expect(replaced).toBe(sample.replace('%% Check for nulls and duplicates. Rows that fail go back to *Fix the data*.', '%% New text.'));

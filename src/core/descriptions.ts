@@ -22,14 +22,16 @@ function decodeLine(body: string): string {
   let s = body.startsWith(' ') ? body.slice(1) : body;
   s = s.replace(/\s+$/, '');
   if (s === '.' || s === '') return '';
-  if (s.startsWith('\\@') || s === '\\.') return s.slice(1);
+  if (s.startsWith('\\@') || /^\\\s+@\S+$/.test(s) || s === '\\.') return s.slice(1);
   return s;
 }
 
 function encodeLine(line: string): string {
   const s = line.replace(/\s+$/, '');
   if (s === '') return '%% .';
-  if (/^@\S+$/.test(s) || s === '.') return `%% \\${s}`;
+  // A line that would read as a block's first line (`@id`, spaces in front or not) or
+  // as an empty line gets a backslash in front.
+  if (/^\s*@\S+$/.test(s) || s === '.') return `%% \\${s}`;
   return `%% ${s}`;
 }
 
