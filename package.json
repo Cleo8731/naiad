@@ -1,7 +1,7 @@
 {
   "name": "naiad",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A lightweight viewer/editor for plain Mermaid flowchart files, with per-node descriptions in a sidebar.",
   "license": "MIT",
   "type": "module",
