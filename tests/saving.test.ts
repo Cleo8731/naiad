@@ -165,3 +165,35 @@ describe('a save never overwrites a change made on disk meanwhile (bug hunt S17:
     expect(ui.area().value).toBe(disk.files.get(FILE));
   });
 });
+
+describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', () => {
+  const NOTES = 'C:/hunt/notes.md';
+  const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n\n%% @a\n%% Desc of A.\n```\n\nAfter.\n';
+  const UNCLOSED = DOC.replace('%% Desc of A.\n```\n', '%% Desc of A.\n    b --> c[C]\n');
+  const CLOSED = DOC.replace('%% Desc of A.\n```\n', '%% Desc of A.\n    b --> c[C]\n```\n');
+
+  it('C9: Undo pressed while the block is locked is refused, and the edit it would bring back stays in Undo', async () => {
+    const disk = new FakeDisk();
+    disk.files.set(NOTES, DOC);
+    const ui = await startApp(disk, NOTES);
+    ui.direction('LR');
+    await ui.until((t) => t.startsWith('flowchart LR'));
+    // The agent's save leaves the block without its closing fence: Naiad shows it, locked.
+    disk.outside(NOTES, UNCLOSED);
+    await sleep(600);
+    expect(ui.toast()).toMatch(/Undo brings it back/);
+    expect(ui.area().readOnly).toBe(true);
+    ui.undo(); // as the toast says
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }));
+    await sleep(300);
+    expect(ui.toast()).toMatch(/can be shown but not changed here/);
+    expect(disk.files.get(NOTES)).toBe(UNCLOSED);
+    // The agent puts the fence back; Undo now walks back to the person's edit.
+    disk.outside(NOTES, CLOSED);
+    await sleep(600);
+    expect(ui.area().readOnly).toBe(false);
+    const seen: string[] = [];
+    for (let i = 0; i < 5 && ui.undoEnabled(); i++) { ui.undo(); await sleep(150); seen.push(ui.area().value); }
+    expect(seen.some((t) => t.startsWith('flowchart LR'))).toBe(true);
+  });
+});

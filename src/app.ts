@@ -609,12 +609,19 @@ export class App {
 
   /**
    * Undo (back) or Redo, as one job of the queue. The stacks are looked up in it, after
-   * the typing is taken in, since taking it in (or a reload) empties Redo.
+   * the typing is taken in, since taking it in (or a reload) empties Redo. While the
+   * flowchart is locked both stacks stay as they are (bug hunt C9).
    */
   private async history(back: boolean): Promise<void> {
     await this.takeTyping();
     await this.queue(async () => {
       const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
+      if (!from.length) return;
+      const why = this.locked();
+      if (why) {
+        this.toast(`This flowchart can be shown but not changed here: ${why}`);
+        return;
+      }
       const next = from.pop();
       if (next === undefined) return;
       to.push(this.text);
