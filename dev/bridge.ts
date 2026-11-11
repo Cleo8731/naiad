@@ -86,10 +86,13 @@ export function fileBridge(): Plugin {
 
       const watch = () => {
         watcher?.close();
-        const name = path.basename(current);
+        // Letter case set aside, as Windows does: a path typed in other letters than the
+        // name on disk, or a file renamed to other letters, is still the file (bug hunt C18).
+        // A name matched by mistake costs one read that finds nothing changed.
+        const name = path.basename(current).toLowerCase();
         // Watch the folder, not the file: editors often save by replacing the file.
         watcher = fs.watch(path.dirname(current), (_event, changed) => {
-          if (changed && changed !== name) return;
+          if (changed && changed.toLowerCase() !== name) return;
           if (timer) clearTimeout(timer);
           timer = setTimeout(() => { for (const res of listeners) res.write('data: changed\n\n'); }, 60);
         });

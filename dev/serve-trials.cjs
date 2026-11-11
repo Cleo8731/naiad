@@ -228,6 +228,24 @@ const at = (rest) => `/${secret}/${rest}`;
     req.on('error', () => resolve(d));
   });
   check('the stream says when the file changed', /^200 text\/event-stream/.test(got) && got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
+  if (process.platform === 'win32') {
+    // Windows does not tell names apart by letter case: a file renamed to other letters
+    // is still the file served (bug hunt E5).
+    const renamed = path.join(dir, 'Flow.mmd');
+    fs.renameSync(file, renamed);
+    await new Promise((r) => setTimeout(r, 300));
+    got = await new Promise((resolve) => {
+      let d = '';
+      const req = http.get({ host: '127.0.0.1', port, path: at('api/watch') }, (res) => {
+        res.on('data', (c) => { d += c; });
+        setTimeout(() => { fs.writeFileSync(renamed, original); }, 500);
+        setTimeout(() => { req.destroy(); resolve(d); }, 2500);
+      });
+      req.on('error', () => resolve(d));
+    });
+    fs.renameSync(renamed, file);
+    check('after a rename that changes only the letter case, the stream still says when the file changed (bug hunt E5)', got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
+  }
 
   // ---- Highlights (D2.4): their own file beside the flowchart's, never the flowchart
   const naiad = path.join(dir, '.naiad');

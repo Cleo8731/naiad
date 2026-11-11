@@ -8,6 +8,7 @@
 mod highlights;
 mod serve;
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -205,30 +206,48 @@ pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn
 }
 
 /// Starts watching a file. Emits "file-changed" with the path whenever it changes on
-/// disk. The folder is watched rather than the file, because many editors save by
-/// replacing the file.
+/// disk.
 #[tauri::command]
 fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<(), String> {
     let p = check(&path)?;
-    let dir = p
+    let watcher = watch_folder(&p, move || {
+        let _ = app.emit("file-changed", path.clone());
+    })?;
+    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
+    Ok(())
+}
+
+/// Calls `on_change` whenever the file at `path` changes on disk, for the window and for
+/// `naiad serve`. The folder is watched rather than the file, because many editors save
+/// by replacing the file.
+pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + 'static) -> Result<RecommendedWatcher, String> {
+    let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
-        .map(Path::to_path_buf)
         .ok_or("The path has no folder.")?;
-    let name = p.file_name().map(|n| n.to_os_string());
+    let name = path.file_name().ok_or("The path names no file.")?.to_os_string();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(event) = res {
-            if event.paths.iter().any(|q| q.file_name().map(|n| n.to_os_string()) == name) {
-                let _ = app.emit("file-changed", path.clone());
+            if event.paths.iter().any(|q| names_file(q, &name)) {
+                on_change();
             }
         }
     })
     .map_err(|e| e.to_string())?;
     watcher
-        .watch(&dir, RecursiveMode::NonRecursive)
+        .watch(dir, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
-    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
-    Ok(())
+    Ok(watcher)
+}
+
+/// Whether a changed path names the watched file, by its name `name`. Letter case is set
+/// aside, as Windows does: a path typed in other letters than the name on disk, or a file
+/// renamed to other letters, is still the file (bug hunt C18, E5). A name matched by
+/// mistake costs one read that finds nothing changed.
+fn names_file(changed: &Path, name: &OsStr) -> bool {
+    changed
+        .file_name()
+        .is_some_and(|n| n.to_string_lossy().to_lowercase() == name.to_string_lossy().to_lowercase())
 }
 
 /// The flowchart's highlights file, or None. The page names the flowchart, never the
@@ -473,6 +492,79 @@ mod tests {
             assert!(texts.contains(&now), "the file holds one whole text");
         }
         assert_eq!(names(&dir), ["flow.mmd"], "nothing left behind ({failed} writes refused)");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt C18, E5: the watched file is told apart from others by its name, letter
+    /// case set aside.
+    #[test]
+    fn a_name_in_other_letters_names_the_file() {
+        let name = OsStr::new("Flow.mmd");
+        for same in ["flow.mmd", "FLOW.MMD", "Flow.mmd", "C:/a/fLoW.mmd"] {
+            assert!(names_file(Path::new(same), name), "{same}");
+        }
+        for other in ["other.mmd", "flow.md", "flow.mmd.tmp", "C:/flow.mmd/x.mmd"] {
+            assert!(!names_file(Path::new(other), name), "{other}");
+        }
+        assert!(names_file(Path::new("ÉTÉ.mmd"), OsStr::new("été.mmd")));
+    }
+
+    /// Watches `watched`; the count is how many times `on_change` has been called.
+    fn watching(watched: &Path) -> (RecommendedWatcher, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = calls.clone();
+        let watcher = watch_folder(watched, move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+        (watcher, calls)
+    }
+
+    /// Calls of `on_change` caused by `act`: counted from 300 ms after `act` starts (so
+    /// that what came before has arrived) to 900 ms after it ends.
+    fn heard(calls: &std::sync::atomic::AtomicUsize, act: impl FnOnce()) -> usize {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let before = calls.load(Ordering::SeqCst);
+        act();
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        calls.load(Ordering::SeqCst) - before
+    }
+
+    /// Bug hunt C18: the window opened by a path typed in other letters than the name on
+    /// disk still hears of a change.
+    #[cfg(windows)]
+    #[test]
+    fn a_path_in_other_letters_still_hears_of_a_change() {
+        let dir = folder("case-typed");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        let (_watcher, calls) = watching(&dir.join("FLOW.mmd"));
+        assert!(heard(&calls, || fs::write(&flow, "flowchart TD\n    b\n").unwrap()) > 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt E5: after the file is renamed to other letters, a change is still heard.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_renamed_to_other_letters_still_hears_of_a_change() {
+        let dir = folder("case-renamed");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        let (_watcher, calls) = watching(&flow);
+        let renamed = dir.join("Flow.mmd");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        fs::rename(&flow, &renamed).unwrap();
+        assert!(heard(&calls, || fs::write(&renamed, "flowchart TD\n    b\n").unwrap()) > 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_change_to_another_file_is_not_heard() {
+        let dir = folder("case-other");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        let (_watcher, calls) = watching(&flow);
+        assert_eq!(heard(&calls, || fs::write(dir.join("other.mmd"), "flowchart LR\n    o\n").unwrap()), 0);
         fs::remove_dir_all(&dir).unwrap();
     }
 }

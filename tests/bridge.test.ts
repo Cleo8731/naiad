@@ -16,8 +16,11 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
 });
 
-/** A folder of its own holding `flow.mmd` and `other.mmd`, and the bridge serving `flow.mmd`. */
-async function bridge(files: Record<string, string | Buffer> = {}) {
+/**
+ * A folder of its own holding `flow.mmd` and `other.mmd`, and the bridge serving
+ * `flow.mmd`, by the path `<folder>/<served>`.
+ */
+async function bridge(files: Record<string, string | Buffer> = {}, served = 'flow.mmd') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'naiad-bridge-'));
   const all = { 'flow.mmd': 'flowchart TD\n    a --> b\n', 'other.mmd': 'flowchart LR\n    o\n', ...files };
   for (const [name, text] of Object.entries(all)) fs.writeFileSync(path.join(dir, name), text);
@@ -30,7 +33,7 @@ async function bridge(files: Record<string, string | Buffer> = {}) {
     found[1](req, res, () => {});
   });
   const before = process.env.NAIAD_FILE;
-  process.env.NAIAD_FILE = file;
+  process.env.NAIAD_FILE = path.join(dir, served);
   (fileBridge().configureServer as (s: unknown) => void)({ httpServer: server, middlewares: { use: (p: string, fn: Handler) => handlers.push([p, fn]) } });
   process.env.NAIAD_FILE = before;
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -46,8 +49,44 @@ async function bridge(files: Record<string, string | Buffer> = {}) {
     const res = await fetch(base + route, { method: init.method ?? 'GET', body: init.body, headers });
     return { status: res.status, body: await res.json() };
   };
-  return { dir, file, other: path.join(dir, 'other.mmd'), call, read: (p: string) => fs.readFileSync(p, 'utf8') };
+  /** What the page's stream of changes receives while `act` runs (`/api/watch`). */
+  const heard = (act: () => void) => new Promise<string>((resolve) => {
+    let got = '';
+    const req = http.get(`${base}/watch`, { headers: { 'x-naiad': '1' } }, (res) => {
+      res.on('data', (c) => { got += c; });
+      setTimeout(act, 300);
+      setTimeout(() => { req.destroy(); resolve(got); }, 1200);
+    });
+    req.on('error', () => resolve(got));
+  });
+  return { dir, file, other: path.join(dir, 'other.mmd'), call, heard, read: (p: string) => fs.readFileSync(p, 'utf8') };
 }
+
+describe('the dev page hears of a change whatever the letter case of its path (bug hunt C18)', () => {
+  it('a change to the file served is heard', async () => {
+    const { file, heard } = await bridge();
+    expect(await heard(() => fs.writeFileSync(file, 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  // Windows does not tell names apart by letter case; Linux does, so there the path names no file.
+  it.runIf(process.platform === 'win32')('C18: served by a path typed in other letters than the name on disk', async () => {
+    const { file, heard } = await bridge({}, 'FLOW.mmd');
+    expect(await heard(() => fs.writeFileSync(file, 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  it.runIf(process.platform === 'win32')('after the file is renamed to other letters', async () => {
+    const { dir, file, heard } = await bridge();
+    const renamed = path.join(dir, 'Flow.mmd');
+    fs.renameSync(file, renamed);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await heard(() => fs.writeFileSync(renamed, 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  it('a change to another file in the folder is not heard', async () => {
+    const { other, heard } = await bridge();
+    expect(await heard(() => fs.writeFileSync(other, 'flowchart LR\n    p\n'))).not.toContain('data: changed');
+  });
+});
 
 describe('the dev page writes only the file it shows (bug hunt S21: C14)', () => {
   it('C14: after another view opens another file, a save from the first view is refused and both files stay', async () => {

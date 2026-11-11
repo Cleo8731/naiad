@@ -24,8 +24,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use notify::{RecursiveMode, Watcher};
-
 /// How long the server lives with no page open.
 const IDLE: Duration = Duration::from_secs(600);
 /// How often each open page is pinged, which is how a closed one is noticed.
@@ -576,23 +574,9 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
         connections: AtomicUsize::new(0),
     });
 
-    // Tell the open pages when the file changes. The folder is watched rather than
-    // the file, because many editors save by replacing the file.
-    let path = PathBuf::from(&server.file);
-    let name = path.file_name().map(|n| n.to_os_string());
+    // Tell the open pages when the file changes.
     let teller = server.clone();
-    let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(event) = res {
-            if event.paths.iter().any(|q| q.file_name().map(|n| n.to_os_string()) == name) {
-                teller.tell(b"data: changed\n\n");
-            }
-        }
-    })
-    .and_then(|mut watcher| {
-        let dir = path.parent().unwrap_or(Path::new("."));
-        watcher.watch(dir, RecursiveMode::NonRecursive).map(|_| watcher)
-    });
-    let _watcher = match watcher {
+    let _watcher = match super::watch_folder(Path::new(&server.file), move || teller.tell(b"data: changed\n\n")) {
         Ok(watcher) => watcher,
         Err(e) => return fail(&format!("could not watch the file: {e}")),
     };

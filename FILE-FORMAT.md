@@ -195,7 +195,10 @@ More text.
   An Undo that would take back a change made on disk asks first, since it saves the
   earlier version over that change; Redo brings the change back. After a change on
   disk Naiad saves nothing until the file has been quiet for a second, so a program
-  still writing it finishes first.
+  still writing it finishes first. Naiad knows the file by its name with letter case
+  set aside, as Windows does: opened by a path typed in other letters, or renamed to
+  other letters only (`flow.mmd` to `Flow.mmd`), it is still the file, and its changes
+  are still seen.
   In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
   touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain
