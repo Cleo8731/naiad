@@ -7,8 +7,10 @@ with the flowchart in a `mermaid` block
 unchanged in every Mermaid tool. Naiad adds one convention on top: **description
 blocks**, written as Mermaid comments, which hold each node's full description.
 
-The text file is the only copy of the flowchart. Naiad keeps no other data: no positions,
-no hidden file beside it.
+The text file is the only copy of the flowchart. Naiad keeps no other data about it: no
+positions, no second copy. The one file Naiad may write beside it holds highlights, which
+are not part of the flowchart and are deleted when Naiad stops showing it
+([Highlights](#highlights)).
 
 ## A whole file
 
@@ -156,8 +158,49 @@ More text.
   and changes nothing when Mermaid cannot read the flowchart, when the meaning or a
   description would differ, or when the file changed while it was being checked. The
   checker's `check` never writes.
+- Highlighting never touches the flowchart's file: highlights have a file of their own
+  ([Highlights](#highlights)).
 - All of this holds in Naiad's window and in the page that `naiad serve <file>` shows
   in a browser: they are the same program and follow the same rules.
+
+## Highlights
+
+A highlight marks a node, an arrow or a group for the person and an agent to point at:
+several at once, shown in Naiad's window and in every page `naiad serve` shows of the
+same file. Highlights are not part of the flowchart. They are kept in a small file of
+their own, for `flow.mmd`:
+
+```
+.naiad/flow.mmd/highlights.txt
+```
+
+that is, a folder named `.naiad` in the flowchart's folder, and in it a folder named
+exactly as the flowchart's file, its ending included. One item per line:
+
+```
+# working on the cleaning step
+collect
+clean
+collect --> clean
+```
+
+- An item is a node's or a group's id, or an arrow written as its two ends,
+  `from --> to` (the first arrow with those ends).
+- Blank lines and lines starting with `#` are ignored, and so is a line that names
+  nothing on the chart. In a Markdown file the items apply to the flowchart shown.
+- In Naiad, the **Highlight** switch in the toolbar (key H) makes a click on an item
+  highlight it, or take its highlight off, instead of selecting it. **Clear** takes
+  every highlight off.
+- Anyone may write the file: Naiad shows a change to it within a second, and need not
+  be running when it is written.
+- When Naiad changes the list it writes the whole file, through a temporary file and a
+  rename, and keeps every line it was not asked to change. When the last item is taken
+  off it deletes the file, and the folders it leaves empty. When it makes the `.naiad`
+  folder, or finds one, it sets Windows' hidden mark on it, as git does for `.git`.
+- The file is deleted when the last Naiad view of the flowchart closes: its window, or
+  the last page `naiad serve` shows of it (within half a minute of that page closing).
+  Highlights written while no view was open, or left by a Naiad that was stopped by
+  force, show at the next opening and go at the next closing.
 
 ## Mermaid syntax Naiad can edit from the chart
 
@@ -215,3 +258,5 @@ naiad fix flow.mmd
 - In a Markdown file, keep description blocks inside the flowchart block, and keep
   every line of an indented flowchart block at its indent.
 - Naiad reloads the file as soon as you save it; nothing else needs doing.
+- To point the user at items, highlight them in the highlights file
+  ([Highlights](#highlights)), never by changing the flowchart.

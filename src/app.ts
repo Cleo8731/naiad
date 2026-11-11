@@ -6,6 +6,7 @@ import type { Backend } from './backend';
 import { Chart, configureMermaid, type Target } from './chart';
 import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
+import { itemOf, parseHighlights, resolveHighlights, toggleHighlight } from './core/highlights';
 import { findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
@@ -65,6 +66,12 @@ export class App {
   private textTimer: number | undefined;
   private stopWatch: (() => void) | null = null;
   private note = '';
+  /** The highlights file's text as last read or written ('' when there is none). */
+  private hlText = '';
+  /** Counts this view's own changes to the highlights, so a slower read cannot undo one. */
+  private hlVersion = 0;
+  /** The Highlight switch. */
+  private hlOn = false;
 
   private chart!: Chart;
   private sidebar!: Sidebar;
@@ -72,7 +79,7 @@ export class App {
     name: HTMLElement; status: HTMLElement; area: HTMLTextAreaElement; notices: HTMLElement; stage: HTMLElement;
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    block: HTMLSelectElement;
+    block: HTMLSelectElement; highlight: HTMLButtonElement; clear: HTMLButtonElement;
   };
 
   constructor(private root: HTMLElement, private backend: Backend) {}
@@ -95,6 +102,8 @@ export class App {
           <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
           <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
         </select>
+        <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
+        <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
         <button data-act="text" title="Show or hide the flowchart's text" aria-pressed="true">Text</button>
       </header>
@@ -118,7 +127,8 @@ export class App {
       name: q('.name'), status: q('.status'), area: q('textarea'), notices: q('.notices'), stage: q('.stage'),
       empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="text"]'), pane: q('.textpane'),
-      fit: q('[data-act="fit"]'), block: q('[data-act="block"]'),
+      fit: q('[data-act="fit"]'), block: q('[data-act="block"]'), highlight: q('[data-act="highlight"]'),
+      clear: q('[data-act="clear"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
@@ -133,6 +143,7 @@ export class App {
 
     this.chart = new Chart(this.el.stage, {
       onSelect: (t) => this.select(t),
+      onHighlight: (t) => { void this.toggleHighlight(t); },
       onConnect: (from, to) => { void this.edit({ kind: 'addEdge', from, to }); },
       onAddNode: () => { void this.addNode(null); },
       onRename: (t) => { this.select(t); this.sidebar.focusTitle(); },
@@ -171,6 +182,12 @@ export class App {
     const first = await this.backend.initialPath().catch(() => null);
     if (first) await this.open(first);
     if (!this.path) this.paint(); // nothing was opened: show the empty state
+
+    // The highlights file is looked at once a second (and at once when the view comes
+    // back into sight), so an agent's highlights show without Naiad watching a folder
+    // that comes and goes.
+    window.setInterval(() => { void this.readHighlights(); }, 1000);
+    document.addEventListener('visibilitychange', () => { void this.readHighlights(); });
   }
 
   // ------------------------------------------------------------------ file
@@ -214,11 +231,89 @@ export class App {
     this.selection = null;
     this.snap = null;
     this.note = '';
+    this.hlText = '';
+    this.hlVersion++;
     this.el.area.value = this.text;
     this.chart.resetView();
     this.backend.setWindowTitle(`${basename(path)} - Naiad`);
+    this.backend.viewing(path);
     this.stopWatch = await this.backend.watch(path, () => { void this.diskChanged(); });
+    await this.readHighlights();
     await this.queue(() => this.refresh(true));
+  }
+
+  // ------------------------------------------------------------------ highlights
+
+  /** Reads the highlights file and draws what changed. Quiet when it cannot be read. */
+  private async readHighlights(): Promise<void> {
+    const path = this.path;
+    if (!path || document.hidden || this.hlBusy) return;
+    const version = this.hlVersion;
+    let text: string;
+    try {
+      text = (await this.backend.readHighlights(path)) ?? '';
+    } catch {
+      return;
+    }
+    // A change made in this view meanwhile wins over what was read before it.
+    if (path !== this.path || version !== this.hlVersion || this.hlBusy || text === this.hlText) return;
+    this.hlText = text;
+    this.paintHighlights();
+  }
+
+  /** This view's changes to the highlights, one after another. */
+  private hlWork: Promise<void> = Promise.resolve();
+  private hlBusy = 0;
+  private hlQueue(path: string, job: () => Promise<void>): Promise<void> {
+    this.hlBusy++;
+    this.hlVersion++;
+    this.hlWork = this.hlWork
+      .then(() => (path === this.path ? job() : undefined))
+      .catch((e) => {
+        // Show what is on disk again: the read that follows draws it.
+        this.toast(`Could not save the highlights: ${errorText(e)}`);
+        this.hlText = '';
+        this.paintHighlights();
+      })
+      .finally(() => { this.hlBusy--; this.hlVersion++; if (!this.hlBusy) void this.readHighlights(); });
+    return this.hlWork;
+  }
+
+  /** Highlights an item, or takes its highlight off, in the file as it is on disk now. */
+  private toggleHighlight(target: Target): Promise<void> {
+    const path = this.path;
+    const item = this.snap ? itemOf(target, this.snap) : null;
+    if (!path || !item) return Promise.resolve();
+    return this.hlQueue(path, async () => {
+      let disk = this.hlText;
+      try { disk = (await this.backend.readHighlights(path)) ?? ''; } catch { /* the last one read */ }
+      await this.writeHighlights(path, toggleHighlight(disk, item));
+    });
+  }
+
+  private clearHighlights(): Promise<void> {
+    const path = this.path;
+    if (!path) return Promise.resolve();
+    return this.hlQueue(path, () => this.writeHighlights(path, ''));
+  }
+
+  /** Draws the new highlights at once, then writes them. */
+  private async writeHighlights(path: string, text: string): Promise<void> {
+    this.hlText = text;
+    this.paintHighlights();
+    await this.backend.writeHighlights(path, text);
+  }
+
+  private paintHighlights(): void {
+    const items = parseHighlights(this.hlText);
+    this.chart.setHighlights(this.snap ? resolveHighlights(items, this.snap) : []);
+    this.el.clear.hidden = items.length === 0 || this.path === null;
+  }
+
+  private setHighlighting(on: boolean): void {
+    this.hlOn = on;
+    this.chart.setHighlighting(on);
+    this.el.highlight.setAttribute('aria-pressed', String(on));
   }
 
   private async pickAndOpen(): Promise<void> {
@@ -520,6 +615,7 @@ export class App {
     this.el.area.disabled = !open;
     this.el.area.readOnly = this.locked() !== null;
     this.chart.select(this.selection);
+    this.paintHighlights();
     this.sidebar.show(this.view());
     this.paintBar();
     this.paintNotices();
@@ -543,7 +639,8 @@ export class App {
     this.el.status.dataset.state = state;
     this.el.undo.disabled = !this.undoStack.length;
     this.el.redo.disabled = !this.redoStack.length;
-    this.el.add.disabled = this.el.fit.disabled = this.el.dir.disabled = !open || !this.snap;
+    this.el.add.disabled = this.el.fit.disabled = this.el.dir.disabled = this.el.highlight.disabled = !open || !this.snap;
+    if (this.el.highlight.disabled && this.hlOn) this.setHighlighting(false);
     if (this.snap) this.el.dir.value = this.snap.direction === 'TB' ? 'TD' : this.snap.direction;
   }
 
@@ -631,6 +728,8 @@ export class App {
       if (act === 'redo') void this.history(this.redoStack, this.undoStack);
       if (act === 'fit') this.chart.fit();
       if (act === 'text') this.toggleText();
+      if (act === 'highlight') this.setHighlighting(!this.hlOn);
+      if (act === 'clear') void this.clearHighlights();
     });
     this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
     this.el.block.addEventListener('change', () => { void this.pickBlock(Number(this.el.block.value)); });
@@ -671,7 +770,8 @@ export class App {
       if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.history(this.undoStack, this.redoStack); }
       else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.history(this.redoStack, this.undoStack); }
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.deleteSelection(); }
-      else if (key === 'escape') this.select(null);
+      else if (key === 'escape') { if (this.hlOn) this.setHighlighting(false); else this.select(null); }
+      else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled) this.setHighlighting(!this.hlOn);
       else if ((key === 'enter' || key === 'f2') && this.selection) { e.preventDefault(); this.sidebar.focusTitle(); }
     });
 

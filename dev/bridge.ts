@@ -68,6 +68,27 @@ export function fileBridge(): Plugin {
             fs.renameSync(tmp, current);
             return send(200, { ok: true });
           }
+          // The highlights file beside the open file (src-tauri/src/highlights.rs does
+          // the same for the app; this stand-in does not set the folder's hidden mark).
+          const naiad = path.join(path.dirname(current), '.naiad');
+          const folder = path.join(naiad, path.basename(current));
+          const highlights = path.join(folder, 'highlights.txt');
+          if (url === '/highlights' && req.method === 'GET') {
+            return send(200, { text: fs.existsSync(highlights) ? fs.readFileSync(highlights, 'utf8') : null });
+          }
+          if (url === '/highlights' && req.method === 'PUT') {
+            const text = await readBody(req);
+            if (text.trim() === '') {
+              fs.rmSync(highlights, { force: true });
+              for (const d of [folder, naiad]) { try { fs.rmdirSync(d); } catch { /* not empty, or gone */ } }
+            } else {
+              fs.mkdirSync(folder, { recursive: true });
+              const tmp = `${highlights}.${process.pid}.tmp`;
+              fs.writeFileSync(tmp, text, 'utf8');
+              fs.renameSync(tmp, highlights);
+            }
+            return send(200, { ok: true });
+          }
           if (url === '/open' && req.method === 'POST') {
             const next = path.resolve((await readBody(req)).trim());
             if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd, .mermaid and .md files can be opened.' });

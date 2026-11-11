@@ -1,7 +1,8 @@
 // File access. The desktop app talks to the Rust shell (src-tauri/src/lib.rs). In a
 // browser the same calls go to a server: the app itself, started as
 // `naiad serve <file>` (src-tauri/src/serve.rs), or, during development, the Vite file
-// bridge (dev/bridge.ts).
+// bridge (dev/bridge.ts). The page never names the highlights file: each of them finds
+// it beside the flowchart's file (src-tauri/src/highlights.rs).
 
 /** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
 export interface CliJob {
@@ -23,6 +24,15 @@ export interface Backend {
   write(path: string, text: string): Promise<void>;
   /** Calls back whenever the file changes on disk. Returns a function that stops it. */
   watch(path: string, onChange: () => void): Promise<() => void>;
+  /** The flowchart's highlights file (`.naiad/<name>/highlights.txt`), or null if there is none. */
+  readHighlights(path: string): Promise<string | null>;
+  /** Writes the highlights file whole; '' deletes it, and the folders left empty. */
+  writeHighlights(path: string, text: string): Promise<void>;
+  /**
+   * Says which flowchart this view shows, so that the highlights file is deleted when
+   * the last view of a flowchart closes. In the in-browser version the server does this.
+   */
+  viewing(path: string): void;
   pickOpen(): Promise<string | null>;
   pickSave(suggestedName: string): Promise<string | null>;
   openLink(url: string): void;
@@ -63,6 +73,9 @@ async function desktop(): Promise<Backend> {
       await invoke('watch_file', { path });
       return () => { window.clearTimeout(timer); unlisten(); };
     },
+    readHighlights: (path) => invoke<string | null>('read_highlights', { path }),
+    writeHighlights: (path, text) => invoke<void>('write_highlights', { path, contents: text }),
+    viewing: (path) => { void invoke('view_file', { path }).catch(() => {}); },
     async pickOpen() {
       const picked = await dialog.open({ multiple: false, directory: false, filters: OPEN_FILTERS });
       return typeof picked === 'string' ? picked : null;
@@ -107,6 +120,9 @@ function browser(): Backend {
       es.onopen = () => { if (broken) { broken = false; onChange(); } };
       return () => es.close();
     },
+    readHighlights: async () => (await call('api/highlights')).text,
+    writeHighlights: async (_path, text) => { await call('api/highlights', { method: 'PUT', body: text }); },
+    viewing: () => {},
     async pickOpen() {
       if (served) return null;
       const typed = window.prompt('Full path of the .mmd or .md file to open:');

@@ -155,6 +155,9 @@ enum Route {
     Write,
     Watch,
     Ping,
+    /// The served file's highlights file (highlights.rs), found beside it, never named.
+    ReadHighlights,
+    WriteHighlights,
 }
 
 /// Whether two texts are the same, in a time that does not depend on where they differ.
@@ -194,18 +197,18 @@ fn route(head: &Head, port: u16, secret: &str) -> Result<Route, u16> {
         return Err(405);
     }
     let get = head.method == "GET";
+    // A write must come from this server's own page: a browser always names the origin
+    // of a PUT, and the extra header cannot be sent across sites.
+    let from_the_page = |route: Route| {
+        if origin.is_none() || head.one("x-naiad") != Ok(Some("1")) { Err(403) } else { Ok(route) }
+    };
     match rest {
         None if get => Ok(Route::ToFolder),
         Some("" | "index.html") if get => Ok(Route::Page),
         Some("api/file") if get => Ok(Route::Read),
-        Some("api/file") => {
-            // A write must come from this server's own page: a browser always names
-            // the origin of a PUT, and the extra header cannot be sent across sites.
-            if origin.is_none() || head.one("x-naiad") != Ok(Some("1")) {
-                return Err(403);
-            }
-            Ok(Route::Write)
-        }
+        Some("api/file") => from_the_page(Route::Write),
+        Some("api/highlights") if get => Ok(Route::ReadHighlights),
+        Some("api/highlights") => from_the_page(Route::WriteHighlights),
         Some("api/watch") if get => Ok(Route::Watch),
         Some("api/ping") if get => Ok(Route::Ping),
         Some(rest) if get => {
@@ -394,6 +397,30 @@ fn handle(mut stream: TcpStream, server: &Server) {
                 Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
             }
         }
+        Route::ReadHighlights => {
+            server.touch();
+            match super::highlights::read(Path::new(&server.file)) {
+                Ok(text) => {
+                    let text = text.as_deref().map(json_string).unwrap_or_else(|| "null".to_string());
+                    respond_json(&mut stream, 200, format!("{{\"text\":{text}}}"));
+                }
+                Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
+            }
+        }
+        Route::WriteHighlights => {
+            server.touch();
+            let body = match read_body(&mut stream, &head, early) {
+                Ok(body) => body,
+                Err(status) => return refuse(&mut stream, status),
+            };
+            let written = String::from_utf8(body)
+                .map_err(|_| "The text is not valid UTF-8.".to_string())
+                .and_then(|text| super::highlights::write(Path::new(&server.file), &text));
+            match written {
+                Ok(()) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
+            }
+        }
         Route::Watch => {
             let Ok(mut pages) = server.pages.lock() else { return };
             if pages.len() >= MOST_PAGES {
@@ -406,6 +433,8 @@ fn handle(mut stream: TcpStream, server: &Server) {
                 pages.push(stream);
                 drop(pages);
                 server.touch();
+                // A page shows the flowchart: it counts as a view of it (Q44).
+                super::highlights::show(Some(Path::new(&server.file)));
             }
         }
     }
@@ -416,7 +445,7 @@ fn handle(mut stream: TcpStream, server: &Server) {
 // `naiad serve` asked again for the same file gives the address it gave before.
 
 /// A full path without the `\\?\` in front that Windows gives when it resolves one.
-fn plain_path(path: &Path) -> String {
+pub(crate) fn plain_path(path: &Path) -> String {
     let text = path.to_string_lossy().into_owned();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
@@ -561,11 +590,16 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
     write_record(&server);
     super::print_out(&server.address());
 
-    // Ping the open pages, and end when none has been open for long enough.
+    // Ping the open pages, and end when none has been open for long enough. Once the
+    // last page has been gone for a ping's time (a reload comes back sooner), this
+    // server no longer counts as a view of the flowchart (Q44).
     let pinger = server.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(PING);
         pinger.tell(b": ping\n\n");
+        if pinger.idle().is_some_and(|d| d >= PING) {
+            super::highlights::show(None);
+        }
         if time_is_up(pinger.idle()) {
             delete_record(&pinger);
             std::process::exit(0);
@@ -625,6 +659,8 @@ mod tests {
         assert_eq!(ask("GET", &at("api/watch"), &[HOST]), Ok(Route::Watch));
         assert_eq!(ask("GET", &at("api/ping"), &[HOST]), Ok(Route::Ping));
         assert_eq!(ask("PUT", &at("api/file"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::Write));
+        assert_eq!(ask("GET", &at("api/highlights"), &[HOST]), Ok(Route::ReadHighlights));
+        assert_eq!(ask("PUT", &at("api/highlights"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::WriteHighlights));
         // A page opened by typing its address or by the agent's tool.
         assert_eq!(ask("GET", &at(""), &[HOST, ("Sec-Fetch-Site", "none")]), Ok(Route::Page));
     }
@@ -671,12 +707,14 @@ mod tests {
 
     #[test]
     fn a_write_must_come_from_the_page_itself() {
+        for file in [at("api/file"), at("api/highlights")] {
+            assert_eq!(ask("PUT", &file, &[HOST]), Err(403), "{file}");
+            assert_eq!(ask("PUT", &file, &[HOST, OWN]), Err(403), "{file}");
+            assert_eq!(ask("PUT", &file, &[HOST, ("X-Naiad", "1")]), Err(403), "{file}");
+            assert_eq!(ask("PUT", &file, &[HOST, OWN, ("X-Naiad", "2")]), Err(403), "{file}");
+            assert_eq!(ask("PUT", &file, &[HOST, ("Origin", "https://evil.example"), ("X-Naiad", "1")]), Err(403), "{file}");
+        }
         let file = at("api/file");
-        assert_eq!(ask("PUT", &file, &[HOST]), Err(403));
-        assert_eq!(ask("PUT", &file, &[HOST, OWN]), Err(403));
-        assert_eq!(ask("PUT", &file, &[HOST, ("X-Naiad", "1")]), Err(403));
-        assert_eq!(ask("PUT", &file, &[HOST, OWN, ("X-Naiad", "2")]), Err(403));
-        assert_eq!(ask("PUT", &file, &[HOST, ("Origin", "https://evil.example"), ("X-Naiad", "1")]), Err(403));
         // Only the file call can be written to, and only with PUT.
         assert_eq!(ask("PUT", &at(""), &[HOST, OWN, ("X-Naiad", "1")]), Err(405));
         assert_eq!(ask("PUT", &at("api/watch"), &[HOST, OWN, ("X-Naiad", "1")]), Err(405));
@@ -699,6 +737,9 @@ mod tests {
             "api/open",
             "api/file/",
             "api/file/C:/Windows/win.ini",
+            "api/highlights/",
+            "api/highlights/../../x.txt",
+            ".naiad/flow.mmd/highlights.txt",
             "C:/Windows/win.ini",
             "index.htm",
         ] {

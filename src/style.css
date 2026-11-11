@@ -12,6 +12,7 @@
   --warn-bg: #fff4d6;
   --warn-text: #6b4a00;
   --dot: #d5d9e0;
+  --hl: #f59f00;
   --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
@@ -29,6 +30,7 @@
     --warn-bg: #362d12;
     --warn-text: #f0d48a;
     --dot: #2a2e35;
+    --hl: #fcc419;
   }
 }
 
@@ -100,6 +102,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
 .canvas .cluster.sel > rect { stroke: var(--accent) !important; stroke-width: 2px !important; }
 .canvas path.sel { stroke: var(--accent) !important; stroke-width: 3px !important; }
+/* A highlight (D2.4) is an amber halo around the item, so it shows beside the selection's outline. */
+.canvas .node.hl, .canvas .cluster.hl > rect, .canvas path.hl, .canvas .edgeLabel.hl {
+  filter: drop-shadow(0 0 2px var(--hl)) drop-shadow(0 0 4px var(--hl)) drop-shadow(0 0 6px var(--hl));
+}
+.stage.highlighting .canvas [data-node], .stage.highlighting .canvas [data-edge], .stage.highlighting .canvas [data-sub] { cursor: crosshair; }
 .canvas .drop .label-container, .canvas .drop .label-container path, .canvas .cluster.drop > rect {
   stroke: var(--accent) !important; stroke-width: 2.5px !important; stroke-dasharray: 5 4 !important;
 }

@@ -11,6 +11,8 @@ export type Target =
 
 export interface ChartEvents {
   onSelect(target: Target | null): void;
+  /** A click on an item while the Highlight switch is on. */
+  onHighlight(target: Target): void;
   onConnect(from: string, to: string): void;
   onAddNode(): void;
   onRename(target: Target): void;
@@ -52,6 +54,9 @@ export class Chart {
   private view = { x: 0, y: 0, k: 1 };
   private size = { w: 0, h: 0 };
   private selected: Target | null = null;
+  private highlighted: Target[] = [];
+  /** While the Highlight switch is on, a click highlights instead of selecting. */
+  private highlighting = false;
   private snap: Snap | null = null;
   private fitted = false;
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
@@ -90,6 +95,7 @@ export class Chart {
     this.index(el, id, snap);
     if (!this.fitted || !this.manual) { this.fit(); this.fitted = true; }
     this.paintSelection();
+    this.paintHighlights();
   }
 
   clear(): void {
@@ -152,8 +158,29 @@ export class Chart {
     this.placeHandle();
   }
 
+  setHighlighting(on: boolean): void {
+    this.highlighting = on;
+    this.stage.classList.toggle('highlighting', on);
+    this.placeHandle();
+  }
+
+  /** Draws the highlights (D2.4): the items named in the highlights file. */
+  setHighlights(targets: Target[]): void {
+    this.highlighted = targets;
+    this.paintHighlights();
+  }
+
+  private paintHighlights(): void {
+    this.canvas.querySelectorAll('.hl').forEach((e) => e.classList.remove('hl'));
+    for (const t of this.highlighted) {
+      this.elementOf(t)?.classList.add('hl');
+      if (t.kind === 'edge') this.canvas.querySelector(`g.edgeLabel[data-edge="${t.index}"]`)?.classList.add('hl');
+    }
+  }
+
   private placeHandle(): void {
-    const el = this.selected && this.selected.kind !== 'edge' ? this.elementOf(this.selected) : null;
+    // No connecting while the Highlight switch is on: a click there highlights.
+    const el = this.selected && this.selected.kind !== 'edge' && !this.highlighting ? this.elementOf(this.selected) : null;
     if (!el) { this.handle.hidden = true; return; }
     const r = el.getBoundingClientRect();
     const s = this.stage.getBoundingClientRect();
@@ -240,6 +267,7 @@ export class Chart {
       if ((e.target as Element).closest('a')) e.preventDefault();
       if (this.moved || e.target === this.handle) { this.moved = false; return; }
       const t = this.targetAt(e.target as Element);
+      if (this.highlighting && t) { this.events.onHighlight(t); return; }
       if (e.shiftKey && t && t.kind !== 'edge' && this.selected && this.selected.kind !== 'edge') {
         this.events.onConnect(this.selected.id, t.id);
         return;
@@ -247,6 +275,7 @@ export class Chart {
       this.events.onSelect(t);
     });
     stage.addEventListener('dblclick', (e) => {
+      if (this.highlighting) return; // two quick clicks there are two highlight clicks
       const t = this.targetAt(e.target as Element);
       if (t) this.events.onRename(t);
       else if (this.snap) this.events.onAddNode();

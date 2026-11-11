@@ -2,8 +2,10 @@
 // do on its own: read, write and watch the open flowchart file, and open a link in the
 // user's browser. The front end's side of these calls is src/backend.ts.
 // Started as `naiad serve <file>` it makes no window and serves the page instead
-// (serve.rs).
+// (serve.rs). Highlights, and the record of which flowchart a window shows:
+// highlights.rs.
 
+mod highlights;
 mod serve;
 
 use std::fs;
@@ -162,6 +164,26 @@ fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<()
     Ok(())
 }
 
+/// The flowchart's highlights file, or None. The page names the flowchart, never the
+/// highlights file: it is always the one beside the flowchart (highlights.rs).
+#[tauri::command]
+fn read_highlights(path: String) -> Result<Option<String>, String> {
+    highlights::read(&check(&path)?)
+}
+
+/// Writes the flowchart's highlights file whole; blank text deletes it.
+#[tauri::command]
+fn write_highlights(path: String, contents: String) -> Result<(), String> {
+    highlights::write(&check(&path)?, &contents)
+}
+
+/// The window now shows this flowchart (and no longer the one before, if another).
+#[tauri::command]
+fn view_file(path: String) -> Result<(), String> {
+    highlights::show(Some(&check(&path)?));
+    Ok(())
+}
+
 /// Opens a link from a description in the user's browser (web and mail links only).
 #[tauri::command]
 fn open_link(url: String, app: AppHandle) -> Result<(), String> {
@@ -189,6 +211,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Watching::default())
+        .on_window_event(|_window, event| {
+            // The window is closing: it shows no flowchart any more (Q44).
+            if let tauri::WindowEvent::Destroyed = event {
+                highlights::show(None);
+            }
+        })
         .setup(|app| {
             if cli_args().is_none() {
                 // The window is made hidden (tauri.conf.json) so that the checker never
@@ -213,8 +241,16 @@ pub fn run() {
             read_file,
             write_file,
             watch_file,
+            read_highlights,
+            write_highlights,
+            view_file,
             open_link
         ])
-        .run(context)
-        .expect("error while running Naiad");
+        .build(context)
+        .expect("error while running Naiad")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                highlights::show(None);
+            }
+        });
 }

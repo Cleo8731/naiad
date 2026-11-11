@@ -234,6 +234,32 @@ naiad flow.mmd
 The command returns at once. Run it once for a file in a task. After that, Naiad
 redraws by itself each time you save the file; do not open the file a second time.
 
+### Pointing at items: highlights
+
+Naiad can mark nodes, arrows and groups as **highlighted**, in the window and in the
+page alike. Use it to show the user which items you are working on or talking about,
+and to find the ones the user means: the user highlights items too, by clicking them.
+Highlights are never written into the flowchart. They have a file of their own; for
+`flow.mmd` it is:
+
+```
+.naiad/flow.mmd/highlights.txt
+```
+
+One item per line: a node's or a group's id, or an arrow as its two ends.
+
+```
+collect
+clean
+collect --> clean
+```
+
+- Read it when the user speaks of "these", "the highlighted ones" or the like.
+- To point, write the items you are working on into it with your ordinary file tools
+  (make the folders if they are not there). Naiad shows them within a second.
+- As you move on to other items, replace the highlights with the new ones.
+- Lines starting with `#` are notes and are ignored.
+
 ## 5. Report
 
 Say which file you made or changed, what changed in the flowchart, and what the check

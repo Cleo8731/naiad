@@ -4,8 +4,8 @@
 // The default is the build's own, src-tauri/target/release/naiad-cli.exe. It serves a
 // copy of examples/sample.mmd from a temporary folder, runs the trials, stops the
 // server and deletes the copy. It ends with "N trials, M failed" and never prints the
-// secret. It takes about 20 seconds (one trial waits for a silent connection to be
-// dropped).
+// secret. It takes about a minute (one trial waits for a silent connection to be
+// dropped, another for the highlights to be deleted after the last page closes).
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
@@ -206,6 +206,60 @@ const at = (rest) => `/${secret}/${rest}`;
     req.on('error', () => resolve(d));
   });
   check('the stream says when the file changed', /^200 text\/event-stream/.test(got) && got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
+
+  // ---- Highlights (D2.4): their own file beside the flowchart's, never the flowchart
+  const naiad = path.join(dir, '.naiad');
+  const hlFile = path.join(naiad, 'flow.mmd', 'highlights.txt');
+  const hlAsk = (text, headers = { Origin: own, 'X-Naiad': '1' }) =>
+    ask({ method: 'PUT', path: at('api/highlights'), headers: { ...headers, 'Content-Length': Buffer.byteLength(text) }, body: text });
+  r = await ask({ path: at('api/highlights') });
+  check('with no highlights file, the highlights read as null', r.status === 200 && r.body.toString() === '{"text":null}', `${r.status} ${r.body}`);
+  for (const [name, headers] of [['no Origin', { 'X-Naiad': '1' }], ['no x-naiad header', { Origin: own }], ['another site\'s Origin', { Origin: 'https://evil.example', 'X-Naiad': '1' }]]) {
+    r = await hlAsk('collect\n', headers);
+    check(`a highlights write refused: ${name}`, (r.status === 403 || r.status === 'ECONNRESET' || r.status === 'broken' || r.status === 'EPIPE') && !fs.existsSync(naiad), r.status);
+  }
+  r = await ask({ path: at('api/highlights'), headers: { Origin: 'https://evil.example' } });
+  check('the highlights are not read for another site', r.status === 403, r.status);
+  const hl = '# the agent\ncollect\ncollect --> clean\n';
+  r = await hlAsk(hl);
+  check('the page\'s highlights are written to .naiad/flow.mmd/highlights.txt', r.status === 200 && fs.existsSync(hlFile) && fs.readFileSync(hlFile, 'utf8') === hl, r.status);
+  check('no temporary file is left beside it', !fs.readdirSync(path.dirname(hlFile)).some((n) => n.endsWith('.naiad-tmp')), 'left');
+  if (process.platform === 'win32') {
+    const attrs = execFileSync('attrib', [naiad], { encoding: 'utf8' });
+    // attrib prints the attribute letters, then the path.
+    check('the .naiad folder is hidden', attrs.includes(naiad) && attrs.slice(0, attrs.indexOf(naiad)).includes('H'), attrs.trim());
+  }
+  r = await ask({ path: at('api/highlights') });
+  check('and read back the same', r.status === 200 && JSON.parse(r.body.toString()).text === hl, r.status);
+  check('the flowchart\'s file is untouched by highlights', sha() === before, 'changed');
+  r = await hlAsk('');
+  check('writing nothing deletes the file and the .naiad folder', r.status === 200 && !fs.existsSync(naiad), r.status);
+
+  // Deleted when the last page closes (Q44): this server is the only view of the copy.
+  const pid = (() => {
+    const records = path.join(os.tmpdir(), 'naiad-serve');
+    for (const name of fs.readdirSync(records)) {
+      const lines = fs.readFileSync(path.join(records, name), 'utf8').split('\n');
+      if (lines[1] === String(port)) return lines[0];
+    }
+  })();
+  const view = path.join(os.tmpdir(), 'naiad-views', `${pid}.txt`);
+  await hlAsk(hl);
+  const stream = await new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: at('api/watch') }, (res) => resolve({ req, res }));
+    req.on('error', () => resolve(null));
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('an open page makes a record of the view', fs.existsSync(view) && fs.realpathSync(fs.readFileSync(view, 'utf8')) === fs.realpathSync(file), fs.existsSync(view) ? fs.readFileSync(view, 'utf8') : 'none');
+  check('while the page is open, the highlights stay', fs.existsSync(hlFile), 'gone');
+  stream?.req.destroy();
+  const closed = Date.now();
+  while (fs.existsSync(hlFile) && Date.now() - closed < 45000) await new Promise((resolve) => setTimeout(resolve, 500));
+  const after = (Date.now() - closed) / 1000;
+  console.log(`note  the highlights were deleted ${after.toFixed(1)} s after the page closed`);
+  check('the last page closed: the highlights file and its folders are deleted within about half a minute',
+    !fs.existsSync(hlFile) && !fs.existsSync(naiad) && after < 40, `${after.toFixed(1)} s`);
+  check('and the record of the view is removed', !fs.existsSync(view), 'still there');
   check('the file ends as it began', sha() === before, 'changed');
 
   cleanUp();

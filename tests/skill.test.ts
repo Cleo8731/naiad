@@ -99,6 +99,13 @@ describe('what the skill repeats from other files', () => {
     }
   });
 
+  test('the highlights file is the same in the skill and FILE-FORMAT.md', () => {
+    for (const text of ['.naiad/flow.mmd/highlights.txt', '\ncollect\nclean\ncollect --> clean\n```']) {
+      expect(skill).toContain(text);
+      expect(format).toContain(text);
+    }
+  });
+
   test('the skill names one place to install Naiad from', () => {
     // The address of this computer itself, in the showing step, is not a place to install from.
     const links = [...skill.matchAll(/https?:\/\/[^\s>)`]+/g)].map((m) => m[0])
