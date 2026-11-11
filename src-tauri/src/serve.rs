@@ -232,6 +232,7 @@ fn status_text(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
         411 => "Length Required",
         413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
@@ -385,15 +386,26 @@ fn handle(mut stream: TcpStream, server: &Server) {
         }
         Route::Write => {
             server.touch();
+            // The hash of the file's bytes as the page read them (src/core/hash.ts): the
+            // write is refused if the file holds anything else now.
+            let expected = match head.one("x-naiad-expect") {
+                Ok(None) => None,
+                Ok(Some(hex)) => match u64::from_str_radix(hex.trim(), 16) {
+                    Ok(hash) => Some(hash),
+                    Err(_) => return refuse(&mut stream, 400),
+                },
+                Err(()) => return refuse(&mut stream, 400),
+            };
             let body = match read_body(&mut stream, &head, early) {
                 Ok(body) => body,
                 Err(status) => return refuse(&mut stream, status),
             };
             let written = String::from_utf8(body)
                 .map_err(|_| "The text is not valid UTF-8.".to_string())
-                .and_then(|text| super::write_file(server.file.clone(), text));
+                .and_then(|text| super::write_file_hashed(server.file.clone(), text, expected));
             match written {
-                Ok(()) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Ok(true) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Ok(false) => respond_json(&mut stream, 409, "{\"error\":\"The file changed on disk after it was read.\",\"changed\":true}".to_string()),
                 Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
             }
         }

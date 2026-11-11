@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { fnv1a64 } from '../src/core/hash';
 
 const ALLOWED = new Set(['.mmd', '.mermaid', '.md', '.markdown']);
 
@@ -63,8 +64,18 @@ export function fileBridge(): Plugin {
             return send(200, { path: current, text: fs.readFileSync(current, 'utf8') });
           }
           if (url === '/file' && req.method === 'PUT') {
+            // The hash of the text the page read (src/core/hash.ts): refused if the file
+            // holds anything else now, as `naiad serve` does.
+            const expect = req.headers['x-naiad-expect'];
             const tmp = `${current}.${process.pid}.tmp`;
             fs.writeFileSync(tmp, await readBody(req), 'utf8');
+            if (expect !== undefined) {
+              const now = fs.existsSync(current) ? fnv1a64(fs.readFileSync(current)) : null;
+              if (typeof expect !== 'string' || now !== expect.trim().toLowerCase()) {
+                fs.rmSync(tmp, { force: true });
+                return send(409, { error: 'The file changed on disk after it was read.', changed: true });
+              }
+            }
             fs.renameSync(tmp, current);
             return send(200, { ok: true });
           }

@@ -7,11 +7,15 @@ import type { Backend } from '../src/backend';
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** How long the stand-in chart takes to draw, in ms (a big chart takes a while). */
+export const chartTiming = { drawDelay: 0 };
+
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
-    resetView() {} async draw() {} clear() {} select() {} setHighlights() {} setHighlighting() {} fit() {}
+    resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} fit() {}
+    async draw() { if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay); }
   },
 });
 
@@ -42,9 +46,12 @@ export class FakeDisk {
         await this.afterRead?.(path, text);
         return text;
       },
-      write: async (path, text) => {
+      write: async (path, text, expected) => {
+        // As the backends do: refused when the file no longer holds what was read.
+        if (expected !== undefined && this.files.get(path) !== expected) return false;
         this.writes.push({ path, text });
         this.put(path, text);
+        return true;
       },
       watch: async (path, onChange) => {
         const set = this.watchers.get(path) ?? new Set();

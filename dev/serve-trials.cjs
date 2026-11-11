@@ -150,9 +150,31 @@ const at = (rest) => `/${secret}/${rest}`;
   check('the page\'s own write is made, byte for byte', r.status === 200 && fs.readFileSync(file).equals(Buffer.from(text, 'utf8')), r.status);
   r = await ask({ path: at('api/file') });
   check('and reads back the same, BOM and CRLF kept', JSON.parse(r.body.toString()).text === text, r.status);
-  check('no temporary file is left beside it', !fs.readdirSync(dir).some((n) => n.endsWith('.naiad-tmp')), 'left');
+  check('no temporary file is left beside it', !fs.readdirSync(dir).some((n) => n.endsWith('.tmp')), fs.readdirSync(dir).join(', '));
   r = await ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'Content-Length': original.length }, body: original });
   check('the file is put back as it was', r.status === 200 && sha() === before, r.status);
+
+  // A save names the text it read by its hash (FNV-1a, 64 bits; written again here, apart
+  // from src/core/hash.ts and lib.rs): refused when the file holds anything else now.
+  const fnv = (bytes) => {
+    let h = 0xcbf29ce484222325n;
+    for (const b of bytes) h = BigInt.asUintN(64, (h ^ BigInt(b)) * 0x100000001b3n);
+    return h.toString(16).padStart(16, '0');
+  };
+  const checked = (expect) => ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': expect, 'Content-Length': Buffer.byteLength(evil) }, body: evil });
+  r = await checked(fnv(Buffer.from('flowchart TD\n    what the page read\n')));
+  let answer = {};
+  try { answer = JSON.parse(r.body.toString()); } catch {}
+  check('a save checked against a text the file no longer holds is refused (409) and changes nothing', r.status === 409 && answer.changed === true && sha() === before, r.status);
+  r = await checked([fnv(fs.readFileSync(file)), fnv(fs.readFileSync(file))]);
+  check('a save naming two hashes is refused', r.status === 400 && sha() === before, r.status);
+  r = await checked('not a hash');
+  check('a save naming something else than a hash is refused', r.status === 400 && sha() === before, r.status);
+  r = await checked(fnv(fs.readFileSync(file)));
+  check('a save checked against the file as it is is made', r.status === 200 && fs.readFileSync(file, 'utf8') === evil, r.status);
+  r = await ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': fnv(Buffer.from(evil)), 'Content-Length': original.length }, body: original });
+  check('and put back the same way', r.status === 200 && sha() === before, r.status);
+  check('no temporary file is left beside it after a refused save', !fs.readdirSync(dir).some((n) => n.endsWith('.tmp')), fs.readdirSync(dir).join(', '));
 
   // ---- Other files
   const raw = (path) => new Promise((resolve) => {

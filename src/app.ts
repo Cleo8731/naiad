@@ -340,44 +340,67 @@ export class App {
     }
   }
 
-  private async diskChanged(): Promise<void> {
-    if (!this.path) return;
+  /**
+   * Saves and reloads run one at a time, in the order asked, so that neither acts on
+   * a reading of the file that the other has made old (bug hunt C8, C11).
+   */
+  private fileWork: Promise<void> = Promise.resolve();
+  private fileQueue(job: () => Promise<void>): Promise<void> {
+    this.fileWork = this.fileWork.then(job).catch((e) => { console.error(e); this.toast(errorText(e)); });
+    return this.fileWork;
+  }
+
+  private diskChanged(): Promise<void> {
+    return this.fileQueue(() => this.takeDisk());
+  }
+
+  /** Reads the file after a change on disk and shows it. Runs in the file queue. */
+  private async takeDisk(): Promise<void> {
+    const path = this.path;
+    if (!path) return;
     await this.takeTyping(); // so that it counts as an unsaved edit below
-    let disk: string;
+    let raw: string;
     try {
-      disk = plainText(await this.backend.read(this.path));
+      raw = await this.backend.read(path);
     } catch {
+      if (path !== this.path) return;
       this.note = 'The file cannot be read (moved or deleted?)';
       this.paintBar();
       return;
     }
-    if (this.md) {
-      if (disk === this.md.file) return; // our own save, or nothing really changed
-      const blocks = findBlocks(disk);
-      const index = findAgain(this.md.blocks, blocks, this.md.index);
-      if (index < 0) {
-        this.md.gone = true;
-        this.note = 'The flowchart block shown cannot be found after the change on disk: open the file again';
+    // Compared and taken in as one job of the queue, so an edit is never applied over it
+    // nor it over an edit half done.
+    await this.queue(async () => {
+      if (path !== this.path) return; // another file is shown now
+      let disk = plainText(raw);
+      if (this.md) {
+        if (disk === this.md.file) return; // our own save, or nothing really changed
+        const blocks = findBlocks(disk);
+        const index = findAgain(this.md.blocks, blocks, this.md.index);
+        if (index < 0) {
+          this.md = { ...this.md, gone: true };
+          this.note = 'The flowchart block shown cannot be found after the change on disk: open the file again';
+          this.paint();
+          return;
+        }
+        this.md = { file: disk, blocks, index, gone: false };
+        disk = blocks[index].text;
+      } else if (disk === this.saved) return; // our own save, or nothing really changed
+      const hadUnsaved = this.text !== this.saved;
+      if (disk === this.saved) {
+        // Only the Markdown around the flowchart changed: an unsaved edit still stands.
+        if (hadUnsaved) this.scheduleSave();
         this.paint();
         return;
       }
-      this.md = { file: disk, blocks, index, gone: false };
-      disk = blocks[index].text;
-    } else if (disk === this.saved) return; // our own save, or nothing really changed
-    const hadUnsaved = this.text !== this.saved;
-    if (disk === this.saved) {
-      // Only the Markdown around the flowchart changed: an unsaved edit still stands.
-      if (hadUnsaved) this.scheduleSave();
-      this.paint();
-      return;
-    }
-    this.saved = disk;
-    if (disk !== this.text) {
-      await this.change(disk, 'disk');
-      this.note = `Reloaded from disk ${new Date().toLocaleTimeString()}`;
-      if (hadUnsaved) this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
-    }
-    this.paintBar();
+      this.saved = disk;
+      if (disk !== this.text) {
+        await this.apply(disk, 'disk');
+        this.note = `Reloaded from disk ${new Date().toLocaleTimeString()}`;
+        if (hadUnsaved) this.toast('The file changed on disk and was reloaded. Your unsaved edit was not written; Undo brings it back.');
+      }
+      this.paintBar();
+    });
   }
 
   /** Why the flowchart can be shown but not changed, or null. */
@@ -397,7 +420,7 @@ export class App {
       this.paintBar();
       return;
     }
-    this.md.index = index;
+    this.md = { ...this.md, index }; // a new object: a save under way sees the change (saveNow)
     this.text = this.saved = block.text;
     this.undoStack = [];
     this.redoStack = [];
@@ -419,20 +442,29 @@ export class App {
   }
 
   /** Writes the text to the file. A text with a syntax error is written only on Ctrl+S. */
-  private async save(force: boolean): Promise<void> {
-    await this.takeTyping();
-    if (!this.path || this.text === this.saved || this.locked()) return;
+  private save(force: boolean): Promise<void> {
+    return this.fileQueue(() => this.saveNow(force));
+  }
+
+  /** `save`, run in the file queue. */
+  private async saveNow(force: boolean): Promise<void> {
+    await this.takeTyping(); // and the changes queued before it
+    const path = this.path;
+    const md = this.md;
+    if (!path || this.text === this.saved || this.locked()) return;
     if ((this.error || this.blockError) && !force) { this.paintBar(); return; }
     const text = this.text;
     try {
       // If the file changed since it was last read, take that change in rather than overwrite it.
-      const raw = await this.backend.read(this.path);
-      if (plainText(raw) !== (this.md ? this.md.file : this.saved)) { await this.diskChanged(); return; }
+      const raw = await this.backend.read(path);
+      if (path !== this.path || md !== this.md) return; // another file or flowchart is shown now
+      if (plainText(raw) !== (md ? md.file : this.saved)) { await this.takeDisk(); return; }
       // In a Markdown file only the block's own lines are replaced; putBlock reads the result back.
-      const out = this.md ? putBlock(this.md.file, this.md.index, text) : text;
-      // Every line keeps the line ending it has on disk now.
-      await this.backend.write(this.path, withEndingsOf(raw, out));
-      if (this.md) this.md = { ...this.md, file: out, blocks: findBlocks(out) };
+      const out = md ? putBlock(md.file, md.index, text) : text;
+      // Every line keeps the line ending it has on disk now. The write is refused if the
+      // file changed after it was read (bug hunt C7); that change is then taken in.
+      if (!(await this.backend.write(path, withEndingsOf(raw, out), raw))) { await this.takeDisk(); return; }
+      if (md) this.md = { ...md, file: out, blocks: findBlocks(out) };
       this.saved = text;
       this.note = '';
     } catch (e) {
@@ -466,26 +498,32 @@ export class App {
   }
 
   private change(next: string, source: Source): Promise<void> {
-    return this.queue(async () => {
-      // Inside a Markdown block the last line always ends with a newline (the closing fence follows).
-      if (this.md && next !== '' && !next.endsWith('\n')) next += '\n';
-      if (next === this.text) return;
-      if (source !== 'disk' && this.locked()) return;
-      if (source !== 'history') {
-        this.undoStack.push(this.text);
-        if (this.undoStack.length > 300) this.undoStack.shift();
-        this.redoStack = [];
-      }
-      this.text = next;
-      if (source !== 'text') {
-        const { scrollTop, scrollLeft } = this.el.area;
-        this.el.area.value = next;
-        this.el.area.scrollTop = scrollTop;
-        this.el.area.scrollLeft = scrollLeft;
-      }
-      await this.refresh(false);
-      if (source !== 'disk') this.scheduleSave();
-    });
+    return this.queue(() => this.apply(next, source));
+  }
+
+  /**
+   * Puts in a new text. Called only from a job of the queue, so that whatever the new
+   * text was made from (an edit, a reading of the file) is still the text shown.
+   */
+  private async apply(next: string, source: Source): Promise<void> {
+    // Inside a Markdown block the last line always ends with a newline (the closing fence follows).
+    if (this.md && next !== '' && !next.endsWith('\n')) next += '\n';
+    if (next === this.text) return;
+    if (source !== 'disk' && this.locked()) return;
+    if (source !== 'history') {
+      this.undoStack.push(this.text);
+      if (this.undoStack.length > 300) this.undoStack.shift();
+      this.redoStack = [];
+    }
+    this.text = next;
+    if (source !== 'text') {
+      const { scrollTop, scrollLeft } = this.el.area;
+      this.el.area.value = next;
+      this.el.area.scrollTop = scrollTop;
+      this.el.area.scrollLeft = scrollLeft;
+    }
+    await this.refresh(false);
+    if (source !== 'disk') this.scheduleSave();
   }
 
   private async refresh(force: boolean): Promise<void> {
@@ -524,37 +562,42 @@ export class App {
 
   private async edit(op: Op): Promise<OpResult | null> {
     await this.takeTyping();
-    const before = this.snap;
-    const why = this.locked();
-    if (why) {
-      this.toast(`This flowchart can be shown but not changed here: ${why}`);
-      this.paint();
-      return null;
-    }
-    let res: OpResult;
-    try {
-      res = await applyChecked(this.text, op);
-    } catch (e) {
-      this.toast(e instanceof EditError ? e.message : errorText(e));
-      this.paint(); // put the controls back to what the file says
-      return null;
-    }
-    // Decide what stays selected before the redraw, so it is painted once.
-    if (op.kind === 'deleteNode' || op.kind === 'deleteEdge' || op.kind === 'ungroup') this.selection = null;
-    if (op.kind === 'addNode') this.selection = { kind: 'node', id: res.created! };
-    if (op.kind === 'renameSubgraph') this.selection = { kind: 'sub', id: res.created! };
-    let follow: string | null = null;
-    if (before && (op.kind === 'setEdgeLabel' || op.kind === 'setEdgeStyle')) {
-      follow = JSON.stringify(expectOp(before, op, res).edges[op.index]);
-      this.selection = null;
-    }
-    await this.change(res.text, 'chart');
-    if (follow && this.snap) {
-      const index = this.snap.edges.findIndex((e) => JSON.stringify(e) === follow);
-      if (index >= 0) this.select({ kind: 'edge', index });
-    }
-    if (op.kind === 'addEdge' && this.snap) this.select({ kind: 'edge', index: this.snap.edges.length - 1 });
-    return res;
+    let result: OpResult | null = null;
+    // Checked and put in as one job, so a reload can never land between the two.
+    await this.queue(async () => {
+      const before = this.snap;
+      const why = this.locked();
+      if (why) {
+        this.toast(`This flowchart can be shown but not changed here: ${why}`);
+        this.paint();
+        return;
+      }
+      let res: OpResult;
+      try {
+        res = await applyChecked(this.text, op);
+      } catch (e) {
+        this.toast(e instanceof EditError ? e.message : errorText(e));
+        this.paint(); // put the controls back to what the file says
+        return;
+      }
+      // Decide what stays selected before the redraw, so it is painted once.
+      if (op.kind === 'deleteNode' || op.kind === 'deleteEdge' || op.kind === 'ungroup') this.selection = null;
+      if (op.kind === 'addNode') this.selection = { kind: 'node', id: res.created! };
+      if (op.kind === 'renameSubgraph') this.selection = { kind: 'sub', id: res.created! };
+      let follow: string | null = null;
+      if (before && (op.kind === 'setEdgeLabel' || op.kind === 'setEdgeStyle')) {
+        follow = JSON.stringify(expectOp(before, op, res).edges[op.index]);
+        this.selection = null;
+      }
+      await this.apply(res.text, 'chart');
+      if (follow && this.snap) {
+        const index = this.snap.edges.findIndex((e) => JSON.stringify(e) === follow);
+        if (index >= 0) this.select({ kind: 'edge', index });
+      }
+      if (op.kind === 'addEdge' && this.snap) this.select({ kind: 'edge', index: this.snap.edges.length - 1 });
+      result = res;
+    });
+    return result;
   }
 
   private async addNode(parent: string | null): Promise<void> {
@@ -564,14 +607,19 @@ export class App {
     if (res) this.sidebar.focusTitle();
   }
 
-  /** Undo (back) or Redo. The stacks are looked up after the typing is taken in, which empties Redo. */
+  /**
+   * Undo (back) or Redo, as one job of the queue. The stacks are looked up in it, after
+   * the typing is taken in, since taking it in (or a reload) empties Redo.
+   */
   private async history(back: boolean): Promise<void> {
     await this.takeTyping();
-    const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
-    const next = from.pop();
-    if (next === undefined) return;
-    to.push(this.text);
-    await this.change(next, 'history');
+    await this.queue(async () => {
+      const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
+      const next = from.pop();
+      if (next === undefined) return;
+      to.push(this.text);
+      await this.apply(next, 'history');
+    });
   }
 
   private select(target: Target | null): void {

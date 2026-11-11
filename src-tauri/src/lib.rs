@@ -126,11 +126,31 @@ fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&p).map_err(|e| e.to_string())
 }
 
-/// Writes a flowchart's file whole (see `replace_file`).
+/// Writes a flowchart's file whole (see `replace_file`). Given `expected`, the file's
+/// text as the page read it, it writes only if the file still holds exactly that, and
+/// otherwise writes nothing and returns false: an agent saved meanwhile.
 #[tauri::command]
-fn write_file(path: String, contents: String) -> Result<(), String> {
+fn write_file(path: String, contents: String, expected: Option<String>) -> Result<bool, String> {
     let p = check(&path)?;
-    replace_file(&p, contents.as_bytes())
+    match expected {
+        Some(text) => replace_file_if(&p, contents.as_bytes(), Some(&|now: &[u8]| now == text.as_bytes())),
+        None => replace_file(&p, contents.as_bytes()).map(|()| true),
+    }
+}
+
+/// `write_file` for `naiad serve`, whose page names the text it read by its hash
+/// (`fnv1a64` of its bytes; src/core/hash.ts computes the same).
+pub(crate) fn write_file_hashed(path: String, contents: String, expected: Option<u64>) -> Result<bool, String> {
+    let p = check(&path)?;
+    match expected {
+        Some(hash) => replace_file_if(&p, contents.as_bytes(), Some(&|now: &[u8]| fnv1a64(now) == hash)),
+        None => replace_file(&p, contents.as_bytes()).map(|()| true),
+    }
+}
+
+/// FNV-1a, 64 bits: a short name for a file's bytes, to see that it changed. Not for secrets.
+pub(crate) fn fnv1a64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3))
 }
 
 /// The number in the next temporary file's name (`replace_file`).
@@ -142,11 +162,26 @@ static NEXT_TMP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::ne
 /// (`.naiad-<process>-<n>.tmp`): a file that happens to have such a name is never
 /// overwritten, two writes at once never share one, and a long file name still fits.
 pub(crate) fn replace_file(target: &Path, contents: &[u8]) -> Result<(), String> {
+    replace_file_if(target, contents, None).map(|_| ())
+}
+
+/// `replace_file`, but when `holds` is given, only if it says yes to the file's bytes
+/// read just before the rename (a missing file says no): otherwise the temporary file
+/// is removed, the file is left as it is, and the answer is false.
+pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
     use std::io::{ErrorKind, Write};
     use std::sync::atomic::Ordering;
     if target.file_name().is_none() {
         return Err("The path has no file name.".into());
     }
+    let unchanged = || match holds {
+        None => Ok(true),
+        Some(holds) => match fs::read(target) {
+            Ok(now) => Ok(holds(&now)),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        },
+    };
     let me = std::process::id();
     for _ in 0..100 {
         let n = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
@@ -158,10 +193,13 @@ pub(crate) fn replace_file(target: &Path, contents: &[u8]) -> Result<(), String>
         };
         let written = file.write_all(contents);
         drop(file);
-        return written.and_then(|()| fs::rename(&tmp, target)).map_err(|e| {
+        let done = written
+            .and_then(|()| unchanged())
+            .and_then(|go| if go { fs::rename(&tmp, target).map(|()| true) } else { Ok(false) });
+        if !matches!(done, Ok(true)) {
             let _ = fs::remove_file(&tmp);
-            e.to_string()
-        });
+        }
+        return done.map_err(|e| e.to_string());
     }
     Err("No free name for a temporary file next to the file.".into())
 }
@@ -310,7 +348,7 @@ mod tests {
         let dir = folder("replace");
         let flow = dir.join("flow.mmd");
         fs::write(&flow, "old").unwrap();
-        write_file(flow.to_string_lossy().into_owned(), "new".into()).unwrap();
+        write_file(flow.to_string_lossy().into_owned(), "new".into(), None).unwrap();
         assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
         assert_eq!(names(&dir), ["flow.mmd"]);
         fs::remove_dir_all(&dir).unwrap();
@@ -351,6 +389,38 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// Bug hunt S17 (C7): a save is refused when the file changed after the page read
+    /// it, and nothing is left beside the file.
+    #[test]
+    fn a_write_is_refused_when_the_file_changed_since_it_was_read() {
+        let dir = folder("expect");
+        let flow = dir.join("flow.mmd");
+        let path = flow.to_string_lossy().into_owned();
+        fs::write(&flow, "read").unwrap();
+        assert_eq!(write_file(path.clone(), "mine".into(), Some("read".into())), Ok(true));
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "mine");
+        fs::write(&flow, "the agent's").unwrap();
+        assert_eq!(write_file(path.clone(), "stale".into(), Some("mine".into())), Ok(false));
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "the agent's");
+        assert_eq!(write_file_hashed(path.clone(), "stale".into(), Some(fnv1a64(b"mine"))), Ok(false));
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "the agent's");
+        assert_eq!(write_file_hashed(path.clone(), "next".into(), Some(fnv1a64("the agent's".as_bytes()))), Ok(true));
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "next");
+        assert_eq!(names(&dir), ["flow.mmd"], "nothing left beside it");
+        fs::remove_file(&flow).unwrap();
+        assert_eq!(write_file(path, "x".into(), Some("next".into())), Ok(false), "a file gone has changed");
+        assert!(names(&dir).is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The same hash as src/core/hash.ts (FNV-1a, 64 bits; its published test values).
+    #[test]
+    fn the_hash_is_fnv1a_64() {
+        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
+    }
+
     #[test]
     fn only_flowchart_and_markdown_files_are_touched() {
         assert!(check(r"C:\a\flow.mmd").is_ok());
@@ -374,7 +444,7 @@ mod tests {
         fs::write(&notes, "the user's notes").unwrap();
         let stream = format!("{}:flow.mmd", notes.display());
         assert!(read_file(stream.clone()).is_err());
-        assert!(write_file(stream.clone(), "flowchart TD\n".into()).is_err());
+        assert!(write_file(stream.clone(), "flowchart TD\n".into(), None).is_err());
         assert!(write_highlights(stream.clone(), "a\n".into()).is_err());
         assert!(read_highlights(stream).is_err());
         assert_eq!(names(&dir), ["notes.txt"], "nothing made beside it");

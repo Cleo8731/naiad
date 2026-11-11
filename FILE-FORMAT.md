@@ -173,7 +173,10 @@ More text.
   whatever its ending.
 - When the file changes on disk (an agent or another editor saved it), Naiad reloads
   it. If Naiad holds an unsaved edit at that moment, the version on disk wins and the
-  unsaved edit stays in Undo. In a Markdown file, a change on disk that leaves the
+  unsaved edit stays in Undo. A save checks, just before it renames, that the file
+  still holds exactly what Naiad last read; if it changed in between, the save is
+  refused, the version on disk is taken in the same way, and the edit stays in Undo.
+  In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
   touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain
   which flowchart block it was showing (the block was removed, or it changed while

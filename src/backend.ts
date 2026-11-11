@@ -4,6 +4,8 @@
 // bridge (dev/bridge.ts). The page never names the highlights file: each of them finds
 // it beside the flowchart's file (src-tauri/src/highlights.rs).
 
+import { fnv1a64 } from './core/hash';
+
 /** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
 export interface CliJob {
   mode: 'check' | 'fix';
@@ -21,7 +23,12 @@ export interface Backend {
   /** The file the app was started with, if any. */
   initialPath(): Promise<string | null>;
   read(path: string): Promise<string>;
-  write(path: string, text: string): Promise<void>;
+  /**
+   * Writes the file whole. Given `expected` (the file's text as read), it writes only
+   * if the file still holds exactly that, checked just before the file is replaced;
+   * otherwise it writes nothing and returns false (an agent saved meanwhile).
+   */
+  write(path: string, text: string, expected?: string): Promise<boolean>;
   /** Calls back whenever the file changes on disk. Returns a function that stops it. */
   watch(path: string, onChange: () => void): Promise<() => void>;
   /** The flowchart's highlights file (`.naiad/<name>/highlights.txt`), or null if there is none. */
@@ -68,7 +75,7 @@ async function desktop(): Promise<Backend> {
     cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
     read: (path) => invoke<string>('read_file', { path }),
-    write: (path, text) => invoke<void>('write_file', { path, contents: text }),
+    write: (path, text, expected) => invoke<boolean>('write_file', { path, contents: text, expected: expected ?? null }),
     async watch(path, onChange) {
       // One save can raise several events (write, rename); wait for them to settle.
       let timer: number | undefined;
@@ -123,7 +130,7 @@ function browser(): Backend {
         : 'the connection to the development server is lost. Start it again with npm run dev, then reload this page.');
     }
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+    if (!res.ok) throw Object.assign(new Error(body.error ?? `Request failed (${res.status})`), { status: res.status });
     return body;
   };
   return {
@@ -132,7 +139,17 @@ function browser(): Backend {
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
     read: async () => (await call('api/file')).text,
-    write: async (_path, text) => { await call('api/file', { method: 'PUT', body: text }); },
+    async write(_path, text, expected) {
+      // The text read is named by its hash; the server answers 409 if the file's bytes differ.
+      const headers: Record<string, string> = expected === undefined ? {} : { 'x-naiad-expect': fnv1a64(new TextEncoder().encode(expected)) };
+      try {
+        await call('api/file', { method: 'PUT', body: text, headers });
+        return true;
+      } catch (e) {
+        if ((e as { status?: number }).status === 409) return false;
+        throw e;
+      }
+    },
     async watch(_path, onChange) {
       const es = new EventSource('api/watch');
       es.onmessage = () => onChange();
