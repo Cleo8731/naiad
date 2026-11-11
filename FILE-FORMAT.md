@@ -129,7 +129,10 @@ More text.
   file (from a first line of `---` to the next `---` or `...`).
 - A file with several flowchart blocks shows one at a time; a list in the toolbar
   switches between them.
-- A flowchart block may be indented, for example inside a list. Every line of it must
+- A flowchart block may be indented, for example inside a list. As in Markdown, its
+  opening and closing lines are indented at most three spaces, or, inside a list item,
+  at most three spaces past the start of the item's text; a fence indented further is
+  an indented code sample and is left alone. Every line of the block must
   then start with the same whitespace as its opening line (empty lines may be fully
   empty, or all carry that whitespace). If they do not, or the closing line is missing,
   Naiad shows the flowchart but does not change it.

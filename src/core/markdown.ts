@@ -29,6 +29,38 @@ export function isMarkdownPath(path: string): boolean {
 }
 
 const FENCE = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
+const LIST_ITEM = /^([ \t]*)([-+*]|\d{1,9}[.)])([ \t]+|$)/;
+
+/** How many columns a run of spaces and tabs takes, a tab reaching the next multiple of 4. */
+function columns(ws: string): number {
+  let w = 0;
+  for (const c of ws) w = c === '\t' ? w + 4 - (w % 4) : w + 1;
+  return w;
+}
+
+/**
+ * The column a fence indented `w` columns on line `at` is measured from: 0 at the
+ * margin, or the start of the text of the list item it stands in. Null when it is no
+ * fence: Markdown reads a line indented four columns or more past that (at the margin,
+ * or past the item's text) as an indented code sample, or as text. Unsure is null.
+ */
+function fenceBase(lines: string[], at: number, w: number): number | null {
+  if (w <= 3) return 0;
+  for (let k = at - 1; k >= 0; k--) {
+    const line = lines[k];
+    if (line.trim() === '') continue;
+    const item = LIST_ITEM.exec(line);
+    const lead = columns(/^[ \t]*/.exec(line)![0]);
+    if (item) {
+      const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
+      const text = columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 ? gap : 1);
+      if (w >= text) return w - text <= 3 ? text : null;
+      // Less indented than this item's text: it may stand in an item further out.
+    }
+    if (lead === 0) return null; // text at the margin: the fence stands in no list
+  }
+  return null;
+}
 
 /** True when the first line that is not empty, a comment or frontmatter starts a flowchart. */
 export function isFlowchartText(text: string): boolean {
@@ -63,7 +95,8 @@ export function findBlocks(file: string): Block[] {
   while (i < lines.length) {
     const m = FENCE.exec(lines[i]);
     // A backtick fence's first line cannot hold another backtick (that is inline code).
-    if (!m || (m[2][0] === '`' && m[3].includes('`'))) {
+    const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(lines, i, columns(m[1])) : null;
+    if (!m || base === null) {
       const h = /^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
       if (h) heading = h[1];
       i++;
@@ -74,7 +107,8 @@ export function findBlocks(file: string): Block[] {
     let close = -1;
     for (let j = open + 1; j < lines.length; j++) {
       const c = FENCE.exec(lines[j]);
-      if (c && c[2][0] === fence[0] && c[2].length >= fence.length && c[3].trim() === '') { close = j; break; }
+      // The closing line may be indented up to three columns past the opening's base.
+      if (c && c[2][0] === fence[0] && c[2].length >= fence.length && c[3].trim() === '' && columns(c[1]) <= base + 3) { close = j; break; }
     }
     const end = close < 0 ? lines.length : close;
     if (info.trim().split(/\s+/)[0].toLowerCase() === 'mermaid') {

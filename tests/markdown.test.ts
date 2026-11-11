@@ -204,4 +204,23 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     // Front matter that never closes is not front matter.
     expect(findBlocks('---\n```mermaid\nflowchart TD\n  A\n```\n').length).toBe(1);
   });
+
+  test('a fence indented four columns or more, outside a list: a code sample', () => {
+    expect(findBlocks('Example:\n\n    ```mermaid\n    flowchart TD\n    a --> b\n    ```\n\ntext\n')).toEqual([]);
+    expect(findBlocks('\t```mermaid\n\tflowchart TD\n\t```\n')).toEqual([]);
+    expect(findBlocks('text\n    ```mermaid\n    flowchart TD\n    ```\n')).toEqual([]);
+  });
+
+  test('inside a list item, up to three columns past the start of its text', () => {
+    const inItem = findBlocks('- item\n\n    ```mermaid\n    flowchart TD\n      a\n    ```\n');
+    expect(inItem.map((b) => [b.indent, b.flowchart, b.locked])).toEqual([['    ', true, null]]);
+    expect(findBlocks('10. step\n\n     ```mermaid\n     flowchart TD\n     a\n     ```\n').length).toBe(1);
+    expect(findBlocks('- a\n  - b\n    text\n\n      ```mermaid\n      flowchart TD\n      ```\n').length).toBe(1);
+    // Four columns past the item's text: a code sample inside the item.
+    expect(findBlocks('- a\n  - b\n\n        ```mermaid\n        flowchart TD\n        ```\n')).toEqual([]);
+  });
+
+  test('a fence line indented four columns does not close a block at the margin', () => {
+    expect(findBlocks('```mermaid\nflowchart TD\n    ```\n```\n')[0].close).toBe(3);
+  });
 });
