@@ -89,6 +89,16 @@ describe('description blocks', () => {
     expect(setDescription(sample, 'nobody', '')).toBe(sample);
   });
 
+  test('a new block keeps every blank line at the end of the file (bug hunt S15, A6)', () => {
+    for (const before of ['flowchart TD\n  a --> b\n\n\n\n', 'flowchart TD\n  a --> b\n  \n\t\n', 'flowchart TD\n  a --> b\n  ']) {
+      const out = setDescription(before, 'a', 'Hello');
+      expect(out.startsWith(before.replace(/\n$/, '')), JSON.stringify(out)).toBe(true);
+      expect(getDescriptions(out).get('a')).toBe('Hello');
+      expect(out.endsWith('\n'), 'the final newline as it was').toBe(before.endsWith('\n'));
+    }
+    expect(setDescription('flowchart TD\n  a --> b\n\n', 'a', 'Hi')).toBe('flowchart TD\n  a --> b\n\n%% @a\n%% Hi\n');
+  });
+
   test('keeps a file with no final newline that way', () => {
     const out = setDescription(fixtures.noTrailingNewline, 'one', 'Hi.');
     expect(out).toBe(`${fixtures.noTrailingNewline}\n\n%% @one\n%% Hi.`);

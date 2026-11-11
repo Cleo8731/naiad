@@ -92,15 +92,14 @@ export function setDescription(text: string, id: string, description: string): s
   }
   if (desc === '') return text;
 
-  // No block yet: add one at the end of the file, after one empty line.
-  let end = lines.length;
-  while (end > 0 && lines[end - 1].trim() === '') end--;
-  const tail = lines.slice(end);
-  const out = lines.slice(0, end);
-  if (out.length) out.push('');
-  out.push(...blockLines(id, desc, ''));
-  out.push(...tail.slice(-1)); // keep the file's final newline as it was
-  return out.join('\n');
+  // No block yet: add one at the end of the file, after every line already there (blank
+  // lines included), with one empty line before it unless a blank line is there already.
+  // The file's final newline stays as it was.
+  const at = lines[lines.length - 1] === '' ? lines.length - 1 : lines.length;
+  const add = blockLines(id, desc, '');
+  if (at > 0 && lines[at - 1].trim() !== '') add.unshift('');
+  lines.splice(at, 0, ...add);
+  return lines.join('\n');
 }
 
 /** Removes a node's description block, if it has one. */

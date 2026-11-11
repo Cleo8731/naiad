@@ -83,7 +83,8 @@ Rules:
    `%% \    @something`), so it is not taken for an empty line or for the start of
    another block.
 6. A block may sit anywhere a comment may: on its own lines, at any indent. Naiad adds
-   new blocks at the end of the file, after one empty line.
+   new blocks at the end of the file, after every line already there (blank lines
+   too), with one empty line before the block unless the file already ends with one.
 7. If two blocks name the same id, the first one is used.
 8. A block whose id matches no node is kept as it is and shown nowhere.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
