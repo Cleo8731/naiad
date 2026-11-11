@@ -102,8 +102,9 @@ export class Sidebar {
       this.editingDescription = false;
       return;
     }
-    const groupsKey = view.kind === 'node' ? view.groups.map((g) => `${g.id}=${g.title}`).join('|') : '';
-    const key = `${view.kind}:${view.kind === 'edge' ? view.index : view.id}:${groupsKey}`;
+    // The panel is built again only for another item: a change on disk (a group renamed,
+    // say) updates it in place, so a description being written is kept (bug hunt C17).
+    const key = `${view.kind}:${view.kind === 'edge' ? view.index : view.id}`;
     if (key !== this.key) {
       this.key = key;
       this.editingDescription = false;
@@ -140,11 +141,19 @@ export class Sidebar {
     return input;
   }
 
-  private select(options: HTMLOptionElement[], read: (v: View) => string, commit: (value: string) => void): HTMLSelectElement {
-    const sel = h('select', { change: () => commit(sel.value) }, ...options);
+  /** A list whose options can change with the file (the groups); they are put in again only when they do. */
+  private select(options: (v: View) => HTMLOptionElement[], read: (v: View) => string, commit: (value: string) => void): HTMLSelectElement {
+    const sel = h('select', { change: () => commit(sel.value) });
+    let listed: string | null = null;
     this.sync.push((v) => {
       const value = read(v);
-      if (![...sel.options].some((o) => o.value === value)) sel.append(option(value, value));
+      const opts = options(v);
+      if (!opts.some((o) => o.value === value)) opts.push(option(value, value));
+      const key = JSON.stringify(opts.map((o) => [o.value, o.textContent]));
+      if (key !== listed) {
+        listed = key;
+        sel.replaceChildren(...opts);
+      }
       sel.value = value;
     });
     return sel;
@@ -219,10 +228,10 @@ export class Sidebar {
     this.sync.push((v) => { current = (v as NodeView).description; paint(); });
 
     const shape = this.select(
-      PICKABLE_SHAPES.map((t) => option(t, SHAPES.find((s) => s.type === t)!.label)),
+      () => PICKABLE_SHAPES.map((t) => option(t, SHAPES.find((s) => s.type === t)!.label)),
       (v) => (v as NodeView).shape, (value) => a.setShape(id, value));
     const group = this.select(
-      [option('', 'None'), ...view.groups.map((g) => option(g.id, g.title)), option(NEW_GROUP, 'New group…')],
+      (v) => [option('', 'None'), ...(v as NodeView).groups.map((g) => option(g.id, g.title)), option(NEW_GROUP, 'New group…')],
       (v) => (v as NodeView).group, (value) => a.setGroup(id, value));
 
     return [
@@ -251,10 +260,10 @@ export class Sidebar {
     });
     const label = this.textBox('title', 'Label (optional)', (v) => (v as EdgeView).label, (value) => a.setEdgeLabel(index, value));
     const stroke = this.select(
-      [option('normal', 'Solid'), option('dotted', 'Dotted'), option('thick', 'Thick'), option('invisible', 'Invisible')],
+      () => [option('normal', 'Solid'), option('dotted', 'Dotted'), option('thick', 'Thick'), option('invisible', 'Invisible')],
       (v) => (v as EdgeView).stroke, (value) => a.setEdgeStroke(index, value as LinkParts['stroke']));
     const arrow = this.select(
-      [option('arrow', 'Arrow'), option('none', 'No head'), option('both', 'Both ways'), option('circle', 'Circle'), option('cross', 'Cross')],
+      () => [option('arrow', 'Arrow'), option('none', 'No head'), option('both', 'Both ways'), option('circle', 'Circle'), option('cross', 'Cross')],
       (v) => (v as EdgeView).arrow, (value) => a.setEdgeArrow(index, value as ArrowKind));
     return [
       this.header('Arrow', `#${index}`),
@@ -270,7 +279,7 @@ export class Sidebar {
     const a = this.actions;
     const title = this.textBox('title', 'Group title', (v) => (v as SubView).title, (value) => a.renameGroup(id, value));
     const dir = this.select(
-      [option('', 'Same as chart'), option('TB', 'Top to bottom'), option('LR', 'Left to right'), option('BT', 'Bottom to top'), option('RL', 'Right to left')],
+      () => [option('', 'Same as chart'), option('TB', 'Top to bottom'), option('LR', 'Left to right'), option('BT', 'Bottom to top'), option('RL', 'Right to left')],
       (v) => (v as SubView).dir, (value) => a.setGroupDirection(id, value));
     const count = h('p', { class: 'hint' });
     this.sync.push((v) => {
