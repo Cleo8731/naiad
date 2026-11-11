@@ -68,7 +68,7 @@ describe('a save in a browser names the text it read (bug hunt S17, C7)', () => 
 
   it('the dev page names the file it shows on every read and write (bug hunt S21: C14)', async () => {
     const { backend, sent } = await pageAnswered(200, { text: '' }, true);
-    const file = 'C:/Users/me/Flow charts/plan é.mmd';
+    const file = 'D:/Flow charts/plan é.mmd';
     await backend.read(file);
     await backend.write(file, 'new', 'old');
     await backend.readHighlights(file);
