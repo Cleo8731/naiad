@@ -251,6 +251,26 @@ describe('a "{" in a one-line accessible title or description opens nothing (bug
   }
 });
 
+describe('a comment line in a multi-line accessible description never ends it (bug hunt round 3: A24)', () => {
+  // Mermaid drops comment lines before it reads, inside `accDescr { }` too: a "}" in one
+  // ends nothing.
+  test('chart edits work', async () => {
+    const before = 'flowchart TD\n  accDescr {\n  first\n  %% a comment with } in it\n  second\n  }\n  a[A] --> b[B]\n';
+    await snapshot(before); // Mermaid reads it
+    const doc = parseDoc(before);
+    expect(doc.problems).toEqual([]);
+    expect(doc.info.map((i) => i.kind)).toEqual(['header', 'acc', 'acc', 'acc', 'acc', 'acc', 'statement', 'blank']);
+    expect((await applyChecked(before, { kind: 'setTitle', id: 'a', title: 'Renamed' })).text)
+      .toBe(before.replace('a[A]', 'a[Renamed]'));
+  });
+  test('a description holding "}" in a block inside it leaves the file readable', async () => {
+    const before = 'flowchart TD\n  accDescr {\n  %% @a\n  a[A] --> b[B]\n  }\n  c[C]\n';
+    const { text } = await applyChecked(before, { kind: 'setDescription', id: 'a', description: '{x}' });
+    expect(parseDoc(text).problems).toEqual([]);
+    expect(parseDoc(text).info.map((i) => i.kind).slice(-2)).toEqual(['statement', 'blank']);
+  });
+});
+
 describe('an accessible title is read where Mermaid reads one (bug hunt round 3: A25, A30)', () => {
   // Mermaid's lexer reads `accTitle\s*:\s*` before anything else on a line, and its `\s*`
   // runs on over the line break: with nothing after the colon, the next line that is

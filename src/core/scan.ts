@@ -353,7 +353,10 @@ export function parseDoc(text: string): Doc {
 
     if (openBlock) {
       li.kind = openBlock;
-      if (openBlock === 'directive' ? t.includes('}%%') : t.includes('}')) openBlock = '';
+      // Mermaid drops a comment line before it reads (`%%` and at least one more
+      // character, not `%%{`), so in an accessible text its "}" ends nothing (bug hunt
+      // round 3, A24).
+      if (openBlock === 'directive' ? t.includes('}%%') : t.includes('}') && !/^\s*%%(?!\{)./.test(raw)) openBlock = '';
       continue;
     }
     if (inFront) {
