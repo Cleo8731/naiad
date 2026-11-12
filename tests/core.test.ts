@@ -86,6 +86,16 @@ describe('description blocks', () => {
     }
   });
 
+  test('C37: U+2028 and U+2029 inside a description line are read back (bug hunt round 3)', () => {
+    for (const ch of [' ', ' ']) {
+      const out = setDescription(sample, 'train', `first${ch}second\nthird`);
+      expect(getDescriptions(out).get('train')).toBe(`first${ch}second\nthird`);
+      expect(getDescriptions(out).get('ship')).toBe(getDescriptions(sample).get('ship'));
+      // As an agent may write it.
+      expect(getDescriptions(`flowchart TD\n    a --> b\n\n%% @a\n%% one${ch}two\n%% three\n`).get('a')).toBe(`one${ch}two\nthree`);
+    }
+  });
+
   test('a line that is an indented @word stays in its description (bug hunt S10, A1)', () => {
     const typed = 'Example:\n```python\nclass Loader:\n    @staticmethod\n    def load(path):\n```\nCalled once a day.';
     for (const desc of [typed, 'Ping:\n  @bob\nlast line', 'Tab:\n\t@x\n.']) {

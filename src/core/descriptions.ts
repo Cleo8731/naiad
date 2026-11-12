@@ -7,7 +7,9 @@
 //   %% A line holding only "." is an empty line.
 
 const HEADER_RE = /^\s*%%\s*@(\S+)\s*$/;
-const COMMENT_RE = /^\s*%%(?!\{)(.*)$/;
+// `s`: a line may hold U+2028 or U+2029, which `.` would not match; Mermaid reads them
+// as part of the comment (bug hunt round 3, C37).
+const COMMENT_RE = /^\s*%%(?!\{)(.*)$/s;
 
 export interface DescBlock {
   id: string;
