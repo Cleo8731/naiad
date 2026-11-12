@@ -20,7 +20,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -153,6 +153,8 @@ enum Route {
     Write,
     Watch,
     Ping,
+    /// The page says it is closing, not only losing its connection.
+    Bye,
     /// The served file's highlights file (highlights.rs), found beside it, never named.
     ReadHighlights,
     WriteHighlights,
@@ -209,6 +211,7 @@ fn route(head: &Head, port: u16, secret: &str) -> Result<Route, u16> {
         Some("api/highlights") => from_the_page(Route::WriteHighlights),
         Some("api/watch") if get => Ok(Route::Watch),
         Some("api/ping") if get => Ok(Route::Ping),
+        Some("api/bye") if !get => from_the_page(Route::Bye),
         Some(rest) if get => {
             let name = rest.strip_prefix("assets/").ok_or(404u16)?;
             let plain = !name.is_empty()
@@ -309,6 +312,10 @@ struct Server {
     /// When a page was last open or last asked for the file.
     active: Mutex<Instant>,
     connections: AtomicUsize,
+    /// Whether the last page to go said it was closing (`api/bye`). A page that only
+    /// lost its connection, as when the computer sleeps, is still open: its highlights
+    /// stay until it says so, or until this server stops (bug hunt round 3, oF5).
+    said_bye: AtomicBool,
 }
 
 impl Server {
@@ -368,6 +375,10 @@ fn handle(mut stream: TcpStream, server: &Server) {
             Some(body) => respond(&mut stream, 200, kind_of(&name), "", &body),
             None => refuse(&mut stream, 404),
         },
+        Route::Bye => {
+            server.said_bye.store(true, Ordering::SeqCst);
+            respond_json(&mut stream, 200, "{\"ok\":true}".to_string());
+        }
         Route::Ping => {
             server.touch();
             respond(&mut stream, 200, "text/plain; charset=utf-8", "", server.file.as_bytes());
@@ -442,6 +453,7 @@ fn handle(mut stream: TcpStream, server: &Server) {
                 let _ = stream.set_nodelay(true);
                 pages.push(stream);
                 drop(pages);
+                server.said_bye.store(false, Ordering::SeqCst);
                 server.touch();
                 // A page shows the flowchart: it counts as a view of it (Q44).
                 super::highlights::show(Some(Path::new(&server.file)));
@@ -572,6 +584,7 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
         pages: Mutex::new(Vec::new()),
         active: Mutex::new(Instant::now()),
         connections: AtomicUsize::new(0),
+        said_bye: AtomicBool::new(false),
     });
 
     // Tell the open pages when the file changes.
@@ -587,16 +600,18 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
     super::print_out(&server.address());
 
     // Ping the open pages, and end when none has been open for long enough. Once the
-    // last page has been gone for a ping's time (a reload comes back sooner), this
-    // server no longer counts as a view of the flowchart (Q44).
+    // last page has said it closes and been gone for a ping's time (a reload comes back
+    // sooner), this server no longer counts as a view of the flowchart (Q44); a page
+    // that only lost its connection still does, until this server stops (oF5).
     let pinger = server.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(PING);
         pinger.tell(b": ping\n\n");
-        if pinger.idle().is_some_and(|d| d >= PING) {
+        if pinger.idle().is_some_and(|d| d >= PING) && pinger.said_bye.load(Ordering::SeqCst) {
             super::highlights::show(None);
         }
         if time_is_up(pinger.idle()) {
+            super::highlights::show(None);
             delete_record(&pinger);
             std::process::exit(0);
         }
@@ -654,6 +669,8 @@ mod tests {
         assert_eq!(ask("GET", &at("api/file"), &[HOST, ("Sec-Fetch-Site", "same-origin")]), Ok(Route::Read));
         assert_eq!(ask("GET", &at("api/watch"), &[HOST]), Ok(Route::Watch));
         assert_eq!(ask("GET", &at("api/ping"), &[HOST]), Ok(Route::Ping));
+        assert_eq!(ask("PUT", &at("api/bye"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::Bye));
+        assert_eq!(ask("PUT", &at("api/bye"), &[HOST]), Err(403));
         assert_eq!(ask("PUT", &at("api/file"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::Write));
         assert_eq!(ask("GET", &at("api/highlights"), &[HOST]), Ok(Route::ReadHighlights));
         assert_eq!(ask("PUT", &at("api/highlights"), &[HOST, OWN, ("X-Naiad", "1")]), Ok(Route::WriteHighlights));
@@ -803,6 +820,7 @@ mod tests {
             pages: Mutex::new(vec![page]),
             active: Mutex::new(Instant::now()),
             connections: AtomicUsize::new(0),
+            said_bye: AtomicBool::new(false),
         };
         assert_eq!(server.idle(), None); // a page is open
         // As after a long sleep: the last sign of life is long ago.

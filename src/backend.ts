@@ -160,7 +160,14 @@ function browser(): Backend {
       let broken = false;
       es.onerror = () => { broken = true; };
       es.onopen = () => { if (broken) { broken = false; onChange(); } };
-      return () => es.close();
+      // A page that closes says so: `naiad serve` then deletes the highlights once no
+      // page of the flowchart is left. One that only lost its connection (the computer
+      // slept) keeps them (bug hunt round 3, oF5). The dev page's server keeps no views.
+      const bye = (e: PageTransitionEvent) => {
+        if (served && !e.persisted) void fetch('api/bye', { method: 'PUT', keepalive: true, headers: { 'x-naiad': '1' } }).catch(() => {});
+      };
+      window.addEventListener('pagehide', bye);
+      return () => { es.close(); window.removeEventListener('pagehide', bye); };
     },
     readHighlights: async (path) => (await call('api/highlights', { headers: shows(path) })).text,
     writeHighlights: async (path, text) => { await call('api/highlights', { method: 'PUT', body: text, headers: shows(path) }); },

@@ -105,3 +105,47 @@ describe('the hash is FNV-1a, 64 bits', () => {
     expect(fnv1a64(random)).toBe(plain(random));
   });
 });
+
+describe('a page from naiad serve says when it closes (bug hunt round 3: oF5)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  async function page(dev: boolean) {
+    const handlers = new Map<string, (e: unknown) => void>();
+    const calls: [string, RequestInit | undefined][] = [];
+    vi.stubEnv('DEV', dev);
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, fn: (e: unknown) => void) => { handlers.set(type, fn); },
+      removeEventListener: (type: string) => { handlers.delete(type); },
+    });
+    vi.stubGlobal('EventSource', class { close() {} });
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => { calls.push([url, init]); return new Response('{"ok":true}'); });
+    const backend = await createBackend();
+    const stop = await backend.watch('flow.mmd', () => {});
+    return { handlers, calls, stop };
+  }
+
+  it('oF5: closing sends a goodbye, so a page that only lost its connection keeps its highlights', async () => {
+    const { handlers, calls } = await page(false);
+    handlers.get('pagehide')!({ persisted: false });
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe('api/bye');
+    expect(calls[0][1]).toMatchObject({ method: 'PUT', keepalive: true, headers: { 'x-naiad': '1' } });
+  });
+
+  it('a page kept for Back sends none, nor does the dev page, nor a page that stopped watching', async () => {
+    const kept = await page(false);
+    kept.handlers.get('pagehide')!({ persisted: true });
+    expect(kept.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
+    const dev = await page(true);
+    dev.handlers.get('pagehide')!({ persisted: false });
+    expect(dev.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
+    const stopped = await page(false);
+    stopped.stop();
+    expect(stopped.handlers.has('pagehide')).toBe(false);
+  });
+});

@@ -314,7 +314,21 @@ const at = (rest) => `/${secret}/${rest}`;
   await new Promise((resolve) => setTimeout(resolve, 300));
   check('an open page makes a record of the view', fs.existsSync(view) && fs.realpathSync(fs.readFileSync(view, 'utf8')) === fs.realpathSync(file), fs.existsSync(view) ? fs.readFileSync(view, 'utf8') : 'none');
   check('while the page is open, the highlights stay', fs.existsSync(hlFile), 'gone');
+  // A page that only lost its connection (the computer slept) is still open: its
+  // highlights stay until it says it closes, or the server stops (bug hunt round 3, oF5).
   stream?.req.destroy();
+  await new Promise((resolve) => setTimeout(resolve, 35000));
+  check('a page that only lost its connection keeps its highlights and its record (bug hunt round 3, oF5)', fs.existsSync(hlFile) && fs.existsSync(view), fs.existsSync(hlFile) ? 'record gone' : 'highlights gone');
+  const again = await new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: at('api/watch') }, (res) => resolve({ req, res }));
+    req.on('error', () => resolve(null));
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  r = await ask({ method: 'PUT', path: at('api/bye'), headers: { 'Content-Length': 0 } });
+  check('a goodbye not sent by the page is refused', r.status === 403, r.status);
+  r = await ask({ method: 'PUT', path: at('api/bye'), headers: { Origin: own, 'X-Naiad': '1', 'Content-Length': 0 } });
+  check('the page says it closes', r.status === 200, r.status);
+  again?.req.destroy();
   const closed = Date.now();
   while (fs.existsSync(hlFile) && Date.now() - closed < 45000) await new Promise((resolve) => setTimeout(resolve, 500));
   const after = (Date.now() - closed) / 1000;

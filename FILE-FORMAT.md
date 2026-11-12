@@ -290,6 +290,9 @@ collect --> clean
   open, so that neither can be deleted, renamed or swapped for a link meanwhile.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
   the last page `naiad serve` shows of it (within half a minute of that page closing).
+  A page that only lost its connection, as when the computer sleeps, still counts as
+  open: its highlights stay until it closes, or until `naiad serve` stops by itself,
+  ten minutes after its last page went.
   Highlights written while no view was open, or left by a Naiad that was stopped by
   force, show at the next opening and go at the next closing.
 
