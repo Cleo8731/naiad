@@ -296,7 +296,9 @@ collect --> clean
   while it reads `highlights.txt` (to show it, or to see that it is UTF-8 before it
   replaces or deletes it), it holds that file open the same way.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
-  the last page `naiad serve` shows of it (within half a minute of that page closing).
+  the last page `naiad serve` shows of it (within half a minute of that page closing,
+  and only if the file is still as it was when that page closed: highlights written
+  in that half minute are kept).
   A page that only lost its connection, as when the computer sleeps, still counts as
   open: its highlights stay until it closes, or until `naiad serve` stops by itself,
   ten minutes after its last page went.

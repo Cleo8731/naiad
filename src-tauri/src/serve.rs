@@ -316,10 +316,17 @@ struct Server {
     /// lost its connection, as when the computer sleeps, is still open: its highlights
     /// stay until it says so, or until this server stops (bug hunt round 3, oF5).
     said_bye: AtomicBool,
+    /// What the highlights file held when a page last said it was closing (its bytes,
+    /// empty if there was none; None if it could not be read): they are deleted after it
+    /// only if still the same (`after_ping`).
+    left: Mutex<Option<Vec<u8>>>,
 }
 
 impl Server {
+    /// A sign of life from a page. Made with the open pages held, so that it comes
+    /// wholly before or after the pinger's look and deed (`after_ping`).
     fn touch(&self) {
+        let _pages = self.pages.lock();
         if let Ok(mut active) = self.active.lock() {
             *active = Instant::now();
         }
@@ -338,9 +345,41 @@ impl Server {
         }
     }
 
-    fn idle(&self) -> Option<Duration> {
-        let none_open = self.pages.lock().map(|p| p.is_empty()).unwrap_or(true);
-        none_open.then(|| self.active.lock().map(|a| a.elapsed()).unwrap_or(Duration::ZERO))
+    /// How long no page has been open, given the open pages (None: one is open).
+    fn idle(&self, pages: &[TcpStream]) -> Option<Duration> {
+        pages.is_empty().then(|| self.active.lock().map(|a| a.elapsed()).unwrap_or(Duration::ZERO))
+    }
+
+    /// A page says it is closing: what the highlights hold now is kept to compare.
+    fn bye(&self) {
+        let left = super::highlights::read(Path::new(&self.file)).ok().map(|t| t.unwrap_or_default().into_bytes());
+        if let Ok(mut was) = self.left.lock() {
+            *was = left;
+        }
+        self.said_bye.store(true, Ordering::SeqCst);
+    }
+
+    /// After each ping. Once the last page has said it closes and been gone for a ping's
+    /// time (a reload comes back sooner), this server no longer counts as a view of the
+    /// flowchart (Q44), and its highlights go unless they changed since that goodbye
+    /// (F21); a page that only lost its connection still counts, until this server stops
+    /// (oF5). When the time is up, `end` runs. All of it is done with the open pages held,
+    /// so that no page can connect or show a sign of life between the look and the deed
+    /// and have its highlights deleted while it is open (bug hunt round 4, E17, F22).
+    fn after_ping(&self, end: impl FnOnce()) {
+        let pages = self.pages.lock().unwrap_or_else(|e| e.into_inner());
+        let idle = self.idle(&pages);
+        let gone = idle.is_some_and(|d| d >= PING) && self.said_bye.load(Ordering::SeqCst);
+        between();
+        if gone {
+            let left = self.left.lock().map(|l| l.clone()).unwrap_or(None);
+            super::highlights::stop_showing(left.as_deref());
+        }
+        if time_is_up(idle) {
+            super::highlights::show(None);
+            end();
+        }
+        drop(pages);
     }
 
     fn address(&self) -> String {
@@ -351,6 +390,21 @@ impl Server {
 /// Whether the server's time is up: no page is open and none has been for `IDLE`.
 fn time_is_up(idle: Option<Duration>) -> bool {
     idle.is_some_and(|d| d >= IDLE)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Run between the pinger's look and its deed, by a test of that moment.
+    static BETWEEN: std::cell::RefCell<Option<Box<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn between() {
+    #[cfg(test)]
+    BETWEEN.with(|run| {
+        if let Some(run) = &*run.borrow() {
+            run();
+        }
+    });
 }
 
 fn handle(mut stream: TcpStream, server: &Server) {
@@ -376,7 +430,7 @@ fn handle(mut stream: TcpStream, server: &Server) {
             None => refuse(&mut stream, 404),
         },
         Route::Bye => {
-            server.said_bye.store(true, Ordering::SeqCst);
+            server.bye();
             respond_json(&mut stream, 200, "{\"ok\":true}".to_string());
         }
         Route::Ping => {
@@ -585,6 +639,7 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
         active: Mutex::new(Instant::now()),
         connections: AtomicUsize::new(0),
         said_bye: AtomicBool::new(false),
+        left: Mutex::new(None),
     });
 
     // Tell the open pages when the file changes.
@@ -599,22 +654,16 @@ pub fn run(args: Vec<String>, asset: impl Fn(&str) -> Option<Vec<u8>> + Send + S
     write_record(&server);
     super::print_out(&server.address());
 
-    // Ping the open pages, and end when none has been open for long enough. Once the
-    // last page has said it closes and been gone for a ping's time (a reload comes back
-    // sooner), this server no longer counts as a view of the flowchart (Q44); a page
-    // that only lost its connection still does, until this server stops (oF5).
+    // Ping the open pages; stop counting as a view of the flowchart, and end, when none
+    // has been open for long enough (`after_ping`).
     let pinger = server.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(PING);
         pinger.tell(b": ping\n\n");
-        if pinger.idle().is_some_and(|d| d >= PING) && pinger.said_bye.load(Ordering::SeqCst) {
-            super::highlights::show(None);
-        }
-        if time_is_up(pinger.idle()) {
-            super::highlights::show(None);
+        pinger.after_ping(|| {
             delete_record(&pinger);
             std::process::exit(0);
-        }
+        });
     });
 
     for stream in listener.incoming() {
@@ -821,8 +870,9 @@ mod tests {
             active: Mutex::new(Instant::now()),
             connections: AtomicUsize::new(0),
             said_bye: AtomicBool::new(false),
+            left: Mutex::new(None),
         };
-        assert_eq!(server.idle(), None); // a page is open
+        assert_eq!(idle_now(&server), None); // a page is open
         // As after a long sleep: the last sign of life is long ago.
         let Some(long_ago) = Instant::now().checked_sub(IDLE * 2) else { return };
         drop(browser);
@@ -831,19 +881,19 @@ mod tests {
             server.tell(b": ping
 
 ");
-            if server.idle().is_some() {
+            if idle_now(&server).is_some() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        let idle = server.idle().expect("the closed page is noticed");
+        let idle = idle_now(&server).expect("the closed page is noticed");
         assert!(!time_is_up(Some(idle)), "{idle:?}");
         // With no page, time passes.
         *server.active.lock().unwrap() = long_ago;
         server.tell(b": ping
 
 ");
-        assert!(time_is_up(server.idle()));
+        assert!(time_is_up(idle_now(&server)));
     }
 
     #[test]
@@ -851,5 +901,105 @@ mod tests {
         assert!(!time_is_up(None)); // a page is open
         assert!(!time_is_up(Some(Duration::from_secs(599))));
         assert!(time_is_up(Some(Duration::from_secs(600))));
+    }
+
+    fn idle_now(server: &Server) -> Option<Duration> {
+        server.idle(&server.pages.lock().unwrap())
+    }
+
+    /// A flowchart in a folder of its own, with highlights, shown by this program, and a
+    /// server of it whose last page said it closes and went long enough ago.
+    fn after_goodbye(name: &str) -> (PathBuf, PathBuf, Server) {
+        let dir = std::env::temp_dir().join(format!("naiad-serve-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a --> b\n").unwrap();
+        super::super::highlights::write(&flow, "a\n").unwrap();
+        super::super::highlights::show(Some(&flow));
+        let server = Server {
+            port: 0,
+            secret: String::new(),
+            file: flow.to_string_lossy().into_owned(),
+            asset: Box::new(|_| None),
+            pages: Mutex::new(Vec::new()),
+            active: Mutex::new(Instant::now()),
+            connections: AtomicUsize::new(0),
+            said_bye: AtomicBool::new(false),
+            left: Mutex::new(None),
+        };
+        server.bye();
+        *server.active.lock().unwrap() = Instant::now().checked_sub(PING * 2).unwrap();
+        (dir, flow, server)
+    }
+
+    /// Bug hunt round 4, F21: highlights an agent writes after the last page said it
+    /// closes are kept by the cleanup that follows, to show at the next opening; the
+    /// highlights left as they were at the goodbye go.
+    #[test]
+    fn highlights_written_after_the_goodbye_are_kept() {
+        use super::super::highlights::{file_of, show, shown, write, SHOWING};
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let (dir, flow, server) = after_goodbye("f21");
+        let file = file_of(&flow).unwrap();
+        write(&flow, "a\n# the agent's\nb\n").unwrap();
+        let mut ended = false;
+        server.after_ping(|| ended = true);
+        assert!(!ended, "not yet ten minutes");
+        assert_eq!(shown(), None, "no longer a view of the flowchart");
+        assert_eq!(fs::read_to_string(&file).unwrap(), "a\n# the agent's\nb\n", "the agent's highlights are kept");
+        // Left as they were at the goodbye: deleted.
+        show(Some(&flow));
+        server.bye();
+        server.after_ping(|| {});
+        assert_eq!(shown(), None);
+        assert!(!file.exists(), "unchanged since the goodbye: deleted");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 4, E17 and F22: a page that comes while the cleanup after the last
+    /// goodbye runs (its read of the highlights, then its connection) is a view of the
+    /// flowchart once open, and the highlights it read are what the file holds.
+    #[test]
+    fn a_page_that_comes_during_the_cleanup_keeps_its_highlights() {
+        use super::super::highlights::{read, shown, SHOWING};
+        use std::sync::mpsc::channel;
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let (dir, flow, server) = after_goodbye("e17");
+        let server = Arc::new(server);
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let _browser = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        // The page, as `handle` serves it: a read of the highlights, then the watch.
+        let (go, wait) = channel::<()>();
+        let (done, finished) = channel::<()>();
+        let page = {
+            let (server, flow) = (server.clone(), flow.clone());
+            std::thread::spawn(move || {
+                wait.recv().unwrap();
+                server.touch();
+                let read = read(&flow).unwrap();
+                server.pages.lock().unwrap().push(stream);
+                server.said_bye.store(false, Ordering::SeqCst);
+                server.touch();
+                super::super::highlights::show(Some(&flow));
+                let _ = done.send(());
+                read
+            })
+        };
+        // It comes between the pinger's look and its deed, and may finish meanwhile.
+        BETWEEN.with(|run| {
+            *run.borrow_mut() = Some(Box::new(move || {
+                go.send(()).unwrap();
+                let _ = finished.recv_timeout(Duration::from_millis(500));
+            }))
+        });
+        server.after_ping(|| {});
+        BETWEEN.with(|run| *run.borrow_mut() = None);
+        let read = page.join().unwrap();
+        assert!(shown().is_some(), "the open page counts as a view");
+        assert_eq!(read, super::super::highlights::read(&flow).unwrap(), "the page shows what the file holds");
+        super::super::highlights::show(None);
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

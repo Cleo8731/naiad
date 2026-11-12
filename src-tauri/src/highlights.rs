@@ -186,7 +186,7 @@ fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
 /// left as it is (`readable`).
 pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
-        return remove(flowchart, true);
+        return remove(flowchart, true, None);
     }
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
@@ -219,27 +219,33 @@ fn unreadable(file: &Path) -> String {
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
 /// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
 /// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
-/// (`readable`): it is kept, with its folders.
-pub fn delete(flowchart: &Path) -> Result<(), String> {
-    remove(flowchart, false)
+/// (`readable`): it is kept, with its folders. With `same`, the file is deleted only if
+/// `same` says yes to its bytes, and otherwise kept, with its folders.
+pub fn delete(flowchart: &Path, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<(), String> {
+    remove(flowchart, false, same)
 }
 
 /// `delete`; with `refuse`, a file Naiad cannot read is an error (Clear, a blank write)
 /// rather than only kept (the last view closing).
-fn remove(flowchart: &Path, refuse: bool) -> Result<(), String> {
+fn remove(flowchart: &Path, refuse: bool, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<(), String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
     let Some(held_naiad) = hold(naiad, false)? else { return Ok(()) };
     if let Some(held_folder) = hold(folder, false)? {
         if no_link(&file)? {
-            if !readable(&file)? {
-                return if refuse { Err(unreadable(&file)) } else { Ok(()) };
-            }
-            match fs::remove_file(&file) {
-                Ok(()) => {}
-                Err(e) if e.kind() == ErrorKind::NotFound => {}
-                Err(e) => return Err(e.to_string()),
+            if let Some(bytes) = read_unlinked(&file)? {
+                if std::str::from_utf8(&bytes).is_err() {
+                    return if refuse { Err(unreadable(&file)) } else { Ok(()) };
+                }
+                if same.is_some_and(|same| !same(&bytes)) {
+                    return Ok(());
+                }
+                match fs::remove_file(&file) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.to_string()),
+                }
             }
         }
         // A held folder cannot be removed, even by Naiad: let it go, look again, remove.
@@ -299,6 +305,23 @@ fn full(flowchart: &Path) -> String {
 /// another flowchart by this, and no other view shows that one, its highlights file is
 /// deleted.
 pub fn show(flowchart: Option<&Path>) {
+    change(flowchart, None);
+}
+
+/// As `show(None)`, once the last page of `naiad serve` has said it closes and gone: its
+/// highlights are deleted only if they still hold `left`, what they held when it said so
+/// (None: not known), so that highlights an agent wrote after it went are kept, to show
+/// at the next opening (bug hunt round 4, F21).
+pub fn stop_showing(left: Option<&[u8]>) {
+    match left {
+        Some(left) => change(None, Some(&|now: &[u8]| now == left)),
+        None => change(None, Some(&|_: &[u8]| false)),
+    }
+}
+
+/// `show`, the highlights of a flowchart no longer shown deleted only if `delete_if` says
+/// yes to them (`delete`).
+fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     let next = flowchart.map(full);
     let before = match SHOWN.lock() {
         Ok(mut shown) => std::mem::replace(&mut *shown, next.clone()),
@@ -325,10 +348,20 @@ pub fn show(flowchart: Option<&Path>) {
     if let Some(old) = before {
         let same = next.as_deref().is_some_and(|n| n.to_lowercase() == old.to_lowercase());
         if !same && !shown_elsewhere(&dir, me, &old) {
-            let _ = delete(Path::new(&old));
+            let _ = delete(Path::new(&old), delete_if);
         }
     }
 }
+
+/// The flowchart this program shows, for a test.
+#[cfg(test)]
+pub(crate) fn shown() -> Option<String> {
+    SHOWN.lock().unwrap().clone()
+}
+
+/// Taken by every test that changes what this program shows (`SHOWN` is one for all).
+#[cfg(test)]
+pub(crate) static SHOWING: Mutex<()> = Mutex::new(());
 
 /// Whether a running program other than `me` has a record that names `flowchart`.
 /// Records left by programs that ended without removing theirs (a crash) are removed.
@@ -446,7 +479,7 @@ mod tests {
         assert!(read(&flow).is_err());
         assert!(write(&flow, "").unwrap_err().contains("not UTF-8"));
         assert!(write(&flow, "b\n").unwrap_err().contains("not UTF-8"));
-        delete(&flow).unwrap();
+        delete(&flow, None).unwrap();
         assert_eq!(fs::read(&file).unwrap(), utf16);
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -472,10 +505,10 @@ mod tests {
         write(&flow, "a\n").unwrap();
         let proposal = dir.join(".naiad").join("flow.mmd").join("a-proposal.mmd");
         fs::write(&proposal, "flowchart TD\n").unwrap();
-        delete(&flow).unwrap();
+        delete(&flow, None).unwrap();
         assert!(proposal.exists());
         assert!(!dir.join(".naiad").join("flow.mmd").join("highlights.txt").exists());
-        delete(&flow).unwrap(); // deleting what is not there is no error
+        delete(&flow, None).unwrap(); // deleting what is not there is no error
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -495,6 +528,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_link_in_the_naiad_folder_is_never_followed() {
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
         let dir = folder("link");
         let flow = dir.join("flow.mmd");
         fs::write(&flow, "flowchart TD\n").unwrap();
@@ -511,7 +545,7 @@ mod tests {
             assert!(read(&flow).is_err(), "read through {}", link.display());
             assert!(write(&flow, "a\n").is_err(), "write through {}", link.display());
             assert!(write(&flow, " \n").is_err(), "delete through {}", link.display());
-            assert!(delete(&flow).is_err());
+            assert!(delete(&flow, None).is_err());
             show(Some(&flow));
             show(None); // a closing view deletes highlights: not through a link
             assert_eq!(fs::read_to_string(&theirs).unwrap(), "theirs\n", "the file elsewhere is untouched");
@@ -581,7 +615,7 @@ mod tests {
         assert!(read(&flow).is_err());
         assert!(write(&flow, "b\n").is_err());
         assert!(write(&flow, " \n").is_err());
-        assert!(delete(&flow).is_err());
+        assert!(delete(&flow, None).is_err());
         assert!(fs::symlink_metadata(&file).unwrap().file_type().is_symlink(), "the link is kept");
         assert_eq!(fs::read_to_string(outside.join("theirs.txt")).unwrap(), "theirs\n");
         fs::remove_dir(&file).unwrap(); // the junction only
