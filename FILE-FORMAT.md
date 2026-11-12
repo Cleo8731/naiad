@@ -71,7 +71,8 @@ Rules:
    is written in the flowchart (`%% @collect`).
 2. Every following line that starts with `%%` belongs to the description. One space
    after `%%` is dropped; the rest of the line is the text, spaces at its end included
-   (two make a Markdown line break). The sidebar shows each
+   (two make a Markdown line break). A line of spaces alone is an empty line (point 4).
+   The sidebar shows each
    line as a line of its own, so a paragraph is written as one line, however long.
 3. The block ends at the first line that is not a `%%` comment (an empty line ends it),
    or at the next `%% @id` line.
