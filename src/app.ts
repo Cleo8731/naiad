@@ -213,7 +213,13 @@ export class App {
     // Text typed into the description while it or the file was written is written too
     // (bug hunt round 4, C41), unless the person let the description go; so is a title,
     // a label or a group's title typed in the sidebar and not entered (round 6, C44).
-    for (let letGoDraft = false, letGoBox = false; ;) {
+    // Typed in the text pane while the save read or wrote the file: saved again, up to
+    // five times, or asked about below, never left out (round 5, C43). Each save is
+    // followed by a look at the sidebar, so what was typed there during it is written
+    // too (round 6, oC53).
+    let letGoDraft = false;
+    let letGoBox = false;
+    for (let more = 0; ;) {
       if (!letGoDraft && !(await this.writeDraft())) {
         if (!(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
         letGoDraft = true;
@@ -226,11 +232,10 @@ export class App {
         }
       }
       await this.flushSave();
-      if ((letGoDraft || !this.sidebar.draft()) && (letGoBox || !this.sidebar.typed())) break;
+      if (!letGoDraft && this.sidebar.draft()) continue;
+      if (!letGoBox && this.sidebar.typed()) continue;
+      if (!this.typingWaits() || more++ >= 5) break;
     }
-    // Typed in the text pane while the save read or wrote the file: saved too, or asked
-    // about below, never left out (bug hunt round 5, C43).
-    for (let more = 0; more < 5 && this.typingWaits(); more++) await this.flushSave();
     if (!this.path) return true;
     if (this.text !== this.saved || this.typingWaits()) {
       return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);

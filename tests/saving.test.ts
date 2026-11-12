@@ -913,6 +913,70 @@ describe('a description being written is saved when the person leaves it (bug hu
     expect(titleBox().value).toBe('Collect everything');
   });
 
+  // Bug hunt round 6, oC53: the close's later saves, for typing in the text pane (C43),
+  // looked at the text pane only: a description typed meanwhile was neither written nor
+  // asked about.
+  /** Holds the close's first two reads of the file: `reached[k]` when read k starts, `release[k]()` lets it go on. */
+  function holdTwoReads(disk: FakeDisk) {
+    const reached: Promise<void>[] = [];
+    const release: (() => void)[] = [];
+    const held: Promise<void>[] = [];
+    const reach: (() => void)[] = [];
+    for (let k = 0; k < 2; k++) {
+      reached.push(new Promise<void>((r) => reach.push(r)));
+      held.push(new Promise<void>((r) => release.push(r)));
+    }
+    let n = 0;
+    disk.afterRead = () => {
+      const k = n++;
+      if (k > 1) return;
+      reach[k]();
+      return held[k];
+    };
+    return { reached, release };
+  }
+
+  it('oC53: a description typed while the close saves the text pane again is written too', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    edit(); // the box is open and untouched: nothing to write when the close starts
+    ui.type(TYPED); // so the close saves
+    const { reached, release } = holdTwoReads(disk);
+    const closing = disk.closeGuard!();
+    await reached[0];
+    ui.type(TYPED.replace('typed[', 'typed2[')); // typed in the text pane during the first save
+    release[0]();
+    await reached[1]; // the close's second save, for that typing
+    box()!.value = DRAFT;
+    box()!.dispatchEvent(new Event('input'));
+    release[1]();
+    expect(await closing).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('typed2[');
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+  }, 10000);
+
+  it('oC53: and a title typed then is written too', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    ui.type(TYPED);
+    const { reached, release } = holdTwoReads(disk);
+    const closing = disk.closeGuard!();
+    await reached[0];
+    ui.type(TYPED.replace('typed[', 'typed2['));
+    release[0]();
+    await reached[1];
+    typeInto(titleBox(), 'Collect everything');
+    release[1]();
+    expect(await closing).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('typed2[');
+    expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+  }, 10000);
+
   it('C42: Edit pressed again while a Done that can be written is checked shows what Done writes', async () => {
     const { disk, ui } = await start();
     await writing(ui);
