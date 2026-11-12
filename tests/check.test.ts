@@ -104,6 +104,28 @@ describe('what Mermaid rejects, on the line of the file', () => {
     });
   }
 
+  // Mermaid reads the front matter before it drops comment lines, and takes a directive
+  // out before that: a "%%" line in the front matter is YAML, and "%%%%{init}%%" leaves a
+  // bare "%%" (bug hunt round 3, D17, D19).
+  const unseen: [string, string, number, RegExp][] = [
+    ['D17: a "%%" line first in the front matter', '---\n%% a comment\ntitle: T\n---\nflowchart TD\n  A --> B\n', 2, /front matter.*"# note"/],
+    ['D17: a "%%" line further down the front matter', '---\ntitle: T\n%% a comment\n---\nflowchart TD\n  A --> B\n', 3, /front matter.*"# note"/],
+    ['D19: "%%" before a directive above the header', '%%%%{init: {"theme": "dark"}}%%\nflowchart TD\n  A --> B\n', 1, /"%%" before "%%\{"/],
+  ];
+  for (const [name, text, line, message] of unseen) {
+    test(name, async () => {
+      const found = (await check(text)).filter((f) => f.rule === 'mermaid');
+      expect(found.map((f) => f.line)).toEqual([line]);
+      expect(found[0].message).toMatch(message);
+    });
+  }
+
+  test('D17: "%%" lines Mermaid reads in front matter, and a directive in a comment line, are no problem', async () => {
+    expect(await check('---\ntitle: |\n  %% @a\n  %% x\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
+    expect(await check('---\ntitle: T\n  %% indented\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
+    expect(await check('flowchart TD\n  A --> B\n  %% note %%{init: {"theme": "dark"}}%%\n')).toEqual([]);
+  });
+
   test('the hints name the commonest causes', async () => {
     const message = async (t: string) => (await check(t)).find((f) => f.rule === 'mermaid')?.message ?? '';
     expect(await message('flowchart TD\n  C[Title with (parens)] --> B\n')).toMatch(/double quotes/);

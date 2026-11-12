@@ -33,7 +33,8 @@ export interface Report {
   charts: number;
 }
 
-const COMMENT_LINE = /^[ \t]*%%(?!\{)/;
+/** A line Mermaid drops as a comment: "%%" and at least one more character, not "%%{". */
+const COMMENT_LINE = /^\s*%%(?!\{)./;
 const BARE_COMMENT = /^([ \t]*)%%[ \t]*$/;
 
 /** Lines that never hold a statement, so a "%%" in them never starts a comment. */
@@ -86,14 +87,29 @@ function brackets(text: string): number {
   return n;
 }
 
-/** The text as Mermaid is given it: every comment line emptied, so that the line
- *  numbers in Mermaid's messages can be turned back into lines of the file; and a
- *  comment after a statement cut off (it is reported by itself), so that Mermaid goes
- *  on to judge the lines below it. */
-function forReading(lines: string[], comments = commentsAfter(lines)): string {
+/**
+ * For each line, whether Mermaid drops it as a comment before it reads the flowchart. It
+ * reads the front matter first, so a line of it is never dropped (a "%%" line there is
+ * YAML); then it takes out every `%%{...}%%` directive; then it drops each line of "%%"
+ * and at least one more character, not "%%{" (bug hunt round 3, D17, D19: a line
+ * `%%%%{init}%%` is left a bare "%%", which is no comment).
+ */
+function droppedLines(lines: string[]): boolean[] {
+  const info = parseDoc(lines.join('\n')).info;
+  return lines.map((l, i) => {
+    const kind = info[i]?.kind;
+    return kind !== 'frontmatter' && kind !== 'directive' && COMMENT_LINE.test(l.replace(/%%\{.*?\}%%/g, ''));
+  });
+}
+
+/** The text as Mermaid is given it: every line it drops as a comment emptied, so that
+ *  the line numbers in Mermaid's messages can be turned back into lines of the file;
+ *  and a comment after a statement cut off (it is reported by itself), so that Mermaid
+ *  goes on to judge the lines below it. */
+function forReading(lines: string[], comments = commentsAfter(lines), dropped = droppedLines(lines)): string {
   return lines
     .map((l, i) => {
-      if (COMMENT_LINE.test(l)) return '';
+      if (dropped[i]) return '';
       const at = comments.get(i);
       return at === undefined ? l : l.slice(0, at).trimEnd();
     })
@@ -102,16 +118,16 @@ function forReading(lines: string[], comments = commentsAfter(lines)): string {
 
 /** Mermaid drops what stands above the first line of the flowchart (frontmatter, empty
  *  lines) before it counts lines. This is how many lines that is. */
-function linesAbove(lines: string[]): number {
+function linesAbove(lines: string[], dropped: boolean[]): number {
   let i = 0;
-  const blank = (l: string) => l.trim() === '' || COMMENT_LINE.test(l);
-  while (i < lines.length && blank(lines[i])) i++;
+  const blank = (k: number) => lines[k].trim() === '' || dropped[k];
+  while (i < lines.length && blank(i)) i++;
   if (i < lines.length && lines[i].trim() === '---') {
     let j = i + 1;
     while (j < lines.length && lines[j].trim() !== '---') j++;
     if (j < lines.length) {
       i = j + 1;
-      while (i < lines.length && blank(lines[i])) i++;
+      while (i < lines.length && blank(i)) i++;
     }
   }
   return i;
@@ -124,6 +140,7 @@ function hint(line: string): string {
     return ' The word "end" closes a group, so it cannot be a node id in lower case: use another id.';
   }
   if (/^(style|classDef|linkStyle)\b.*,\s*$/.test(s)) return ' The style list ends with a comma: take it off.';
+  if (/%%%%\{/.test(s)) return ' Take off the "%%" before "%%{": Mermaid takes the directive out, and the "%%" left is no comment.';
   // A title with brackets, quotes or a bar inside it and no double quotes around it.
   if (/[\[({][^"\])}]*[()\[\]{}|][^"]*[\])}]/.test(s) || /--[^->|]*[\[\](){}][^->]*--?>/.test(s)) {
     return ' A title or label that holds brackets or other signs goes in double quotes: id["Title (with brackets)"].';
@@ -147,16 +164,19 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
   }
 
   // Mermaid's own verdict.
+  const dropped = droppedLines(lines);
+  const front = doc.info.map((li, i) => (li.kind === 'frontmatter' ? i : -1)).filter((i) => i >= 0);
   let ids: Set<string> | null = null;
   try {
-    ids = new Set((await read(forReading(lines, trailing))).ids);
+    ids = new Set((await read(forReading(lines, trailing, dropped))).ids);
   } catch (e) {
     const message = String((e as Error)?.message ?? e);
     const at = /Parse error on line (\d+)/.exec(message);
+    const yaml = /\((\d+):\d+\)/.exec(message);
     if (at) {
-      const index = Math.min(lines.length - 1, Number(at[1]) - 1 + linesAbove(lines));
+      const index = Math.min(lines.length - 1, Number(at[1]) - 1 + linesAbove(lines, dropped));
       let last = lines.length - 1;
-      while (last > 0 && (lines[last].trim() === '' || COMMENT_LINE.test(lines[last]))) last--;
+      while (last > 0 && (lines[last].trim() === '' || dropped[last])) last--;
       if (trailing.has(index)) {
         // Already reported as a comment after a statement.
       } else if (index > last) {
@@ -165,6 +185,14 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
       } else {
         add(index, 'mermaid', `Mermaid cannot read the flowchart from this line on.${hint(lines[index])}`);
       }
+    } else if (yaml && front.length) {
+      // The YAML reader counts the lines of the front matter from 1, and may stop one
+      // line past the one it cannot read.
+      const [open, close] = [front[0], front[front.length - 1]];
+      const percent = (k: number) => /^\s*%/.test(lines[k]);
+      let index = Math.min(close, open + Number(yaml[1]));
+      if (!percent(index) && index - 1 > open && percent(index - 1)) index--;
+      add(index, 'mermaid', `Mermaid cannot read the front matter (the YAML between the "---" lines): ${message.split('\n')[0]}.${percent(index) ? ' In YAML a line cannot start with "%": write a note there as "# note", or put it below the front matter.' : ''}`);
     } else if (/No diagram type detected/.test(message)) {
       add(Math.max(0, doc.header), 'mermaid', 'Mermaid finds no diagram here: the first line of a flowchart is "flowchart TD" (or LR, BT, RL).');
     } else {
