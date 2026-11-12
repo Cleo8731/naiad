@@ -170,26 +170,39 @@ export function fileBridge(): Plugin {
           const naiad = path.join(path.dirname(current), '.naiad');
           const folder = path.join(naiad, path.basename(current));
           const highlights = path.join(folder, 'highlights.txt');
-          if (url === '/highlights') {
-            // `.naiad`, the flowchart's folder in it and `highlights.txt` are Naiad's own:
-            // a link there (a junction, which anyone can make on Windows) would lead
-            // reads, writes and deletes elsewhere, so it is refused, never followed and
-            // never removed, as highlights.rs does (bug hunt round 2, F8).
-            const link = [naiad, folder, highlights].find((p) => {
-              try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
-            });
-            if (link) return send(500, { error: `${link} is a link; Naiad does not follow links in its .naiad folder.` });
-          }
+          // `.naiad`, the flowchart's folder in it and `highlights.txt` are Naiad's own:
+          // a link there (a junction, which anyone can make on Windows) would lead
+          // reads, writes and deletes elsewhere, so it is refused, never followed and
+          // never removed, as highlights.rs does (bug hunt round 2, F8). The look is
+          // taken right before each step, never before a write's text has arrived: a
+          // link made while it arrived was written through (round 3, F15). highlights.rs
+          // also holds the folders so that none can be swapped between a look and a
+          // step; Node cannot, so this stand-in leaves that gap of a moment.
+          const linked = () => [naiad, folder, highlights].find((p) => {
+            try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
+          });
+          const refuse = (link: string) => send(500, { error: `${link} is a link; Naiad does not follow links in its .naiad folder.` });
           if (url === '/highlights' && req.method === 'GET') {
+            const link = linked();
+            if (link) return refuse(link);
             return send(200, { text: fs.existsSync(highlights) ? readText(highlights) : null });
           }
           if (url === '/highlights' && req.method === 'PUT') {
             const text = await readBody(req);
+            let link = linked();
+            if (link) return refuse(link);
             if (text.trim() === '') {
               fs.rmSync(highlights, { force: true });
-              for (const d of [folder, naiad]) { try { fs.rmdirSync(d); } catch { /* not empty, or gone */ } }
+              for (const d of [folder, naiad]) {
+                if (linked()) break;
+                try { fs.rmdirSync(d); } catch { /* not empty, or gone */ }
+              }
             } else {
-              fs.mkdirSync(folder, { recursive: true });
+              for (const d of [naiad, folder]) {
+                try { fs.mkdirSync(d); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }
+                link = linked();
+                if (link) return refuse(link);
+              }
               replaceFile(highlights, text);
             }
             return send(200, { ok: true });

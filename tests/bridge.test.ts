@@ -37,7 +37,8 @@ async function bridge(files: Record<string, string | Buffer> = {}, served = 'flo
   (fileBridge().configureServer as (s: unknown) => void)({ httpServer: server, middlewares: { use: (p: string, fn: Handler) => handlers.push([p, fn]) } });
   process.env.NAIAD_FILE = before;
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  const port = (server.address() as AddressInfo).port;
+  const base = `http://127.0.0.1:${port}/api`;
   stops.push(async () => {
     await new Promise<void>((r) => server.close(() => r()));
     fs.rmSync(dir, { recursive: true, force: true });
@@ -59,7 +60,7 @@ async function bridge(files: Record<string, string | Buffer> = {}, served = 'flo
     });
     req.on('error', () => resolve(got));
   });
-  return { dir, file, other: path.join(dir, 'other.mmd'), call, heard, read: (p: string) => fs.readFileSync(p, 'utf8') };
+  return { dir, file, port, other: path.join(dir, 'other.mmd'), call, heard, read: (p: string) => fs.readFileSync(p, 'utf8') };
 }
 
 describe('the dev page hears of a change whatever the letter case of its path (bug hunt C18)', () => {
@@ -219,6 +220,40 @@ describe('the dev page never follows a link in its .naiad folder (bug hunt round
       }
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  // Round 3, F15: the look was taken before a write's text arrived, and the write made
+  // after it. A junction made while the text was still arriving was written through.
+  it.runIf(process.platform === 'win32')('F15: a junction made while a write\'s text arrives is refused, for a write and for a blank write', async () => {
+    for (const body of ['mine\nmine2', ' \n\n']) {
+      const b = await bridge();
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'naiad-outside-'));
+      const naiad = path.join(b.dir, '.naiad');
+      try {
+        fs.mkdirSync(path.join(outside, 'flow.mmd'));
+        const theirs = path.join(outside, 'flow.mmd', 'highlights.txt');
+        fs.writeFileSync(theirs, 'theirs\n');
+        const status = await new Promise<number>((resolve, reject) => {
+          const headers = { 'x-naiad': '1', 'x-naiad-path': encodeURIComponent(b.file), 'content-length': String(Buffer.byteLength(body)) };
+          const req = http.request({ host: '127.0.0.1', port: b.port, method: 'PUT', path: '/api/highlights', headers }, (res) => {
+            res.resume();
+            res.on('end', () => resolve(res.statusCode ?? 0));
+          });
+          req.on('error', reject);
+          req.write(body.slice(0, 1));
+          setTimeout(() => {
+            fs.symlinkSync(outside, naiad, 'junction');
+            req.end(body.slice(1));
+          }, 300);
+        });
+        expect(status).toBe(500);
+        expect(b.read(theirs)).toBe('theirs\n');
+        expect(fs.lstatSync(naiad).isSymbolicLink()).toBe(true);
+      } finally {
+        try { fs.rmdirSync(naiad); } catch { /* not made */ } // the junction only
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
     }
   });
 });

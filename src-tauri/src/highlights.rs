@@ -35,27 +35,102 @@ fn checked(flowchart: &Path) -> Result<PathBuf, String> {
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
     for step in [naiad, folder, file.as_path()] {
-        match fs::symlink_metadata(step) {
-            Ok(m) if m.file_type().is_symlink() => {
-                return Err(format!("{} is a link; Naiad does not follow links in its .naiad folder.", step.display()))
-            }
-            Ok(_) => {}
-            Err(e) if e.kind() == ErrorKind::NotFound => break,
-            Err(e) => return Err(e.to_string()),
+        if !no_link(step)? {
+            break;
         }
     }
     Ok(file)
 }
 
+/// Whether `path` is there, once it is clear that it is not a link (an error if it is).
+fn no_link(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => Err(link_error(path)),
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn link_error(path: &Path) -> String {
+    format!("{} is a link; Naiad does not follow links in its .naiad folder.", path.display())
+}
+
+/// `.naiad`, or its folder for a flowchart, made first if `make` and it is missing,
+/// then held open until the answer is dropped (None: missing, and not `make`). While it
+/// is held, Windows lets nobody delete or rename it, so a link cannot be put in its place
+/// between Naiad's look at it and Naiad's use of it: the look is made through the held
+/// folder itself (bug hunt round 3, F15: a junction made between a check and a write led
+/// the write outside). A folder taken away while Naiad makes it is an error, never None:
+/// a write would go on unheld.
+fn hold(dir: &Path, make: bool) -> Result<Option<fs::File>, String> {
+    if !no_link(dir)? {
+        if !make {
+            return Ok(None);
+        }
+        match fs::create_dir(dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let held = match open_held(dir) {
+        Ok(held) => held,
+        Err(e) if e.kind() == ErrorKind::NotFound && make => {
+            return Err(format!("{} was taken away while Naiad made it.", dir.display()))
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let what = held.metadata().map_err(|e| e.to_string())?;
+    if what.file_type().is_symlink() {
+        return Err(link_error(dir));
+    }
+    if !what.is_dir() {
+        return Err(format!("{} is not a folder.", dir.display()));
+    }
+    Ok(Some(held))
+}
+
+/// The folder itself, never where a link there leads, shared with others for reading
+/// and writing but never for deleting.
+#[cfg(windows)]
+fn open_held(dir: &Path) -> std::io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    // Listing, not only its attributes: Windows keeps a handle's sharing terms only for
+    // a handle that may read, write or delete.
+    const LIST_DIRECTORY: u32 = 0x1;
+    const READ_ATTRIBUTES: u32 = 0x80;
+    const SHARE_READ: u32 = 0x1;
+    const SHARE_WRITE: u32 = 0x2;
+    const BACKUP_SEMANTICS: u32 = 0x0200_0000; // needed to open a folder
+    const OPEN_REPARSE_POINT: u32 = 0x0020_0000; // the link itself, if it is one
+    fs::OpenOptions::new()
+        .access_mode(LIST_DIRECTORY | READ_ATTRIBUTES)
+        .share_mode(SHARE_READ | SHARE_WRITE)
+        .custom_flags(BACKUP_SEMANTICS | OPEN_REPARSE_POINT)
+        .open(dir)
+}
+
+#[cfg(not(windows))]
+fn open_held(dir: &Path) -> std::io::Result<fs::File> {
+    fs::File::open(dir)
+}
+
 /// The highlights file's text, or None if there is none.
 pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
     let file = checked(flowchart)?;
+    let folder = file.parent().ok_or("No folder.")?;
+    let naiad = folder.parent().ok_or("No folder.")?;
+    let Some(_naiad) = hold(naiad, false)? else { return Ok(None) };
+    let Some(_folder) = hold(folder, false)? else { return Ok(None) };
+    if !no_link(&file)? {
+        return Ok(None);
+    }
     match fs::read_to_string(&file) {
         Ok(text) => {
             // An agent may have made the folder: hide it as Naiad's own (Q26).
-            if let Some(naiad) = file.parent().and_then(Path::parent) {
-                hide(naiad);
-            }
+            hide(naiad);
             Ok(Some(text))
         }
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
@@ -64,36 +139,48 @@ pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
 }
 
 /// Writes the highlights file whole, through a temporary file and a rename
-/// (`replace_file`, lib.rs). A text with nothing but blank lines deletes it instead.
+/// (`replace_file`, lib.rs), with `.naiad` and its folder held (`hold`). A text with
+/// nothing but blank lines deletes it instead.
 pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
         return delete(flowchart);
     }
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
-    fs::create_dir_all(folder).map_err(|e| e.to_string())?;
-    if let Some(naiad) = folder.parent() {
-        hide(naiad);
-    }
+    let naiad = folder.parent().ok_or("No folder.")?;
+    let _naiad = hold(naiad, true)?.ok_or("No .naiad folder.")?;
+    let _folder = hold(folder, true)?.ok_or("No folder in .naiad.")?;
+    hide(naiad);
+    no_link(&file)?;
     super::replace_file(&file, text.as_bytes())
 }
 
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
 /// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
-/// removed when the way holds a link (`checked`).
+/// removed when the way holds a link (`checked`, `hold`).
 pub fn delete(flowchart: &Path) -> Result<(), String> {
     let file = checked(flowchart)?;
-    match fs::remove_file(&file) {
-        Ok(()) => {}
-        Err(e) if e.kind() == ErrorKind::NotFound => {}
-        Err(e) => return Err(e.to_string()),
-    }
-    if let Some(folder) = file.parent() {
-        // Each fails, as it should, when the folder still holds something.
-        let _ = fs::remove_dir(folder);
-        if let Some(naiad) = folder.parent() {
-            let _ = fs::remove_dir(naiad);
+    let folder = file.parent().ok_or("No folder.")?;
+    let naiad = folder.parent().ok_or("No folder.")?;
+    let Some(held_naiad) = hold(naiad, false)? else { return Ok(()) };
+    if let Some(held_folder) = hold(folder, false)? {
+        if no_link(&file)? {
+            match fs::remove_file(&file) {
+                Ok(()) => {}
+                Err(e) if e.kind() == ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
         }
+        // A held folder cannot be removed, even by Naiad: let it go, look again, remove.
+        // Each removal fails, as it should, when the folder still holds something.
+        drop(held_folder);
+        if no_link(folder)? {
+            let _ = fs::remove_dir(folder);
+        }
+    }
+    drop(held_naiad);
+    if no_link(naiad)? {
+        let _ = fs::remove_dir(naiad);
     }
     Ok(())
 }
@@ -340,6 +427,34 @@ mod tests {
             assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "the link is kept");
             fs::remove_dir(&link).unwrap(); // removes the junction only
         }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 3 (F15): while Naiad holds its folders, nobody can delete or rename
+    /// them, so a junction cannot take their place between Naiad's look and its write.
+    #[cfg(windows)]
+    #[test]
+    fn a_held_folder_cannot_be_swapped_for_a_link() {
+        let dir = folder("held");
+        let naiad = dir.join(".naiad");
+        let held = hold(&naiad, true).unwrap().expect("made and held");
+        assert!(fs::remove_dir(&naiad).is_err(), "removed while held");
+        assert!(fs::rename(&naiad, dir.join("moved")).is_err(), "renamed while held");
+        // Naiad's own work in it goes on: a folder made and held, a file written by rename.
+        let inner = hold(&naiad.join("flow.mmd"), true).unwrap().expect("made and held");
+        assert!(fs::rename(&naiad.join("flow.mmd"), naiad.join("moved")).is_err(), "inner renamed while held");
+        crate::replace_file(&naiad.join("flow.mmd").join("highlights.txt"), b"a\n").unwrap();
+        assert_eq!(fs::read_to_string(naiad.join("flow.mmd").join("highlights.txt")).unwrap(), "a\n");
+        drop(inner);
+        drop(held);
+        fs::rename(&naiad, dir.join("moved")).unwrap();
+        // A junction where the folder was is refused, never held.
+        junction(&naiad, &dir.join("moved"));
+        assert!(hold(&naiad, true).is_err());
+        assert!(hold(&naiad, false).is_err());
+        // The look through the held folder sees it too, as when the junction is made after the first look.
+        assert!(open_held(&naiad).unwrap().metadata().unwrap().file_type().is_symlink());
+        fs::remove_dir(&naiad).unwrap(); // the junction only
         fs::remove_dir_all(&dir).unwrap();
     }
 
