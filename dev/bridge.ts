@@ -98,24 +98,58 @@ export function fileBridge(): Plugin {
     configureServer(server) {
       let current = path.resolve(process.env.NAIAD_FILE ?? 'examples/sample.mmd');
       const listeners = new Set<ServerResponse>();
-      let watcher: fs.FSWatcher | null = null;
+      let watchers: fs.FSWatcher[] = [];
       let timer: NodeJS.Timeout | null = null;
+      let again: NodeJS.Timeout | null = null;
+      const tell = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { for (const res of listeners) res.write('data: changed\n\n'); }, 60);
+      };
 
-      const watch = () => {
-        watcher?.close();
+      /**
+       * Watch the file's folder, not the file: editors often save by replacing the file.
+       * Watch every folder above it too: when one of them is made again (it was deleted
+       * or renamed away), the watches below it are made again and the page is told, as
+       * the desktop shell does (src-tauri/src/lib.rs, `watch_folder`; bug hunt round 3,
+       * C35, oC3). `told`: tell the page once the file's folder is watched again.
+       */
+      const watch = (told = false) => {
+        for (const w of watchers) w.close();
+        watchers = [];
+        // The folders from the file's own up to the root.
+        const chain: string[] = [];
+        for (let d = path.dirname(current); chain[chain.length - 1] !== d; d = path.dirname(d)) chain.push(d);
+        // In each folder, the one name that matters: the file's, or the folder below.
         // Letter case set aside, as Windows does: a path typed in other letters than the
         // name on disk, or a file renamed to other letters, is still the file (bug hunt C18).
         // A name matched by mistake costs one read that finds nothing changed.
-        const name = path.basename(current).toLowerCase();
-        // Watch the folder, not the file: editors often save by replacing the file.
-        watcher = fs.watch(path.dirname(current), (_event, changed) => {
-          if (changed && changed.toLowerCase() !== name) return;
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(() => { for (const res of listeners) res.write('data: changed\n\n'); }, 60);
+        const names = [current, ...chain].map((p) => path.basename(p).toLowerCase());
+        let whole = true;
+        chain.forEach((folder, level) => {
+          try {
+            const w = fs.watch(folder, (event, changed) => {
+              if (changed && changed.toLowerCase() !== names[level]) return;
+              if (level === 0) return tell();
+              // A folder below made, deleted or renamed: take the watches again, a moment
+              // later, so that a burst of events makes them once.
+              if (event !== 'rename') return;
+              if (again) clearTimeout(again);
+              again = setTimeout(() => watch(true), 30);
+            });
+            // A folder deleted while watched: its watch ends, and the folder above sees it made again.
+            w.on('error', () => w.close());
+            watchers.push(w);
+          } catch {
+            if (level === 0) whole = false;
+          }
         });
+        if (told && whole) tell();
       };
       watch();
-      server.httpServer?.on('close', () => watcher?.close());
+      server.httpServer?.on('close', () => {
+        for (const w of watchers) w.close();
+        if (again) clearTimeout(again);
+      });
 
       // Open in one view changes the file for every view of this server, so the page names
       // the file it shows (header x-naiad-path) and a page still showing another is

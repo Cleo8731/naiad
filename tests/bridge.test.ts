@@ -23,7 +23,10 @@ afterEach(async () => {
 async function bridge(files: Record<string, string | Buffer> = {}, served = 'flow.mmd') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'naiad-bridge-'));
   const all = { 'flow.mmd': 'flowchart TD\n    a --> b\n', 'other.mmd': 'flowchart LR\n    o\n', ...files };
-  for (const [name, text] of Object.entries(all)) fs.writeFileSync(path.join(dir, name), text);
+  for (const [name, text] of Object.entries(all)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), text);
+  }
   const file = path.join(dir, 'flow.mmd');
   const handlers: [string, Handler][] = [];
   const server = http.createServer((req, res) => {
@@ -86,6 +89,55 @@ describe('the dev page hears of a change whatever the letter case of its path (b
   it('a change to another file in the folder is not heard', async () => {
     const { other, heard } = await bridge();
     expect(await heard(() => fs.writeFileSync(other, 'flowchart LR\n    p\n'))).not.toContain('data: changed');
+  });
+});
+
+describe('the dev page hears again after a folder above the file is made again (bug hunt round 3: C35, oC3)', () => {
+  const text = 'flowchart TD\n    a --> b\n';
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it('C35: the file\'s folder deleted and made again', async () => {
+    const { dir, heard } = await bridge({ 'w/flow.mmd': text }, 'w/flow.mmd');
+    const w = path.join(dir, 'w');
+    fs.rmSync(w, { recursive: true });
+    await pause(300);
+    fs.mkdirSync(w);
+    fs.writeFileSync(path.join(w, 'flow.mmd'), text);
+    expect(await heard(() => fs.writeFileSync(path.join(w, 'flow.mmd'), 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  it('oC3: the file\'s folder renamed away and made again', async () => {
+    const { dir, heard } = await bridge({ 'w/flow.mmd': text }, 'w/flow.mmd');
+    const w = path.join(dir, 'w');
+    fs.renameSync(w, path.join(dir, 'w-away'));
+    fs.mkdirSync(w);
+    fs.writeFileSync(path.join(w, 'flow.mmd'), text);
+    expect(await heard(() => fs.writeFileSync(path.join(w, 'flow.mmd'), 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  it('C35: the folder two up deleted, then made again a folder at a time', async () => {
+    const { dir, heard } = await bridge({ 'up/low/flow.mmd': text }, 'up/low/flow.mmd');
+    const up = path.join(dir, 'up');
+    const low = path.join(up, 'low');
+    fs.rmSync(up, { recursive: true });
+    await pause(300);
+    fs.mkdirSync(up);
+    await pause(300);
+    fs.mkdirSync(low);
+    fs.writeFileSync(path.join(low, 'flow.mmd'), text);
+    expect(await heard(() => fs.writeFileSync(path.join(low, 'flow.mmd'), 'flowchart TD\n    a --> c\n'))).toContain('data: changed');
+  });
+
+  it('the page is told when the folder is made again with the file in it', async () => {
+    const { dir, heard } = await bridge({ 'w/flow.mmd': text }, 'w/flow.mmd');
+    const w = path.join(dir, 'w');
+    fs.rmSync(w, { recursive: true });
+    await pause(300);
+    // Moved into place whole, as a folder copied or restored would be.
+    const made = path.join(dir, 'made');
+    fs.mkdirSync(made);
+    fs.writeFileSync(path.join(made, 'flow.mmd'), 'flowchart TD\n    a --> c\n');
+    expect(await heard(() => fs.renameSync(made, w))).toContain('data: changed');
   });
 });
 
