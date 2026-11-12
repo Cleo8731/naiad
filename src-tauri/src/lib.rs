@@ -11,9 +11,10 @@ mod serve;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::ModifyKind;
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
@@ -85,7 +86,7 @@ fn print_out(text: &str) {
 
 /// The one file watcher; replaced whenever another file is opened.
 #[derive(Default)]
-struct Watching(Mutex<Option<RecommendedWatcher>>);
+struct Watching(Mutex<Option<Watch>>);
 
 /// The shell only ever touches flowchart files and Markdown files (which can hold a
 /// flowchart block), whatever the page asks for. On Windows a ':' inside a name names a
@@ -260,10 +261,22 @@ fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<()
     Ok(())
 }
 
+/// A watch made by `watch_folder`; dropping it ends the watch.
+pub(crate) struct Watch {
+    _watcher: Arc<Mutex<RecommendedWatcher>>,
+}
+
 /// Calls `on_change` whenever the file at `path` changes on disk, for the window and for
 /// `naiad serve`. The folder is watched rather than the file, because many editors save
 /// by replacing the file.
-pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + 'static) -> Result<RecommendedWatcher, String> {
+///
+/// The folder above is watched too, for the folder's own name. A watch on Windows ends
+/// without a word when its folder is deleted, and follows its folder when it is renamed;
+/// so when a folder of that name is made or renamed into the place, the watch is made
+/// again on it, and `on_change` is called, since the file may have changed meanwhile
+/// (bug hunt round 2, E8). The watch is made again on a thread of its own: the watcher
+/// cannot be asked to watch from inside its own handler.
+pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + Sync + 'static) -> Result<Watch, String> {
     let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
@@ -273,18 +286,48 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + 'static) -
     // form (`\\?\C:\...`), which `canonicalize` gives; the watcher passes the path on as
     // it is (bug hunt E3).
     let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
-    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(event) = res {
-            if event.paths.iter().any(|q| names_file(q, &name)) {
-                on_change();
-            }
+    let above = dir.parent().map(Path::to_path_buf);
+    let folder = dir.file_name().map(OsStr::to_os_string);
+    let on_change = Arc::new(on_change);
+    let (again, asked) = std::sync::mpsc::channel::<()>();
+
+    let tell = on_change.clone();
+    let seen_from = above.clone();
+    let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(event) = res else { return };
+        let up = |q: &&PathBuf| seen_from.is_some() && q.parent() == seen_from.as_deref();
+        if event.paths.iter().any(|q| !up(&q) && names_file(q, &name)) {
+            tell();
+        }
+        let made = matches!(event.kind, EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)));
+        if made && event.paths.iter().any(|q| up(&q) && folder.as_deref().is_some_and(|f| names_file(q, f))) {
+            let _ = again.send(());
         }
     })
     .map_err(|e| e.to_string())?;
-    watcher
-        .watch(&dir, RecursiveMode::NonRecursive)
-        .map_err(|e| e.to_string())?;
-    Ok(watcher)
+    let watcher = Arc::new(Mutex::new(watcher));
+    {
+        let mut w = watcher.lock().map_err(|e| e.to_string())?;
+        w.watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
+        if let Some(above) = &above {
+            let _ = w.watch(above, RecursiveMode::NonRecursive);
+        }
+    }
+
+    // Ends when the watch is dropped: the handler, and with it `again`, goes too.
+    let held = Arc::downgrade(&watcher);
+    std::thread::spawn(move || {
+        while asked.recv().is_ok() {
+            while asked.try_recv().is_ok() {}
+            let Some(watcher) = held.upgrade() else { return };
+            let Ok(mut w) = watcher.lock() else { return };
+            let _ = w.unwatch(&dir);
+            if w.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
+                on_change();
+            }
+        }
+    });
+    Ok(Watch { _watcher: watcher })
 }
 
 /// Whether a changed path names the watched file, by its name `name`. Letter case is set
@@ -600,7 +643,7 @@ mod tests {
     }
 
     /// Watches `watched`; the count is how many times `on_change` has been called.
-    fn watching(watched: &Path) -> (RecommendedWatcher, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    fn watching(watched: &Path) -> (Watch, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let count = calls.clone();
         let watcher = watch_folder(watched, move || {
@@ -670,5 +713,61 @@ mod tests {
         let (_watcher, calls) = watching(&flow);
         assert_eq!(heard(&calls, || fs::write(dir.join("other.mmd"), "flowchart LR\n    o\n").unwrap()), 0);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 2, E8: after the file's folder is deleted and made again, a change
+    /// to the file is still heard.
+    #[test]
+    fn a_folder_deleted_and_made_again_is_still_watched() {
+        let dir = folder("remade");
+        let inner = dir.join("inner");
+        let flow = inner.join("flow.mmd");
+        fs::create_dir_all(&inner).unwrap();
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        let (_watcher, calls) = watching(&flow);
+        heard(&calls, || fs::remove_dir_all(&inner).unwrap());
+        heard(&calls, || {
+            fs::create_dir(&inner).unwrap();
+            fs::write(&flow, "flowchart TD\n    b\n").unwrap();
+        });
+        assert!(heard(&calls, || fs::write(&flow, "flowchart TD\n    c\n").unwrap()) > 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The same when another folder is renamed into the folder's place: the watch must
+    /// not follow the old folder to its new name.
+    #[test]
+    fn a_folder_renamed_into_the_place_is_watched() {
+        let dir = folder("swapped");
+        let inner = dir.join("inner");
+        let next = dir.join("next");
+        fs::create_dir_all(&inner).unwrap();
+        fs::create_dir_all(&next).unwrap();
+        let flow = inner.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        fs::write(next.join("flow.mmd"), "flowchart TD\n    b\n").unwrap();
+        let (_watcher, calls) = watching(&flow);
+        heard(&calls, || {
+            fs::rename(&inner, dir.join("old")).unwrap();
+            fs::rename(&next, &inner).unwrap();
+        });
+        assert!(heard(&calls, || fs::write(&flow, "flowchart TD\n    c\n").unwrap()) > 0);
+        assert_eq!(heard(&calls, || fs::write(dir.join("old").join("flow.mmd"), "flowchart TD\n    d\n").unwrap()), 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Watching the folder above holds it no more than before: the whole tree can still
+    /// be deleted while the file is watched. (Renaming a folder above a watched folder is
+    /// refused by Windows, "Access is denied", with or without the watch above.)
+    #[test]
+    fn the_folder_above_can_still_be_deleted() {
+        let dir = folder("above");
+        let inner = dir.join("x").join("inner");
+        fs::create_dir_all(&inner).unwrap();
+        fs::write(inner.join("flow.mmd"), "flowchart TD\n    a\n").unwrap();
+        let (_watcher, _calls) = watching(&inner.join("flow.mmd"));
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(!dir.exists());
     }
 }

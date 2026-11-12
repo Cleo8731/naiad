@@ -361,6 +361,47 @@ const at = (rest) => `/${secret}/${rest}`;
     check('and its stream says when the file changed', got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
   }
 
+  // ---- The file's folder deleted and made again (bug hunt round 2, E8)
+  const innerDir = path.join(dir, 'inner');
+  fs.mkdirSync(innerDir);
+  const inner = path.join(innerDir, 'flow.mmd');
+  fs.copyFileSync(file, inner);
+  const im = execFileSync(cli, ['serve', inner], { encoding: 'utf8' }).trim().match(/^http:\/\/127\.0\.0\.1:(\d+)\/([0-9a-f]{32})\/$/);
+  check('a file in a folder of its own is served', !!im, 'no address');
+  if (im) {
+    const [innerPort, innerAt] = [Number(im[1]), `/${im[2]}/`];
+    ports.push(innerPort);
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const open = () => new Promise((resolve) => {
+      const page = { d: '' };
+      page.req = http.get({ host: '127.0.0.1', port: innerPort, path: innerAt + 'api/watch' }, (res) => {
+        res.on('data', (c) => { page.d += c; });
+        resolve(page);
+      });
+      page.req.on('error', () => resolve(page));
+    });
+    const changes = (page) => (page.d.match(/data: changed/g) ?? []).length;
+    const first = await open();
+    await wait(300);
+    const content = fs.readFileSync(inner);
+    fs.rmSync(innerDir, { recursive: true });
+    await wait(500);
+    fs.mkdirSync(innerDir);
+    fs.writeFileSync(inner, content);
+    await wait(1000);
+    const mid = changes(first);
+    fs.appendFileSync(inner, '%% after\n');
+    await wait(1000);
+    check('after the file\'s folder is deleted and made again, the stream still says when the file changed (bug hunt round 2, E8)', changes(first) > mid, `${changes(first) - mid} more after ${mid}`);
+    const second = await open();
+    await wait(300);
+    fs.appendFileSync(inner, '%% fresh\n');
+    await wait(1000);
+    check('and so does the stream of a page opened after it', changes(second) > 0, String(changes(second)));
+    first.req.destroy();
+    second.req.destroy();
+  }
+
   cleanUp();
   console.log(`${count} trials, ${failed} failed`);
   process.exit(failed ? 1 : 0);
