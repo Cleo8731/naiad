@@ -51,5 +51,15 @@ export async function runCli(job: CliJob, backend: Backend): Promise<{ code: num
     problems += report.findings.length;
     out.push(formatReport(name, raw, report));
   }
-  return { code: failed ? 2 : problems ? 1 : 0, output: out.join('\n') };
+  return { code: failed ? 2 : problems ? 1 : 0, output: wellFormed(out.join('\n')) };
+}
+
+/**
+ * The text with any half of a character pair (a lone surrogate) replaced by U+FFFD. The
+ * output is handed to the desktop shell as UTF-8, which cannot hold half a character:
+ * the handover would fail, and the program would end only at its 60-second limit,
+ * after `fix` had written its change (bug hunt round 2, D13).
+ */
+export function wellFormed(text: string): string {
+  return text.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '�');
 }

@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
 import { checkFile, checkFlowchart, fixFile, formatReport, type Finding } from '../src/core/check';
 import { reading } from '../src/semantics';
+import { runCli, wellFormed } from '../src/cli';
+import type { Backend } from '../src/backend';
 import { fixtures } from './fixtures';
 
 beforeAll(() => mermaid.initialize({ startOnLoad: false }));
@@ -186,6 +188,38 @@ describe('the printed report', () => {
     expect(out).toMatch(/flow\.mmd: 1 problem$/);
     const clean = formatReport('flow.mmd', fixtures.sample, await checkFile('flow.mmd', fixtures.sample, reading));
     expect(clean).toBe('flow.mmd: no problems');
+  });
+
+  // Half a character pair (a lone surrogate) cannot cross to the desktop shell: the
+  // program printed nothing and ended at its 60-second limit (bug hunt round 2, D13).
+  const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+  const pre = 'A --> B %% ';
+  const emojiLine = pre + 'x'.repeat(117 - 1 - pre.length) + '\u{1F600}' + 'tail tail tail tail';
+
+  test('D13: a long line is cut between characters, never inside an emoji', async () => {
+    const text = 'flowchart TD\n  ' + emojiLine + '\n';
+    const out = formatReport('emoji.mmd', text, await checkFile('emoji.mmd', text, reading));
+    expect(out).not.toMatch(LONE);
+    const shown = out.split('\n').find((l) => l.startsWith('    '))!;
+    expect(Array.from(shown.trim())).toHaveLength(120);
+    expect(shown).toContain('\u{1F600}');
+  });
+
+  test('D13: fix of a file holding such a line reports what it wrote, in whole characters', async () => {
+    let disk = 'flowchart TD\n  ' + emojiLine + '\n%%\n';
+    let writes = 0;
+    const backend = {
+      read: async () => disk,
+      write: async (_p: string, text: string) => { disk = text; writes++; return true; },
+    } as unknown as Backend;
+    const { output } = await runCli({ mode: 'fix', files: [{ name: 'emoji.mmd', path: 'C:/x/emoji.mmd' }] }, backend);
+    expect(writes).toBe(1);
+    expect(output).toMatch(/emoji\.mmd: fixed line 3/);
+    expect(output).not.toMatch(LONE);
+  });
+
+  test('wellFormed replaces only a lone half of a pair', () => {
+    expect(wellFormed('a\ud83d b \ude00 \u{1F600}')).toBe('a\ufffd b \ufffd \u{1F600}');
   });
 });
 

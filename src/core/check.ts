@@ -275,8 +275,10 @@ export function formatReport(name: string, raw: string, report: Report): string 
   const out: string[] = [];
   for (const f of report.findings) {
     out.push(`${name}:${f.line}: ${f.message}${f.fixable ? ' ("naiad fix" does this.)' : ''}`);
-    const shown = (lines[f.line - 1] ?? '').trim();
-    if (shown) out.push(`    ${shown.length > 120 ? `${shown.slice(0, 117)}...` : shown}`);
+    // Counted and cut by characters, never inside one: half an emoji cannot be printed
+    // (bug hunt round 2, D13).
+    const shown = Array.from((lines[f.line - 1] ?? '').trim());
+    if (shown.length) out.push(`    ${shown.length > 120 ? `${shown.slice(0, 117).join('')}...` : shown.join('')}`);
   }
   out.push(report.findings.length ? `${name}: ${count(report.findings.length)}` : `${name}: no problems`);
   return out.join('\n');
