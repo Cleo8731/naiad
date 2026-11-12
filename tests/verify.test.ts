@@ -216,6 +216,28 @@ describe('a single " in an accessible title or description (bug hunt round 2: A1
   }
 });
 
+describe('an accessible title is read where Mermaid reads one (bug hunt round 3: A25, A30)', () => {
+  // Mermaid's lexer reads `accTitle\s*:\s*` before anything else on a line, and its `\s*`
+  // runs on over the line break: with nothing after the colon, the next line that is
+  // not blank or a comment is the text, not a statement.
+  for (const kind of ['accTitle', 'accDescr']) {
+    test(`${kind}: with nothing after the colon`, async () => {
+      const top = `flowchart TD\n  ${kind}:\n\n  %% a note\n  a --> c\n`;
+      const before = `${top}  c --> d\n`;
+      expect(parseDoc(before).info.map((i) => i.kind)).toEqual(['header', 'acc', 'blank', 'comment', 'acc', 'statement', 'blank']);
+      const res = (await applyChecked(before, { kind: 'deleteNode', id: 'c' })).text;
+      expect(res.startsWith(top)).toBe(true);
+      expect(res).not.toContain('c --> d');
+    });
+  }
+  test('accTitle:::hot is a title, not a node', async () => {
+    const before = 'flowchart TD\n  accTitle:::hot\n  a[A] --> b[B]\n  accTitle --> a\n';
+    expect(parseDoc(before).info[1].kind).toBe('acc');
+    expect((await applyChecked(before, { kind: 'deleteNode', id: 'accTitle' })).text)
+      .toBe('flowchart TD\n  accTitle:::hot\n  a[A] --> b[B]\n');
+  });
+});
+
 describe('a "%%" line in the front matter is not a description (bug hunt round 3: xA23)', () => {
   // Mermaid reads the front matter (a first line `---` to the next `---` line) before it
   // drops comments, so a `%%` line in it is YAML text: an edit leaves it as it is.

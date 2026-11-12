@@ -307,8 +307,12 @@ export function unquote(raw: string): string {
   return t.replace(/#quot;/g, '"');
 }
 
-/** An accessible title or description: `accTitle:`, `accDescr:` or `accDescr {`. */
-const ACC = /^acc(Title|Descr)\b/;
+/**
+ * An accessible title or description: `accTitle:`, `accDescr:` or `accDescr {`, as
+ * Mermaid's lexer reads one, before anything else on the line (`accTitle:::hot` is a
+ * title, not a node: bug hunt round 3, A25).
+ */
+const ACC = /^(accTitle\s*:|accDescr\s*[:{])/;
 
 export function parseDoc(text: string): Doc {
   const lines = text.split('\n');
@@ -322,6 +326,10 @@ export function parseDoc(text: string): Doc {
   let inFront = false;
   let seenContent = false;
   let openBlock: '' | 'directive' | 'acc' = '';
+  // After `accTitle:` or `accDescr:` with nothing after the colon: Mermaid's `\s*` runs
+  // on over the line break, so the next line that is not blank or a comment is the text
+  // (bug hunt round 3, A30).
+  let accNext = false;
   // Inside a quoted text that runs over several lines: Mermaid reads every line up to
   // the closing quote as part of the text, a "%%" line included.
   let inString = false;
@@ -366,9 +374,16 @@ export function parseDoc(text: string): Doc {
       continue;
     }
     seenContent = true;
+    if (accNext) { li.kind = 'acc'; accNext = false; continue; }
     // `accTitle:` and `accDescr:` hold plain text to the end of the line (`accDescr {` to
     // its "}"), in which a quote opens nothing (bug hunt round 2, A15).
-    if (opensOrCloses(raw) && !ACC.test(t)) inString = true;
+    if (ACC.test(t)) {
+      li.kind = 'acc';
+      if (t.includes('{') && !t.includes('}')) openBlock = 'acc';
+      else if (/^acc(Title|Descr)\s*:\s*$/.test(t)) accNext = true;
+      continue;
+    }
+    if (opensOrCloses(raw)) inString = true;
     if (header < 0 && /^(flowchart|graph)\b/i.test(t)) {
       const m = HEADER_RE.exec(t);
       if (m) { li.kind = 'header'; li.dir = m[2]?.toUpperCase(); header = i; }
@@ -425,11 +440,6 @@ export function parseDoc(text: string): Doc {
     if (m) { li.kind = 'linkStyle'; li.ids = m[1].split(','); continue; }
     m = /^click\s+(\S+)\s+\S/.exec(t);
     if (m) { li.kind = 'click'; li.ids = [m[1]]; continue; }
-    if (ACC.test(t)) {
-      li.kind = 'acc';
-      if (t.includes('{') && !t.includes('}')) openBlock = 'acc';
-      continue;
-    }
     problems.push({ line: i, message: 'A line the editor cannot read with certainty.' });
   }
   for (const s of stack) problems.push({ line: s.line, message: 'A subgraph with no "end".' });

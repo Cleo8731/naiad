@@ -297,6 +297,12 @@ but must be edited as text:
 - Styling: `style id fill:#...,stroke:#...,color:#...`.
 - Inside a quoted title, a double quote is written `#quot;`.
 
+An accessible title or description (`accTitle: text`, `accDescr: text`, `accDescr {`
+... `}`) is plain text, never a node or an arrow, even when it reads like one
+(`accTitle:::hot`). Write its text on the same line: Mermaid reads an `accTitle:` or
+`accDescr:` with nothing after the colon as taking the next line that is not blank or
+a comment for its text, and Naiad reads it the same way.
+
 ## Checking a file from a terminal
 
 Where Naiad is installed, a terminal can check a file without opening a window:
