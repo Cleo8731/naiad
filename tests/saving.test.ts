@@ -475,3 +475,54 @@ describe('text typed while a change on disk is being taken in is kept (bug hunt 
     expect((await seenThroughUndo(disk, ui, 5)).some((t) => t.includes(LINE))).toBe(true);
   });
 });
+
+describe('the sidebar never puts back a value a change on disk replaced (bug hunt round 2: C26)', () => {
+  const select = (ui: Awaited<ReturnType<typeof start>>['ui'], id: string) =>
+    (ui.app as unknown as { select(t: unknown): void }).select({ kind: 'node', id });
+
+  it('C26: a title box left untouched does not put the old title back when focus leaves', async () => {
+    const { disk, ui } = await start();
+    select(ui, 'collect');
+    await sleep(50);
+    const input = document.querySelector<HTMLInputElement>('input.title')!;
+    expect(input.value).toBe('Collect data');
+    input.focus();
+    disk.outside(FILE, BASE.replace('collect[Collect data]', 'collect[Gather data]'));
+    await sleep(500);
+    expect(input.value).toBe('Gather data'); // an untouched box follows the file
+    input.blur();
+    await sleep(1000);
+    expect(disk.files.get(FILE)).toContain('collect[Gather data]');
+    expect(ui.area().value).toContain('collect[Gather data]');
+  });
+
+  it('a title the person typed is still saved when the file changed meanwhile', async () => {
+    const { disk, ui } = await start();
+    select(ui, 'collect');
+    await sleep(50);
+    const input = document.querySelector<HTMLInputElement>('input.title')!;
+    input.focus();
+    input.value = 'Collect everything';
+    disk.outside(FILE, BASE.replace('collect[Collect data]', 'collect[Gather data]'));
+    await sleep(500);
+    expect(input.value).toBe('Collect everything'); // what is typed stays
+    input.blur();
+    expect(await ui.until((t) => t.includes('collect[Collect everything]'))).toBe(true);
+  });
+
+  it('C26: Done on a description left untouched does not put the old text back', async () => {
+    const { disk, ui } = await start();
+    select(ui, 'collect');
+    await sleep(50);
+    document.querySelector<HTMLButtonElement>('.desc-head button:not(.primary):not([title="Esc"])')!.click(); // Edit
+    const area = document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!;
+    expect(area.hidden).toBe(false);
+    disk.outside(FILE, BASE.replace('%% Pull the raw exports from the warehouse.', '%% The agent wrote this instead.'));
+    await sleep(500);
+    expect(area.value).toBe('The agent wrote this instead.'); // an untouched description follows the file
+    document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click(); // Done
+    await sleep(1000);
+    expect(disk.files.get(FILE)).toContain('The agent wrote this instead.');
+    expect(disk.files.get(FILE)).not.toContain('Pull the raw exports');
+  });
+});

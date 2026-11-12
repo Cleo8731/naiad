@@ -122,21 +122,35 @@ export class Sidebar {
       h('button', { class: 'ghost close', title: 'Close (Esc)', 'aria-label': 'Close', click: () => this.actions.close() }, '×'));
   }
 
-  /** A text box that commits on Enter or when focus leaves, and reverts on Esc. */
+  /**
+   * A text box that commits on Enter or when focus leaves, and reverts on Esc. It commits
+   * only a change the person made: a box left as it was never puts back a value that a
+   * change on disk replaced meanwhile, and while untouched it follows the file (bug hunt
+   * C26). A box being typed in keeps what is typed.
+   */
   private textBox(cls: string, placeholder: string, read: (v: View) => string, commit: (value: string) => void): HTMLInputElement {
     let shown = '';
+    let start = ''; // the value the box held before the person changed it
     const input = h('input', {
       class: cls, type: 'text', placeholder, spellcheck: 'false',
+      focus: () => { start = input.value; },
       keydown: (e) => {
         const k = (e as KeyboardEvent).key;
         if (k === 'Enter') input.blur();
-        if (k === 'Escape') { input.value = shown; input.blur(); e.stopPropagation(); }
+        if (k === 'Escape') { input.value = start = shown; input.blur(); e.stopPropagation(); }
       },
-      blur: () => { if (input.value !== shown) commit(input.value); },
+      blur: () => {
+        if (input.value !== start) commit(input.value);
+        else input.value = shown;
+      },
     });
     this.sync.push((v) => {
       shown = read(v);
-      if (document.activeElement !== input) input.value = shown;
+      if (input.value === shown) { start = shown; return; }
+      if (document.activeElement === input && input.value !== start) return; // being typed in
+      const all = input.selectionStart === 0 && input.selectionEnd === input.value.length;
+      input.value = start = shown;
+      if (all && document.activeElement === input) input.select(); // as focusTitle left it
     });
     return input;
   }
@@ -203,6 +217,7 @@ export class Sidebar {
     const doneBtn = h('button', { class: 'primary', title: 'Ctrl+Enter', click: () => finish(true) }, 'Done');
     const cancelBtn = h('button', { class: 'ghost', title: 'Esc', click: () => finish(false) }, 'Cancel');
     let current = '';
+    let started = ''; // the description as Edit showed it, or as the file has it since, while untouched
     const paint = () => {
       const editing = this.editingDescription;
       body.hidden = editing;
@@ -215,17 +230,24 @@ export class Sidebar {
     };
     const begin = () => {
       this.editingDescription = true;
-      area.value = current;
+      area.value = started = current;
       paint();
       area.focus();
     };
     const finish = (save: boolean) => {
       this.editingDescription = false;
-      if (save && area.value !== current) a.setDescription(id, area.value);
+      // Only a change the person made is saved: Done on an untouched description never
+      // puts back a text that a change on disk replaced meanwhile (bug hunt C26).
+      if (save && area.value !== started) a.setDescription(id, area.value);
       paint();
     };
     body.addEventListener('dblclick', begin);
-    this.sync.push((v) => { current = (v as NodeView).description; paint(); });
+    this.sync.push((v) => {
+      current = (v as NodeView).description;
+      // An untouched description being edited follows the file; one being typed in keeps what is typed.
+      if (this.editingDescription && area.value === started && current !== started) area.value = started = current;
+      paint();
+    });
 
     const shape = this.select(
       () => PICKABLE_SHAPES.map((t) => option(t, SHAPES.find((s) => s.type === t)!.label)),
