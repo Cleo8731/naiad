@@ -65,13 +65,30 @@ function replaceFile(target: string, text: string, unchanged: () => boolean = ()
     fs.closeSync(fd);
     fd = -1;
     if (!unchanged()) return false;
-    fs.renameSync(tmp, target);
+    fs.renameSync(tmp, onDisk(target));
     done = true;
     return true;
   } finally {
     if (fd >= 0) fs.closeSync(fd);
     if (!done) fs.rmSync(tmp, { force: true });
   }
+}
+
+/**
+ * `target` with the file's name as it is on disk. Windows ignores letter case, so a
+ * rename over a file through a path typed in other letters (`FLOW.mmd` for `Flow.mmd`)
+ * would rename the file to them (bug hunt C24). The name on disk is taken only when
+ * exactly one name in the folder matches and none matches exactly; otherwise, and for
+ * a new file, `target` as given. Elsewhere a name in other letters is another file.
+ */
+function onDisk(target: string): string {
+  if (process.platform !== 'win32') return target;
+  const name = path.basename(target);
+  let names: string[];
+  try { names = fs.readdirSync(path.dirname(target)); } catch { return target; }
+  if (names.includes(name)) return target;
+  const same = names.filter((n) => n.toLowerCase() === name.toLowerCase());
+  return same.length === 1 ? path.join(path.dirname(target), same[0]) : target;
 }
 
 export function fileBridge(): Plugin {

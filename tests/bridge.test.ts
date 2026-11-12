@@ -88,6 +88,22 @@ describe('the dev page hears of a change whatever the letter case of its path (b
   });
 });
 
+describe('a save keeps the name the file has on disk (bug hunt C24)', () => {
+  it.runIf(process.platform === 'win32')('C24: served by a path in other letters, a save does not rename the file', async () => {
+    const b = await bridge({}, 'FLOW.mmd');
+    const shows = path.join(b.dir, 'FLOW.mmd');
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    x\n', shows })).status).toBe(200);
+    expect(fs.readdirSync(b.dir).sort()).toEqual(['flow.mmd', 'other.mmd']);
+    expect(b.read(b.file)).toBe('flowchart TD\n    x\n');
+  });
+
+  it('a new file is made under the name given', async () => {
+    const b = await bridge({}, 'New.mmd');
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    n\n', shows: path.join(b.dir, 'New.mmd') })).status).toBe(200);
+    expect(fs.readdirSync(b.dir).sort()).toEqual(['New.mmd', 'flow.mmd', 'other.mmd']);
+  });
+});
+
 describe('the dev page writes only the file it shows (bug hunt S21: C14)', () => {
   it('C14: after another view opens another file, a save from the first view is refused and both files stay', async () => {
     const b = await bridge();

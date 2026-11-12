@@ -196,13 +196,47 @@ pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn
         drop(file);
         let done = written
             .and_then(|()| unchanged())
-            .and_then(|go| if go { fs::rename(&tmp, target).map(|()| true) } else { Ok(false) });
+            .and_then(|go| if go { fs::rename(&tmp, on_disk(target)).map(|()| true) } else { Ok(false) });
         if !matches!(done, Ok(true)) {
             let _ = fs::remove_file(&tmp);
         }
         return done.map_err(|e| e.to_string());
     }
     Err("No free name for a temporary file next to the file.".into())
+}
+
+/// `target` with the file's name as it is on disk. Windows ignores letter case, so a
+/// rename over a file through a path typed in other letters (`FLOW.mmd` for `Flow.mmd`)
+/// would rename the file to them (bug hunt C24). The name on disk is taken only when
+/// exactly one name in the folder matches and none matches exactly; otherwise, and for
+/// a new file, `target` as given.
+#[cfg(windows)]
+fn on_disk(target: &Path) -> PathBuf {
+    let (Some(dir), Some(name)) = (target.parent(), target.file_name()) else {
+        return target.to_path_buf();
+    };
+    let dir = if dir.as_os_str().is_empty() { Path::new(".") } else { dir };
+    let wanted = name.to_string_lossy().to_lowercase();
+    let mut same = Vec::new();
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let n = entry.file_name();
+        if n == name {
+            return target.to_path_buf();
+        }
+        if n.to_string_lossy().to_lowercase() == wanted {
+            same.push(n);
+        }
+    }
+    match same.as_slice() {
+        [only] => target.with_file_name(only),
+        _ => target.to_path_buf(),
+    }
+}
+
+/// Elsewhere a name in other letters is another file: `target` as given.
+#[cfg(not(windows))]
+fn on_disk(target: &Path) -> PathBuf {
+    target.to_path_buf()
 }
 
 /// Starts watching a file. Emits "file-changed" with the path whenever it changes on
@@ -409,6 +443,24 @@ mod tests {
         replace_file(&flow, b"new").unwrap();
         assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
         assert_eq!(names(&dir).len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt C24: a save through a path in other letters than the file's name on disk
+    /// keeps that name, checked or not; a new file is made under the name given.
+    #[cfg(windows)]
+    #[test]
+    fn a_save_through_a_path_in_other_letters_keeps_the_name_on_disk() {
+        let dir = folder("case-save");
+        fs::write(dir.join("Flow.mmd"), "old").unwrap();
+        let typed = |name: &str| dir.join(name).to_string_lossy().into_owned();
+        assert!(write_file(typed("FLOW.mmd"), "new".into(), None).unwrap());
+        assert_eq!(names(&dir), ["Flow.mmd"]);
+        assert!(write_file(typed("flow.MMD"), "newer".into(), Some("new".into())).unwrap());
+        assert_eq!(names(&dir), ["Flow.mmd"]);
+        assert_eq!(fs::read_to_string(dir.join("Flow.mmd")).unwrap(), "newer");
+        assert!(write_file(typed("Fresh.mmd"), "made".into(), None).unwrap());
+        assert_eq!(names(&dir), ["Flow.mmd", "Fresh.mmd"]);
         fs::remove_dir_all(&dir).unwrap();
     }
 

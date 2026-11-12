@@ -200,7 +200,8 @@ More text.
   still writing it finishes first. Naiad knows the file by its name with letter case
   set aside, as Windows does: opened by a path typed in other letters, or renamed to
   other letters only (`flow.mmd` to `Flow.mmd`), it is still the file, and its changes
-  are still seen.
+  are still seen. A save keeps the name the file has on disk, whatever letters the path
+  was typed in.
   In a Markdown file, a change on disk that leaves the
   flowchart block as it was (only the text around it changed) is taken in without
   touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain

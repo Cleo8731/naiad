@@ -245,8 +245,12 @@ const at = (rest) => `/${secret}/${rest}`;
       });
       req.on('error', () => resolve(d));
     });
+    const heardAfterRename = got;
+    r = await ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'Content-Length': original.length }, body: original });
+    const onDisk = fs.readdirSync(dir).filter((n) => n.toLowerCase() === 'flow.mmd');
     fs.renameSync(renamed, file);
-    check('after a rename that changes only the letter case, the stream still says when the file changed (bug hunt E5)', got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
+    check('after a rename that changes only the letter case, the stream still says when the file changed (bug hunt E5)', heardAfterRename.includes('data: changed'), JSON.stringify(heardAfterRename.slice(0, 80)));
+    check('and a save keeps the name the file has on disk (bug hunt C24)', r.status === 200 && onDisk.join() === 'Flow.mmd', `${r.status} ${onDisk.join()}`);
   }
 
   // ---- Highlights (D2.4): their own file beside the flowchart's, never the flowchart
