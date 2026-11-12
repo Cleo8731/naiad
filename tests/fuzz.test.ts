@@ -11,9 +11,11 @@
 //     blank lines, description blocks, classDef/click/acc lines, front matter...;
 //   - every other node's description reads back exactly as before, and an edited
 //     description reads back exactly as it was typed;
-//   - what Mermaid reads but the checked edit does not compare stays as it was:
-//     Markdown labels, an arrow's own id and its `@{ animate }`, `interpolate`, links,
-//     tooltips, group classes, and the configuration set in the file;
+//   - everything else Mermaid's flowchart reader keeps stays as it was (whole(), bug hunt
+//     round 6): every field of every node, arrow and group that the checked edit does not
+//     compare (Markdown labels, links and their targets, tooltips, callbacks, icons,
+//     images, forms, sizes, a group's `@{ ... }`...), the class definitions,
+//     `linkStyle default`, and the configuration set in the file;
 //   - Mermaid's reading matches the checked edit's expectation even when two untitled
 //     groups share a title (canon() in src/semantics.ts names them alike).
 // An edit that is refused must be refused with an EditError (anything else is a crash).
@@ -158,6 +160,37 @@ function subgraph(g: Gen, indent: string, depth: number): void {
   g.lines.push(indent + 'end');
 }
 
+/**
+ * The rest of what Mermaid 12.3's flowchart reader keeps, for the whole-reading comparison
+ * (bug hunt round 6, D5.4): icons, images and shapes set with `@{ ... }`, link targets,
+ * callbacks, more class definitions, `linkStyle default`, an arrow's curve and speed, a
+ * group's `@{ ... }`, the accessible description. From a stream of its own, `r2`, so that
+ * every chart a seed made before is still made, these lines added; no line adds a node, an
+ * arrow or a group.
+ */
+function more(r2: Rand, g: Gen, used: string[]): void {
+  const u = g.unit;
+  const some = () => r2.pick(used);
+  if (used.length) {
+    if (r2.chance(0.15)) g.lines.push(`${u}${some()}@{ icon: "fa:user", form: "${r2.pick(['square', 'circle', 'rounded'])}", label: "${r2.pick(['User', 'Ünï', 'Two words'])}", pos: "${r2.pick(['t', 'b'])}", h: 48 }`);
+    if (r2.chance(0.1)) g.lines.push(`${u}${some()}@{ img: "https://example.test/i.png", label: "Pic", pos: "t", w: 60, h: 60, constraint: "${r2.pick(['on', 'off'])}" }`);
+    if (r2.chance(0.1)) g.lines.push(`${u}${some()}@{ shape: ${r2.pick(['hex', 'cyl', 'stadium', 'doc', 'delay', 'tri', 'notch-rect'])}, label: "${r2.pick(['Set by shape', 'a **b**'])}" }`);
+    if (r2.chance(0.15)) g.lines.push(`${u}click ${some()} href "https://example.test/t" "Tip t" ${r2.pick(['_blank', '_self', '_parent', '_top'])}`);
+    if (r2.chance(0.08)) g.lines.push(`${u}click ${some()} "https://example.test/u"`);
+    if (r2.chance(0.12)) g.lines.push(`${u}click ${some()} ${r2.pick(['callback "Tip cb"', 'call doIt(1, 2)', 'call doIt()'])}`);
+    if (r2.chance(0.1)) g.lines.push(`${u}${some()}:::cold`);
+  }
+  if (r2.chance(0.2)) g.lines.push(`${u}classDef cold fill:#69f,color:#fff,stroke-width:2px`);
+  if (r2.chance(0.1)) g.lines.push(`${u}classDef default fill:#eee`);
+  if (r2.chance(0.1)) g.lines.push(`${u}classDef a,b font-style:italic`);
+  if (r2.chance(0.12)) g.lines.push(`${u}linkStyle default ${r2.pick(['stroke:#888', 'interpolate step', 'interpolate basis stroke-width:2px'])}`);
+  for (let k = 1; k <= g.edgeIds; k++) {
+    if (r2.chance(0.2)) g.lines.push(`${u}e${k}@{ ${r2.pick(['curve: linear', 'curve: step', 'animation: slow', 'animation: fast'])} }`);
+  }
+  if (g.subIds.length && r2.chance(0.15)) g.lines.push(`${u}${r2.pick(g.subIds)}@{ view: ${r2.pick(['collapsed', 'expanded'])} }`);
+  if (r2.chance(0.05)) g.lines.push(`${u}accDescr: A fuzz description`);
+}
+
 export function genChart(seed: number): string {
   const r = new Rand(seed);
   const g: Gen = { r, ids: r.some(NODE_IDS, 3 + r.int(6)), subIds: [], unit: r.pick(['  ', '    ', '\t']), edgeIds: 0, lines: [], mentioned: new Set() };
@@ -169,6 +202,7 @@ export function genChart(seed: number): string {
   for (let k = 1; k <= g.edgeIds; k++) if (r.chance(0.4)) g.lines.push(`${g.unit}e${k}@{ animate: true }`);
   if (r.chance(0.03)) g.lines.push(`${g.unit}END`); // valid Mermaid (a node) that the scanner cannot read
   const used = [...g.mentioned];
+  more(new Rand(seed ^ 0x6d6f7265), g, used);
   if (r.chance(0.3)) g.lines.push(`${g.unit}classDef hot fill:#f96,stroke:#333`);
   if (r.chance(0.3) && used.length) g.lines.push(`${g.unit}class ${r.some(used, 1 + r.int(2)).join(',')} hot`);
   if (r.chance(0.3) && used.length) g.lines.push(`${g.unit}style ${r.pick(used)} fill:#d3f9d8,stroke:#2f9e44`);
@@ -244,43 +278,84 @@ function randomOp(r: Rand, snap: Snap): Op {
 
 // ------------------------------------------------------------------ what Mermaid reads beyond the snapshot
 
-interface Extra {
+/**
+ * Everything Mermaid's flowchart reader keeps that the checked edit does not compare
+ * (bug hunt round 6, D5.4): every field of every node, arrow and group other than the
+ * snapshot's own (`snapshot`, src/semantics.ts, which the checked edit compares with what
+ * the edit should give), read field by field from Mermaid's objects so that a field not
+ * named here is compared too; and the chart's own settings. Left out as Mermaid's
+ * bookkeeping: a node's `domId` and an arrow's made-up id (numbered in reading order), the
+ * reader's counters, and the members a group lost to an earlier group that lists them too
+ * (`droppedSubGraphMembers`, which follows from the membership the snapshot compares).
+ */
+interface Whole {
+  /** By id: the node's other fields and its tooltip. */
   nodes: Record<string, string>;
+  /** In Mermaid's order: each arrow's other fields, with its ends to find it by. */
   edges: string[];
+  /** By id, or `~title#n` for an untitled group: the group's other fields. */
   subs: Record<string, string>;
+  /** Class definitions, `linkStyle default`, callbacks, the title, the configuration. */
+  chart: Record<string, string>;
 }
 
-const extraCache = new Map<string, Extra>();
-async function extra(text: string): Promise<Extra> {
-  const hit = extraCache.get(text);
+const SNAP_NODE = new Set(['id', 'domId', 'text', 'type', 'styles', 'classes']);
+const SNAP_EDGE = new Set(['start', 'end', 'text', 'type', 'stroke', 'length', 'style', 'labelType', 'interpolate', 'classes',
+  'animate', 'animation', 'id', 'isUserDefinedId']);
+const SNAP_SUB = new Set(['id', 'title', 'nodes', 'dir']);
+
+/**
+ * A label's kind is read as Markdown or plain: Mermaid 12.3 keeps "text" for a label
+ * written bare and "string" for one in quotes, but its flowchart drawing only ever asks
+ * whether a label is "markdown" (every use of `labelType` in its drawing code, 2026-11-12).
+ */
+function others(o: Record<string, unknown>, skip: Set<string>, add: Record<string, unknown> = {}): string {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(o).sort()) if (!skip.has(k) && o[k] !== undefined) out[k] = o[k];
+  if ('labelType' in out) out.labelType = out.labelType === 'markdown' ? 'markdown' : 'plain';
+  return JSON.stringify({ ...out, ...add });
+}
+
+const wholeCache = new Map<string, Whole>();
+/** `drop`: a group read as if it were not there, so that untitled groups keep their numbers. */
+async function whole(text: string, drop?: string): Promise<Whole> {
+  const key = `${drop ?? ''}\u0000${text}`;
+  const hit = wholeCache.get(key);
   if (hit) return hit;
   const api = (mermaid as unknown as { mermaidAPI: { getDiagramFromText(t: string): Promise<any> } }).mermaidAPI;
   const db = (await api.getDiagramFromText(forMermaid(text))).db;
   const tips: Map<string, string> = db.tooltips ?? new Map();
-  const subIds = new Set<string>(db.getSubGraphs().map((s: any) => s.id));
+  const groups: any[] = db.getSubGraphs();
+  const subIds = new Set<string>(groups.map((s) => s.id));
   const nodes: Record<string, string> = {};
   for (const v of db.getVertices().values()) {
     if (subIds.has(v.id)) continue;
-    nodes[v.id] = JSON.stringify({ md: v.labelType === 'markdown', link: v.link ?? '', tip: tips.get(v.id) ?? '' });
+    nodes[v.id] = others(v, SNAP_NODE, { tooltip: tips.get(v.id) ?? '' });
   }
-  const edges = db.getEdges().map((e: any) => JSON.stringify({
-    s: e.start, e: e.end, text: e.text, md: e.labelType === 'markdown', id: e.isUserDefinedId ? e.id : '',
-    animate: e.animate ?? false, interpolate: e.interpolate ?? '', classes: e.classes ?? [],
-  }));
+  const edges = db.getEdges().map((e: any) => others(e, SNAP_EDGE, { s: e.start, e: e.end }));
   const subs: Record<string, string> = {};
-  for (const s of db.getSubGraphs()) {
-    const key = /^subGraph\d+$/.test(s.id) ? `~${s.title}` : s.id;
-    subs[key] = JSON.stringify({ md: s.labelType === 'markdown', classes: [...(s.classes ?? [])].sort() });
+  const seen = new Map<string, number>();
+  for (const s of groups) {
+    if (s.id === drop) continue;
+    let name = s.id;
+    if (/^subGraph\d+$/.test(s.id)) {
+      const n = seen.get(s.title) ?? 0;
+      seen.set(s.title, n + 1);
+      name = `~${s.title}#${n}`;
+    }
+    subs[name] = others(s, SNAP_SUB);
   }
-  const res = { nodes, edges, subs };
-  extraCache.set(text, res);
+  const all = db.getEdges();
+  const chart: Record<string, string> = {
+    classDefs: JSON.stringify([...db.getClasses().values()].map((c: any) => others(c, new Set())).sort()),
+    linkStyleDefault: JSON.stringify({ interpolate: all.defaultInterpolate, style: all.defaultStyle }),
+    callbacks: String(db.funs?.length ?? 0),
+    title: String(db.getDiagramTitle?.() ?? ''),
+    config: JSON.stringify((await mermaid.parse(forMermaid(text))) as unknown),
+  };
+  const res = { nodes, edges, subs, chart };
+  wholeCache.set(key, res);
   return res;
-}
-
-const configCache = new Map<string, string>();
-async function config(text: string): Promise<string> {
-  if (!configCache.has(text)) configCache.set(text, JSON.stringify((await mermaid.parse(forMermaid(text))) as unknown));
-  return configCache.get(text)!;
 }
 
 /**
@@ -419,15 +494,19 @@ async function checkEdit(before: string, beforeSnap: Snap, op: Op, res: OpResult
       v.push({ kind: 'description-not-as-typed', detail: `@${op.id}: typed ${JSON.stringify(want)}, reads ${JSON.stringify(got)}` });
     }
   }
-  // 5. What Mermaid reads that the checked edit does not compare.
-  const xb = await extra(before);
-  const xa = await extra(after);
+  // 5. Everything else Mermaid reads, which the checked edit does not compare (round 6).
+  const xb = await whole(before, op.kind === 'ungroup' ? op.id : undefined);
+  const xa = await whole(after);
   for (const id of Object.keys(xb.nodes)) {
     if (id in xa.nodes && xb.nodes[id] !== xa.nodes[id]) v.push({ kind: `node-extra-changed:${op.kind}`, detail: `${id}: ${xb.nodes[id]} -> ${xa.nodes[id]}` });
   }
   for (const id of Object.keys(xb.subs)) {
-    if (op.kind === 'renameSubgraph') break;
+    if (op.kind === 'renameSubgraph' && id === op.id) continue;
     if (id in xa.subs && xb.subs[id] !== xa.subs[id]) v.push({ kind: `group-extra-changed:${op.kind}`, detail: `${id}: ${xb.subs[id]} -> ${xa.subs[id]}` });
+  }
+  for (const k of Object.keys(xb.chart)) {
+    if (k === 'callbacks' && op.kind === 'deleteNode') continue; // its own `click ... call` goes with it
+    if (xb.chart[k] !== xa.chart[k]) v.push({ kind: `chart-extra-changed:${op.kind}:${k}`, detail: `${xb.chart[k]} -> ${xa.chart[k]}` });
   }
   let eb = [...xb.edges];
   let ea = [...xa.edges];
@@ -437,20 +516,11 @@ async function checkEdit(before: string, beforeSnap: Snap, op: Op, res: OpResult
     case 'deleteEdge': eb.splice(op.index, 1); break;
     case 'deleteNode': eb = eb.filter((e) => !touches(e, op.id)); break;
     case 'moveNode': case 'groupNode': eb.sort(); ea.sort(); break;
-    case 'setEdgeLabel': {
-      const strip = (e: string) => JSON.stringify({ ...JSON.parse(e), md: null, text: null });
-      if (eb[op.index]) eb[op.index] = strip(eb[op.index]);
-      if (ea[op.index]) ea[op.index] = strip(ea[op.index]);
-      break;
-    }
     default: break;
   }
   if (JSON.stringify(eb) !== JSON.stringify(ea)) {
     const i = eb.findIndex((e, k) => e !== ea[k]);
     v.push({ kind: `edge-extra-changed:${op.kind}`, detail: `edge ${i}: ${eb[i]} -> ${ea[i]}` });
-  }
-  if (op.kind === 'setDescription' && (await config(before)) !== (await config(after))) {
-    v.push({ kind: 'config-changed:setDescription', detail: `${await config(before)} -> ${await config(after)}` });
   }
   return v;
 }
