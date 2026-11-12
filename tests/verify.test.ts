@@ -237,6 +237,20 @@ describe('a single " in an accessible title or description (bug hunt round 2: A1
   }
 });
 
+describe('a "{" in a one-line accessible title or description opens nothing (bug hunt round 3: A23, xA24)', () => {
+  // Only `accDescr {` opens a text that runs to its "}"; `accTitle:` and `accDescr:` hold
+  // plain text to the end of the line, a "{" included.
+  for (const form of ['accTitle: A 5" screen { text', 'accDescr: braces { here', 'accDescr:{', 'accTitle:{ a']) {
+    test(JSON.stringify(form), async () => {
+      const before = `flowchart TD\n  ${form}\n  a[A] --> b[B]\n`;
+      await snapshot(before); // Mermaid reads it
+      expect(parseDoc(before).info.map((i) => i.kind)).toEqual(['header', 'acc', 'statement', 'blank']);
+      expect((await applyChecked(before, { kind: 'setTitle', id: 'a', title: 'Renamed' })).text)
+        .toBe(before.replace('a[A]', 'a[Renamed]'));
+    });
+  }
+});
+
 describe('an accessible title is read where Mermaid reads one (bug hunt round 3: A25, A30)', () => {
   // Mermaid's lexer reads `accTitle\s*:\s*` before anything else on a line, and its `\s*`
   // runs on over the line break: with nothing after the colon, the next line that is

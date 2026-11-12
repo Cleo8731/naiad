@@ -384,10 +384,11 @@ export function parseDoc(text: string): Doc {
     seenContent = true;
     if (accNext) { li.kind = 'acc'; accNext = false; continue; }
     // `accTitle:` and `accDescr:` hold plain text to the end of the line (`accDescr {` to
-    // its "}"), in which a quote opens nothing (bug hunt round 2, A15).
+    // its "}"), in which a quote opens nothing (bug hunt round 2, A15), nor a "{" (round
+    // 3, A23).
     if (ACC.test(t)) {
       li.kind = 'acc';
-      if (t.includes('{') && !t.includes('}')) openBlock = 'acc';
+      if (/^accDescr\s*\{/.test(t) && !t.includes('}')) openBlock = 'acc';
       else if (/^acc(Title|Descr)\s*:\s*$/.test(t)) accNext = true;
       continue;
     }
