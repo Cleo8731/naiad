@@ -173,10 +173,14 @@ function topInsertLine(doc: Doc): number {
   return doc.header;
 }
 
+/** The last line that is neither a comment nor empty. A line of spaces is skipped whatever
+ * the scanner calls it: a "%%{" left open makes every later line part of it, the empty
+ * line after the last line break included, and a new line put after that one would take
+ * the last line break away (bug hunt round 6, oA42). */
 function lastStructuralLine(doc: Doc): number {
   for (let i = doc.lines.length - 1; i >= 0; i--) {
     const k = doc.info[i].kind;
-    if (k !== 'blank' && k !== 'comment') return i;
+    if (k !== 'blank' && k !== 'comment' && doc.lines[i].trim() !== '') return i;
   }
   return doc.header;
 }

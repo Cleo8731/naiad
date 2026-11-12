@@ -169,6 +169,11 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
     }
   }
   const res = runOp(text, op);
+  // Mermaid reads a file the same with or without its last line break, so `snapshot`
+  // cannot see it go or come (bug hunt round 6, oA42).
+  if (text.endsWith('\n') !== res.text.endsWith('\n')) {
+    throw new E.EditError('That change would have changed the file\'s last line break, so it was not made. Make it in the text pane instead.');
+  }
   if (directives(text) !== directives(res.text)) {
     throw new E.EditError('That change would have changed the chart\'s settings (a %%{ }%% directive), so it was not made. Make it in the text pane instead.');
   }

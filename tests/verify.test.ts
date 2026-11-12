@@ -371,6 +371,30 @@ describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (b
   });
 });
 
+// A "%%{" left open runs to the end of the file, so the scanner read the empty line after
+// the last line break as part of it; a new style line went after that line break, and
+// the file lost its last one (bug hunt round 6, oA42; the charts are the fuzz's).
+describe('a "%%{" left open does not move a new line past the last line break (oA42)', () => {
+  const simple = [
+    'flowchart RL', '    %%{ init', '    B', '    %% a plain comment', '    subgraph sub-2["Step two"]', '    end',
+    '    B@{ shape: notch-rect, label: "a **b**" }', '    linkStyle default interpolate basis stroke-width:2px', '',
+  ].join('\n');
+  const big = [
+    'graph BT', 'accTitle:', '%% ', '    %%{ init',
+    '    A[\\"50% off\\"\\] -.- graphy == thick text ==> A([Load data]) --x 日本:::hot',
+    '    node1[/Load data/]:::hot e1@<==> 日本[\\Step 2/] o--o A -. dotted text .-> graphy{"Paren (x) [y] {z}"}',
+    '    e1@{ animate: true }', '    classDef cold fill:#69f,color:#fff,stroke-width:2px', '    classDef a,b font-style:italic',
+    '    class A,node1 hot', '    style node1 fill:#d3f9d8,stroke:#2f9e44', '',
+    '%% @n3', '%% %% ', '%% %%  ', '%% \\@x\t', '%% a %% b', '',
+  ].join('\n');
+  test.each([['a short chart', simple, 'B'], ['a chart with a description block', big, '日本']] as const)('%s', async (_, text, id) => {
+    const res = await applyChecked(text, { kind: 'setStyle', id, changes: { color: '#000' } });
+    expect(res.text.startsWith(text), 'every old line kept, in order').toBe(true);
+    expect(res.text.endsWith('\n'), 'the last line break kept').toBe(true);
+    expect(res.text.slice(text.length)).toBe(`    style ${id} color:#000\n`);
+  });
+});
+
 describe('a bare "%%" after an empty accessible title is its text (bug hunt round 5: A41, D32)', () => {
   // Mermaid drops a `%%` line only when something follows the `%%`, so an `accTitle:` or
   // `accDescr:` with nothing after the colon takes a bare one for its text, and the next

@@ -186,7 +186,9 @@ More text.
   Markdown label (`` "`...`" ``) stays Markdown.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
-  the ending of the line above it. A byte-order mark is kept.
+  the ending of the line above it. A byte-order mark is kept. Whether the file ends with
+  a line break stays as it was: an edit that would add or take away the last one is
+  refused.
 - When an edit removes a line that stood between a description block and a `%%` comment
   under it (ungrouping removes the `subgraph` and `end` lines; deleting a node removes
   its line), Naiad puts an empty line where it was, so the comment does not join the
