@@ -57,6 +57,16 @@ describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => 
     expect(fixed.raw).toBe('flowchart TD\n  A["50%% off"] --> B\n%% .\n');
   });
 
+  // Mermaid takes a bare "%%" after an empty `accTitle:` for the title's text; "fix" made
+  // it a comment, and the next line, an arrow, became the title (bug hunt round 5, D32).
+  test('D32: a bare "%%" that is an accessible title\'s text is no problem, and fix leaves it', async () => {
+    const text = 'flowchart TD\naccTitle:\n%%\nA-->B\n';
+    expect(await check(text)).toEqual([]);
+    const fixed = await fixFile('flow.mmd', text, reading);
+    expect(fixed).toEqual({ raw: text, lines: [], refused: null });
+    expect((await snapshot(text)).accTitle).toBe('%%');
+  });
+
   // Also valid in Mermaid 12.3.0; the checker called them broken (bug hunt round 2, D11).
   const more = [
     'A --> B\n  click A "https://example.com/a%%b" "50%% off"', 'A --> B\n  click A call cb() "tip%%"',

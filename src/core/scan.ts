@@ -387,6 +387,10 @@ export function parseDoc(text: string): Doc {
       if (!t.includes('}%%')) openBlock = 'directive';
       continue;
     }
+    // Mermaid drops a `%%` line only when something follows the `%%`, so an `accTitle:`
+    // or `accDescr:` with nothing after the colon takes a bare one for its text (bug hunt
+    // round 5, D32, A41).
+    if (accNext && /^\s*%%$/.test(raw)) { li.kind = 'acc'; accNext = false; continue; }
     if (t.startsWith('%%')) {
       li.kind = 'comment';
       if (t === '%%') {

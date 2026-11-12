@@ -348,7 +348,8 @@ An accessible title or description (`accTitle: text`, `accDescr: text`, `accDesc
 ... `}`) is plain text, never a node or an arrow, even when it reads like one
 (`accTitle:::hot`). Write its text on the same line: Mermaid reads an `accTitle:` or
 `accDescr:` with nothing after the colon as taking the next line that is not blank or
-a comment for its text, and Naiad reads it the same way.
+a comment for its text, and Naiad reads it the same way. A line holding only `%%` is
+not a comment there (Description blocks, point 4), so it is the text.
 
 ## Checking a file from a terminal
 

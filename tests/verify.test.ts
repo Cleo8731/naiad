@@ -356,6 +356,23 @@ describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (b
   });
 });
 
+describe('a bare "%%" after an empty accessible title is its text (bug hunt round 5: A41, D32)', () => {
+  // Mermaid drops a `%%` line only when something follows the `%%`, so an `accTitle:` or
+  // `accDescr:` with nothing after the colon takes a bare one for its text, and the next
+  // line is a statement.
+  for (const kind of ['accTitle', 'accDescr']) {
+    test(`${kind}: deleting another node keeps the first arrow's style`, async () => {
+      const before = `flowchart TD\n${kind}:\n\n  %%\na --> b\nc --> d\nlinkStyle 0 stroke:#f00\n`;
+      expect(parseDoc(before).info.map((i) => i.kind)).toEqual(['header', 'acc', 'blank', 'acc', 'statement', 'statement', 'linkStyle', 'blank']);
+      expect(parseDoc(before).warnings).toEqual([]);
+      expect((await applyChecked(before, { kind: 'deleteNode', id: 'c' })).text).toBe(before.replace('c --> d', 'd'));
+    });
+  }
+  test('"%%" with a space after it is a comment, and the next line is the text', () => {
+    expect(parseDoc('flowchart TD\naccTitle:\n%% \na --> b\n').info.map((i) => i.kind)).toEqual(['header', 'acc', 'comment', 'acc', 'blank']);
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [
