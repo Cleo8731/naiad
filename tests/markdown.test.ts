@@ -267,6 +267,18 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(before, after, 0)).toBe(-1);
   });
 
+  // Round 5: the backup took the text below the block with it, and the original's text
+  // below was changed with the block, so the backup read like the place below and the
+  // changed original like it above only (B25). A block added directly above the shown
+  // one reads so too, and is no rival: it stands between the shown block and its heading.
+  test('B25: the old block and the text below it kept as a backup, both changed in place: never the backup', () => {
+    const before = '# Original\n\n' + chart + '\nAfter\n';
+    const after = '# Backup\n\n' + chart + '\nAfter\n\n# Original\n\n' + changed + '\nChanged end\n';
+    expect(again(before, after, 0)).toBe(-1);
+    const added = '```mermaid\nflowchart LR\n  n\n```\n';
+    expect(again(before, '# Original\n\n' + added + '\n' + chart + '\nAfter\n', 0)).toBe(1);
+  });
+
   test('a block added right after a shown block that opens the file: still the shown block', () => {
     const first = chart + '\nThe end.\n';
     const added = '```mermaid\nflowchart LR\n  c\n```\n';

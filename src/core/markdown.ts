@@ -398,7 +398,13 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
         const mine = around(was, n);
         return beats(rival, mine) && rival[0] > mine[0];
       });
-    if (found.length === 1 && !rivalled(found[0])) return found[0];
+    // Nor when the block holding the text stands under another heading than the shown
+    // block did, and another block under that one: the shown block may have been changed
+    // in place, the text around it too, and its old text kept elsewhere with the old text
+    // below (round 5, B25). Lines alike above alone do not decide this: they may be lines
+    // any two blocks have between them.
+    const moved = (n: number) => after[n].heading !== shown.heading && after.some((b, i) => i !== n && b.heading === shown.heading);
+    if (found.length === 1 && !rivalled(found[0]) && !moved(found[0])) return found[0];
   }
   // The shown block itself changed: it is still the one at its place only when no block
   // was added or taken away and every other block is as it was.
