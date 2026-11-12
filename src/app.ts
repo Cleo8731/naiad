@@ -159,7 +159,7 @@ export class App {
     this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
       close: () => this.select(null),
       setTitle: (id, title) => { void this.edit({ kind: 'setTitle', id, title }); },
-      setDescription: (id, description) => { void this.writeDescription(id, description); },
+      setDescription: (id, description) => this.writeDescription(id, description),
       setShape: (id, shape) => { void this.edit({ kind: 'setShape', id, shape }); },
       setFill: (id, s) => {
         const isNode = !!this.snap?.nodes[id];

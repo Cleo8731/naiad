@@ -20,7 +20,8 @@ export type View = NodeView | EdgeView | SubView;
 export interface SidebarActions {
   close(): void;
   setTitle(id: string, title: string): void;
-  setDescription(id: string, description: string): void;
+  /** Writes the description; the promise, if any, ends when the write has ended. */
+  setDescription(id: string, description: string): Promise<void> | void;
   setShape(id: string, shape: string): void;
   setFill(id: string, swatch: Swatch | null): void;
   setGroup(id: string, group: string): void;
@@ -110,11 +111,12 @@ export class Sidebar {
 
   /**
    * Opens the description of node `id` for writing again with `text`, when the panel
-   * shows that node and its description is not being written: a description that could
-   * not be written goes back into its box (bug hunt round 4, C40).
+   * shows that node: a description that could not be written goes back into its box
+   * (bug hunt round 4, C40), also when Edit was pressed again while it was being written
+   * (round 5, C42). What was typed into the box since then is kept instead.
    */
   resumeDescription(id: string, text: string): void {
-    if (this.key === `node:${id}` && !this.editingDescription) this.resume?.(text);
+    if (this.key === `node:${id}`) this.resume?.(text);
   }
 
   show(view: View | null): void {
@@ -248,6 +250,7 @@ export class Sidebar {
     const cancelBtn = h('button', { class: 'ghost', title: 'Esc', click: () => finish(false) }, 'Cancel');
     let current = '';
     let started = ''; // the description as Edit showed it, or as the file has it since, while untouched
+    let pending: string | null = null; // what Done is writing, until that write has ended (C42)
     const paint = () => {
       const editing = this.editingDescription;
       body.hidden = editing;
@@ -260,7 +263,9 @@ export class Sidebar {
     };
     const begin = () => {
       this.editingDescription = true;
-      area.value = started = current;
+      // Edit pressed again while Done's write is checked shows what Done is writing, not
+      // the description it replaces (bug hunt round 5, C42).
+      area.value = started = pending ?? current;
       paint();
       area.focus();
     };
@@ -268,7 +273,11 @@ export class Sidebar {
       this.editingDescription = false;
       // Only a change the person made is saved: Done on an untouched description never
       // puts back a text that a change on disk replaced meanwhile (bug hunt C26).
-      if (save && area.value !== started) a.setDescription(id, area.value);
+      if (save && area.value !== started) {
+        const text = area.value;
+        pending = text;
+        void Promise.resolve(a.setDescription(id, text)).finally(() => { if (pending === text) pending = null; });
+      }
       paint();
     };
     body.addEventListener('dblclick', begin);
@@ -277,7 +286,14 @@ export class Sidebar {
       const text = area.value;
       return { id, text, written: () => { if (area.value === text) started = text; } };
     };
-    this.resume = (text) => { begin(); area.value = text; };
+    this.resume = (text) => {
+      // Typed into since Edit was pressed again: that typing began from `text` (`begin`),
+      // so it stays (C42).
+      const typed = this.editingDescription && area.value !== started;
+      if (!this.editingDescription) begin();
+      if (!typed) area.value = text;
+      started = current; // what the file holds: the box is not written yet
+    };
     this.sync.push((v) => {
       current = (v as NodeView).description;
       // An untouched description being edited follows the file; one being typed in keeps what is typed.

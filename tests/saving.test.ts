@@ -733,4 +733,76 @@ describe('a description being written is saved when the person leaves it (bug hu
       timing.delay = 0;
     }
   });
+
+  // Bug hunt round 5, C42: Edit pressed again while Done's write was still being checked
+  // showed the old description, and when the write failed the description was lost.
+  const done = () => document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click();
+  const edit = () => document.querySelector<HTMLButtonElement>('.desc-head button:not(.primary):not([title="Esc"])')!.click();
+
+  it('C42: Edit pressed again while a Done that cannot be written is checked: the description comes back', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    timing.delay = 300;
+    try {
+      done();
+      edit();
+      expect(box()!.value).toBe(DRAFT); // what Done is writing, not the old description
+      await sleep(800);
+      expect(disk.asked).toEqual([]);
+      expect(box()!.hidden).toBe(false);
+      expect(box()!.value).toBe(DRAFT);
+      ui.type(BASE); // the text pane mended: Done writes it now
+      await sleep(400);
+      done();
+      await sleep(800);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
+  it('C42: and what is typed into it meanwhile is kept, and written by the next Done', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    timing.delay = 300;
+    try {
+      done();
+      edit();
+      box()!.value = `${DRAFT} And more.`;
+      box()!.dispatchEvent(new Event('input'));
+      await sleep(800);
+      expect(disk.asked).toEqual([]);
+      expect(box()!.value).toBe(`${DRAFT} And more.`);
+      ui.type(BASE);
+      await sleep(400);
+      box()!.value = DRAFT; // typed back to what the failed Done held: still not in the file
+      box()!.dispatchEvent(new Event('input'));
+      done();
+      await sleep(800);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
+  it('C42: Edit pressed again while a Done that can be written is checked shows what Done writes', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    timing.delay = 300;
+    try {
+      done();
+      edit();
+      expect(box()!.value).toBe(DRAFT);
+      await sleep(800);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+      expect(box()!.value).toBe(DRAFT);
+      expect((ui.app as unknown as { sidebar: { draft(): unknown } }).sidebar.draft()).toBe(null); // nothing left to write
+    } finally {
+      timing.delay = 0;
+    }
+  });
 });
