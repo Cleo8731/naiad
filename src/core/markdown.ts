@@ -161,16 +161,38 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
   // Every block as it was (only the text around them changed): it is still at its place.
   if (after.length === before.length && after.every((b, i) => b.text === before[i].text)) return was;
   const same = after.flatMap((b, i) => (b.text === shown.text ? [i] : []));
-  if (same.length === 1) return same[0]; // unchanged, and moved by a block added or removed above it
-  if (same.length > 1) {
-    // Several blocks hold its text (a copy was written beside it, bug hunt round 2 B8):
-    // the one whose surrounding lines read most like the shown block's did, when exactly
-    // one does. A tie, or no line alike, is not certain.
+  if (same.length) {
+    // The block holding its text: when only one does, now and before, it is the shown
+    // block, unchanged, and moved by a block added or taken away above it. When several
+    // do, now or before (a copy was written beside it, bug hunt round 2 B8; one of two
+    // copies changed, round 3 B13): the one whose surrounding lines read more like the
+    // shown block's did, above and below both, than every other block holding the text
+    // does, and that reads more like the shown block's than like another copy's.
+    // Anything less is not certain: a copy written right below the shown block reads
+    // like it below, as the shown block does above (round 3, B14).
+    const copies = before.flatMap((b, i) => (b.text === shown.text ? [i] : []));
     const old = beforeFile.split('\n');
     const now = afterFile.split('\n');
-    const scores = same.map((i) => alikeAround(old, shown, now, after[i]));
-    const best = Math.max(...scores);
-    return best > 0 && scores.filter((s) => s === best).length === 1 ? same[scores.indexOf(best)] : -1;
+    const around = (o: number, n: number) => alikeAround(old, before[o], now, after[n]);
+    const beats = (a: number[], b: number[]) => a[0] >= b[0] && a[1] >= b[1] && (a[0] > b[0] || a[1] > b[1]);
+    const found = same.filter((n) => {
+      const mine = around(was, n);
+      return same.every((m) => m === n || beats(mine, around(was, m))) && copies.every((o) => o === was || beats(mine, around(o, n)));
+    });
+    // Nor is it certain when a block whose text no block held before reads more like the
+    // shown block's place, above it (where its heading is) and no less below: the shown
+    // block may have been changed there, and its old text kept elsewhere as a backup
+    // (round 3, B13). Lines alike below alone do not decide: a block added right below
+    // the shown one has them too.
+    const known = new Set(before.map((b) => b.text));
+    const rivalled = (n: number) =>
+      after.some((b, i) => {
+        if (known.has(b.text)) return false;
+        const rival = around(was, i);
+        const mine = around(was, n);
+        return beats(rival, mine) && rival[0] > mine[0];
+      });
+    if (found.length === 1 && !rivalled(found[0])) return found[0];
   }
   // The shown block itself changed: it is still the one at its place only when no block
   // was added or taken away and every other block is as it was.
@@ -180,10 +202,10 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
 
 /**
  * How many lines read the same going up from block `a` of the lines `x` and from block
- * `b` of the lines `y`, then going down from each, until the first that differ. Empty
- * lines are passed over, so a blank line more or less does not decide.
+ * `b` of the lines `y`, and how many going down from each, until the first that differ.
+ * Empty lines are passed over, so a blank line more or less does not decide.
  */
-function alikeAround(x: string[], a: Block, y: string[], b: Block): number {
+function alikeAround(x: string[], a: Block, y: string[], b: Block): [number, number] {
   const walk = (i: number, j: number, step: number): number => {
     let n = 0;
     for (;;) {
@@ -196,7 +218,7 @@ function alikeAround(x: string[], a: Block, y: string[], b: Block): number {
     }
   };
   const below = (blk: Block, lines: string[]) => (blk.close < 0 ? lines.length : blk.close + 1);
-  return walk(a.open - 1, b.open - 1, -1) + walk(below(a, x), below(b, y), 1);
+  return [walk(a.open - 1, b.open - 1, -1), walk(below(a, x), below(b, y), 1)];
 }
 
 /** The file with one block's lines replaced. Lines outside the block are not touched. */

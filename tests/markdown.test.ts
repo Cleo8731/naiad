@@ -223,6 +223,43 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(two, more, 0)).toBe(0);
     expect(again(two, more, 1)).toBe(1);
   });
+
+  // Round 3: the one block left holding the text is not the shown one when the shown one
+  // was a copy and changed (B13); a copy written right below the shown block reads like
+  // it below, and the shown block like it above: not certain (B14).
+  const changed = chart.replace('a --> b', 'a --> b --> c');
+  test('B13: two alike blocks, and the shown one changed: still the shown one', () => {
+    const two = '# One\n\n' + chart + '\n# Two\n\n' + chart + '\nend\n';
+    const after = '# One\n\n' + chart + '\n# Two\n\n' + changed + '\nend\n';
+    expect(again(two, after, 1)).toBe(1);
+    expect(again(two, after.replace('# One', '# One, renamed'), 1)).toBe(1);
+    expect(again(two, after, 0)).toBe(0);
+  });
+
+  test('B13: two alike blocks under the same heading, and the shown second one changed', () => {
+    const two = '## Example\n\n' + chart + '\n## Example\n\n' + chart;
+    expect(again(two, '## Example\n\n' + chart + '\n## Example\n\n' + changed, 1)).toBe(1);
+  });
+
+  test('B14: a copy written right below the shown block, under its own heading: not found', () => {
+    const details = '## Details\n\n' + Array.from({ length: 8 }, (_, i) => `Detail line ${i}.`).join('\n\n') + '\n';
+    const doc1 = '# Pipeline\n\n' + chart + '\n' + details;
+    expect(again(doc1, '# Pipeline\n\n' + chart + '\n## Variant\n\n' + chart + '\n' + details, 0)).toBe(-1);
+  });
+
+  test('B13: the old text kept as a backup above, and the shown block changed in place: never the backup', () => {
+    const backup = '# Backup\n\n' + chart + '\n# Original\n\n' + changed + '\nend\n';
+    expect(again(doc, backup, 0)).not.toBe(0);
+    const two = '## A\n\n' + chart + '\n## B\n\n```mermaid\nflowchart LR\n  b\n```\n';
+    expect(again(two, '## Old A\n\n' + chart + '\n## A\n\n' + changed + '\n## B\n\n```mermaid\nflowchart LR\n  b\n```\n', 0)).not.toBe(0);
+  });
+
+  test('a block added right after a shown block that opens the file: still the shown block', () => {
+    const first = chart + '\nThe end.\n';
+    const added = '```mermaid\nflowchart LR\n  c\n```\n';
+    expect(again(first, chart + '\n' + added + '\nThe end.\n', 0)).toBe(0);
+    expect(again(first, chart + '\n## Second\n\n' + added + '\nThe end.\n', 0)).toBe(0);
+  });
 });
 
 describe('what is not a flowchart block (bug hunt S4, S5)', () => {
