@@ -381,6 +381,11 @@ describe('fix', () => {
     expect(loneCr.raw).toBe('flowchart TD\r  A --> B\r%% .\r');
     const md = '# Title\r\nintro\r\n\n```mermaid\nflowchart TD\n  A --> B\n%%\n```\nafter\r\n';
     expect((await fixFile('doc.md', md, reading)).raw).toBe(md.replace('%%\n', '%% .\n'));
+    // Beside a "%% ." line already there, each fixed line keeps its own ending (bug hunt
+    // round 4, D28), and a second fix changes nothing.
+    const beside = await fixFile('flow.mmd', 'flowchart TD\r\n%%\n%% .\r%%\r\nA-->B\n', reading);
+    expect(beside.raw).toBe('flowchart TD\r\n%% .\n%% .\r%% .\r\nA-->B\n');
+    expect((await fixFile('flow.mmd', beside.raw, reading)).raw).toBe(beside.raw);
   });
 
   test('leaves a "%%" line inside a quoted title that runs over several lines (bug hunt S3)', async () => {

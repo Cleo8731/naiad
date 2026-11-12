@@ -29,6 +29,11 @@ describe('every line keeps its own ending', () => {
     expect(write('a\r\nb\nc\r\n', 'a\nc\n')).toBe('a\r\nc\r\n');
   });
 
+  test('lines changed in place to the text of a line beside them keep their own endings (bug hunt round 4, D28)', () => {
+    expect(write('h\r\n%%\n%% .\r%%\r\nA\n', 'h\n%% .\n%% .\n%% .\nA\n')).toBe('h\r\n%% .\n%% .\r%% .\r\nA\n');
+    expect(write('h\r\n%%\r%% .\n%%\r\nA\n', 'h\n%% .\n%% .\n%% .\nA\n')).toBe('h\r\n%% .\r%% .\n%% .\r\nA\n');
+  });
+
   test('lines between two changes keep theirs', () => {
     const ends = ['\n', '\r\n', '\r', '\r\n', '\n', '\n', '\r\n', '\r', '\n', '\r\n'];
     const raw = ends.map((e, i) => `line ${i}${e}`).join('');

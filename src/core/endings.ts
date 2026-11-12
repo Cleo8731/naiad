@@ -43,6 +43,9 @@ const MATCH_LIMIT = 1_000_000;
 /**
  * For each new line, the index of the old line it is the same as, or -1. Lines equal at
  * the start and the end are matched first; the middle by the longest common run of lines.
+ * Of the runs that long, the one with the most lines at the same place in the middle:
+ * when lines are changed in place to the text of a line beside them, which line is which
+ * is told by its place, not by the first copy found (bug hunt round 4, D28).
  */
 function match(a: string[], b: string[]): Int32Array {
   const out = new Int32Array(b.length).fill(-1);
@@ -56,20 +59,26 @@ function match(a: string[], b: string[]): Int32Array {
   const n = a.length - p - s;
   const m = b.length - p - s;
   if (n === 0 || m === 0 || n * m > MATCH_LIMIT) return out;
-  // Longest common subsequence of the middle lines, read back from the end.
+  // Longest common subsequence of the middle lines, read back from the end. A matched
+  // pair is worth `unit`, and one more when both lines stand at the same place: more
+  // than the most such points a run can gain, so the longest run always wins (the
+  // largest worth is about min(n, m)², at most 1,000,000 here, well inside a Uint32).
   const ids = new Map<string, number>();
   const id = (l: string) => { let v = ids.get(l); if (v === undefined) ids.set(l, v = ids.size); return v; };
   const x = Array.from({ length: n }, (_, i) => id(a[p + i]));
   const y = Array.from({ length: m }, (_, j) => id(b[p + j]));
+  const unit = Math.min(n, m) + 1;
+  const worth = (i: number, j: number) => unit + (i === j ? 1 : 0);
   const w = m + 1;
   const t = new Uint32Array((n + 1) * w);
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      t[i * w + j] = x[i] === y[j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+      const skip = Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+      t[i * w + j] = x[i] === y[j] ? Math.max(skip, t[(i + 1) * w + j + 1] + worth(i, j)) : skip;
     }
   }
   for (let i = 0, j = 0; i < n && j < m;) {
-    if (x[i] === y[j]) { out[p + j] = p + i; i++; j++; }
+    if (x[i] === y[j] && t[i * w + j] === t[(i + 1) * w + j + 1] + worth(i, j)) { out[p + j] = p + i; i++; j++; }
     else if (t[(i + 1) * w + j] >= t[i * w + j + 1]) i++;
     else j++;
   }
