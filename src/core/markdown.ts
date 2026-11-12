@@ -43,15 +43,20 @@ function columns(ws: string): number {
  * margin, or the start of the text of the list item it stands in. Null when it is no
  * fence: Markdown reads a line indented four columns or more past that (at the margin,
  * or past the item's text) as an indented code sample, or as text. Unsure is null.
+ * `opener[k]` is the opening line of the fenced block line k stands in, or -1: a line
+ * inside a fenced block is text, never a list item, so the block's opening line stands
+ * for it. A list item is one only when its own marker stands where a block may start
+ * (bug hunt round 2, B10).
  */
-function fenceBase(lines: string[], at: number, w: number): number | null {
+function fenceBase(lines: string[], at: number, w: number, opener: Int32Array): number | null {
   if (w <= 3) return 0;
   for (let k = at - 1; k >= 0; k--) {
+    if (opener[k] >= 0) k = opener[k];
     const line = lines[k];
     if (line.trim() === '') continue;
     const item = LIST_ITEM.exec(line);
     const lead = columns(/^[ \t]*/.exec(line)![0]);
-    if (item) {
+    if (item && fenceBase(lines, k, columns(item[1]), opener) !== null) {
       const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
       const text = columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 ? gap : 1);
       if (w >= text) return w - text <= 3 ? text : null;
@@ -84,6 +89,7 @@ export function isFlowchartText(text: string): boolean {
 export function findBlocks(file: string): Block[] {
   const lines = file.split('\n');
   const blocks: Block[] = [];
+  const opener = new Int32Array(lines.length).fill(-1);
   let heading = '';
   let i = 0;
   // YAML front matter at the top of the file ("---" to "---" or "..."): its lines are
@@ -95,7 +101,7 @@ export function findBlocks(file: string): Block[] {
   while (i < lines.length) {
     const m = FENCE.exec(lines[i]);
     // A backtick fence's first line cannot hold another backtick (that is inline code).
-    const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(lines, i, columns(m[1])) : null;
+    const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(lines, i, columns(m[1]), opener) : null;
     if (!m || base === null) {
       const h = /^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
       if (h) heading = h[1];
@@ -111,6 +117,7 @@ export function findBlocks(file: string): Block[] {
       if (c && c[2][0] === fence[0] && c[2].length >= fence.length && c[3].trim() === '' && columns(c[1]) <= base + 3) { close = j; break; }
     }
     const end = close < 0 ? lines.length : close;
+    opener.fill(open, open + 1, Math.min(end + 1, lines.length));
     if (info.trim().split(/\s+/)[0].toLowerCase() === 'mermaid') {
       blocks.push(readBlock(file, lines, open, close, indent, heading));
     }

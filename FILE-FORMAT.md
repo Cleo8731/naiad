@@ -142,10 +142,12 @@ More text.
 - A flowchart block may be indented, for example inside a list. As in Markdown, its
   opening and closing lines are indented at most three spaces, or, inside a list item,
   at most three spaces past the start of the item's text; a fence indented further is
-  an indented code sample and is left alone. Every line of the block must
-  then start with the same whitespace as its opening line (empty lines may be fully
-  empty, or all carry that whitespace). If they do not, or the closing line is missing,
-  Naiad shows the flowchart but does not change it.
+  an indented code sample and is left alone. A line that looks like a list item but
+  stands inside another fenced block, or in an indented code sample, starts no list.
+  Every line of the block must then start with the same whitespace as its opening
+  line (empty lines may be fully empty, or all carry that whitespace). If they do
+  not, or the closing line is missing, Naiad shows the flowchart but does not change
+  it.
 - A line that would close the flowchart block (three or more backticks alone on a line,
   when it was opened with backticks) cannot be part of a flowchart in a Markdown file.
   Naiad does not save such a text.

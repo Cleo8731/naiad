@@ -254,4 +254,19 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
   test('a fence line indented four columns does not close a block at the margin', () => {
     expect(findBlocks('```mermaid\nflowchart TD\n    ```\n```\n')[0].close).toBe(3);
   });
+
+  test('B10: a list-like line inside a fenced block, or in a code sample, is no list item (bug hunt round 2)', () => {
+    // After a fenced block holding "- sample": the fence below is a code sample.
+    expect(findBlocks('```text\n- sample\n   ```\n\n    ```mermaid\n    flowchart TD\n     a-->b\n    ```\n')).toEqual([]);
+    // "- an indented code sample" is itself indented four columns at the margin.
+    expect(findBlocks('Text:\n\n    - an indented code sample\n\n        ```mermaid\n        flowchart TD\n         a-->b\n        ```\n')).toEqual([]);
+  });
+
+  test('a real list item is still one, with a fenced block or a sub-item between', () => {
+    // A fenced block inside the item, then the flowchart in the same item.
+    const after = findBlocks('- item\n\n  ```text\n  - sample\n  ```\n\n    ```mermaid\n    flowchart TD\n    a\n    ```\n');
+    expect(after.map((b) => b.open)).toEqual([6]);
+    // A sub-item four columns in (two past its item's text), and a fence in it.
+    expect(findBlocks('- a\n\n    - b\n\n      ```mermaid\n      flowchart TD\n      ```\n').length).toBe(1);
+  });
 });
