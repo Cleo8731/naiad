@@ -196,6 +196,27 @@ describe('a node named END or SUBGRAPH on a line of its own (bug hunt A8)', () =
   }
 });
 
+describe('a space after a group\'s name makes the name a title only (bug hunt round 3: A28)', () => {
+  // Mermaid takes the space with the name, up to the line's end or a `;`, so the group is
+  // `subGraph0`; spaces after the `;` do not count.
+  const forms: [string, string][] = [
+    ['subgraph g ', 'subGraph0'], ['subgraph g\t', 'subGraph0'], ['subgraph g ;', 'subGraph0'], ['subgraph "g" ', 'subGraph0'],
+    ['subgraph g ', 'subGraph0'], ['subgraph g; ', 'g'], ['subgraph "g";\t', 'g'], ['subgraph\tg', 'g'],
+  ];
+  const groupOps = (id: string): Op[] => [
+    { kind: 'renameSubgraph', id, title: 'Renamed group' }, { kind: 'setSubgraphDirection', id, dir: 'LR' },
+    { kind: 'ungroup', id }, { kind: 'addNode', title: 'Inside', parent: id }, { kind: 'setStyle', id, changes: { fill: '#eeeeee' } },
+  ];
+  for (const [line, id] of forms) {
+    test(`${JSON.stringify(line)} is ${id}, and its edits work`, async () => {
+      const before = `flowchart TD\n  ${line}\n    a\n  end\n`;
+      expect(Object.keys((await snapshot(before)).subs)).toEqual([id]);
+      expect(parseDoc(before).subs.map((s) => s.id)).toEqual([id]);
+      for (const op of groupOps(id)) await applyChecked(before, op);
+    });
+  }
+});
+
 describe('a single " in an accessible title or description (bug hunt round 2: A15)', () => {
   // Mermaid reads `accTitle:` and `accDescr:` as plain text to the end of the line, and
   // `accDescr {` to its "}": a quote there opens no string.

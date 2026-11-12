@@ -286,15 +286,23 @@ export function tokenizeStatements(s: string): Chain[] | null {
 const HEADER_RE = /^(flowchart(?:-elk)?|graph)(?:\s+(TB|TD|BT|RL|LR))?\s*;?$/i;
 const DIRS = 'TB|TD|BT|RL|LR';
 
-export function parseSubgraphLine(trimmed: string): { id: string | null; title: string } | null {
-  const m = /^subgraph\s+(.*?)\s*;?$/.exec(trimmed);
+/**
+ * A `subgraph` line's id and title, or null when it names nothing. `line` has the spaces
+ * before it taken off and those after it kept: Mermaid takes a name written without a
+ * title in brackets together with any space after it, up to the line's end or a `;`, and
+ * a name holding a space is a title only, the group's id `subGraph<N>` (`subgraph g ` and
+ * `subgraph "g" ;` are `subGraph0`, `subgraph g; ` is `g`: bug hunt round 3, A28).
+ */
+export function parseSubgraphLine(line: string): { id: string | null; title: string } | null {
+  const m = /^subgraph\s+(.*?)\s*;?$/.exec(line.trim());
   if (!m || !m[1]) return null;
   const rest = m[1];
   let mm = /^([^\s[\]"]+)\s*\[(.*)\]$/.exec(rest);
   if (mm) return { id: mm[1], title: unquote(mm[2]) };
+  const spaced = /\s$/.test(line.replace(/;\s*$/, ''));
   mm = /^"(.*)"$/.exec(rest);
-  if (mm) return /\s/.test(mm[1]) ? { id: null, title: mm[1] } : { id: mm[1], title: mm[1] };
-  if (/^[^\s[\]"]+$/.test(rest)) return { id: rest, title: rest };
+  if (mm) return /\s/.test(mm[1]) || spaced ? { id: null, title: mm[1] } : { id: mm[1], title: mm[1] };
+  if (/^[^\s[\]"]+$/.test(rest) && !spaced) return { id: rest, title: rest };
   return { id: null, title: rest };
 }
 
@@ -392,7 +400,7 @@ export function parseDoc(text: string): Doc {
     }
     // Only in lower case, as Mermaid reads them: `END` or `SUBGRAPH` alone is a node (bug hunt A8).
     if (/^subgraph(\s|$)/.test(t)) {
-      const parsed = parseSubgraphLine(t);
+      const parsed = parseSubgraphLine(raw.trimStart());
       if (!parsed) { problems.push({ line: i, message: 'A subgraph line with no name.' }); continue; }
       li.kind = 'subgraph';
       stack.push({ line: i, parsed });
