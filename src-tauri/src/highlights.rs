@@ -299,8 +299,9 @@ impl Drop for Aside {
     }
 }
 
-/// One look and change, with the file held from the look to the change. None: another
-/// program made the file in the moment its name was free (below); look again.
+/// One look and change, with the file held from the look to the change. None: there was
+/// no file at the look, and another program made one before Naiad's could be moved in;
+/// look again.
 #[cfg(windows)]
 fn change_once(file: &Path, tmp: Option<&Path>, aside: Option<&Aside>, same: Same) -> Result<Option<Looked>, String> {
     let held = match waiting(|| open_locked(file)) {
@@ -349,11 +350,17 @@ fn change_once(file: &Path, tmp: Option<&Path>, aside: Option<&Aside>, same: Sam
             let _ = delete_held(&held); // if it stays, `Aside` removes it once let go
             Ok(Some(Looked::Done))
         }
-        // Another program made the file while its name was free: what it wrote comes
-        // after the old text, which goes; the new file is looked at again.
+        // Another program made the file while its name was free. A program appending to
+        // it then makes a file holding only what it appended, which Naiad cannot tell
+        // from a whole new file; so both are kept, the old text beside the file, and
+        // nothing is changed (bug hunt round 5, F23: the old highlights were deleted).
         Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-            let _ = delete_held(&held);
-            Ok(None)
+            aside.keep.set(true);
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            Err(format!(
+                "{name} was made anew while Naiad changed it, so Naiad changed nothing. What it held before is kept beside it, in {}.",
+                aside.path.display()
+            ))
         }
         Err(e) => match rename_held(&held, file, false) {
             Ok(()) => Err(e.to_string()),
@@ -1019,30 +1026,41 @@ mod tests {
     }
 
     /// While Naiad moves its text in (the old text moved aside), the name is free for a
-    /// moment: a file another program makes there then is kept, and Naiad's write, made
-    /// from what the file held before, is refused; without a precondition it comes after
-    /// the other, as a later write does. Nothing is left beside the file.
+    /// moment. A file another program makes there then is kept, and so is the old text:
+    /// a program appending to the file makes a new one holding only what it appended
+    /// (bug hunt round 5, F23), and Naiad cannot tell that from a whole new file. So the
+    /// old text stays beside the file, Naiad changes nothing, and its error names where
+    /// the old text is; with a precondition or without one.
     #[cfg(windows)]
     #[test]
-    fn a_file_made_while_naiad_moves_its_text_in_is_kept() {
+    fn a_file_made_while_naiad_moves_its_text_in_is_kept_and_so_is_the_old_text() {
+        use std::io::Write;
         let dir = folder("moved-in");
         let flow = dir.join("flow.mmd");
         let file = file_of(&flow).unwrap();
-        write(&flow, "a\n", None).unwrap();
-        let path = file.clone();
-        at_stage("moved away", move || fs::write(&path, "theirs\n").unwrap());
-        let wrote = write(&flow, "b\n", Some(&|now: &[u8]| now == b"a\n"));
-        no_stage();
-        assert_eq!(wrote, Ok(false));
-        assert_eq!(fs::read_to_string(&file).unwrap(), "theirs\n");
-        assert_eq!(beside(&file), Vec::<String>::new());
-        let path = file.clone();
-        at_stage("moved away", move || fs::write(&path, "theirs again\n").unwrap());
-        let wrote = write(&flow, "c\n", None);
-        no_stage();
-        assert_eq!(wrote, Ok(true));
-        assert_eq!(fs::read_to_string(&file).unwrap(), "c\n");
-        assert_eq!(beside(&file), Vec::<String>::new());
+        let from_old = |now: &[u8]| now == b"a\n# a note\n";
+        let preconditions: [(&str, Same); 2] = [("from what was read", Some(&from_old)), ("with no precondition", None)];
+        for append in [true, false] {
+            for (precondition, same) in preconditions {
+                let case = format!("{} {precondition}", if append { "an append" } else { "a whole file" });
+                write(&flow, "a\n# a note\n", None).unwrap();
+                let path = file.clone();
+                at_stage("moved away", move || {
+                    let mut theirs = fs::OpenOptions::new().append(append).write(!append).create(true).open(&path).unwrap();
+                    theirs.write_all(b"b\n").unwrap();
+                });
+                let wrote = write(&flow, "a\nc\n# a note\n", same);
+                no_stage();
+                assert_eq!(fs::read_to_string(&file).unwrap(), "b\n", "{case}: the file made meanwhile is kept");
+                let kept = beside(&file);
+                assert_eq!(kept.len(), 1, "{case}: {kept:?}");
+                let old = file.with_file_name(&kept[0]);
+                assert_eq!(fs::read_to_string(&old).unwrap(), "a\n# a note\n", "{case}: the old text is kept");
+                let why = wrote.expect_err(&case);
+                assert!(why.contains(&kept[0]), "{case}: {why}");
+                fs::remove_file(&old).unwrap();
+            }
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 

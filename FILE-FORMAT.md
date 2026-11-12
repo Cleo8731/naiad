@@ -315,8 +315,10 @@ collect --> clean
   other program can write, rename or delete it in between. For that moment, a few
   milliseconds, another program's write to it fails, and so may its read: it can try
   again. To replace it, Naiad moves the old file aside under a temporary name, moves
-  the new one in, then deletes the old one; a file another program makes there in the
-  moment between is kept, and Naiad looks at it again before it changes anything.
+  the new one in, then deletes the old one. If another program makes a file there in
+  the moment between, as appending to the file does, Naiad keeps that file and the old
+  one too, beside it under the temporary name, changes nothing, and says where the old
+  text is.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
   the last page `naiad serve` shows of it (within half a minute of that page closing,
   and only if the file is still as it was when that page closed: highlights written
