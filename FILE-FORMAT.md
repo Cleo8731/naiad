@@ -321,10 +321,12 @@ collect --> clean
   the moment between, as appending to the file does, Naiad keeps that file and the old
   one too, beside it under the temporary name, changes nothing, and says where the old
   text is.
-- The file is deleted when the last Naiad view of the flowchart closes: its window, or
-  the last page `naiad serve` shows of it (within half a minute of that page closing,
-  and only if the file is still as it was when that page closed: highlights written
-  in that half minute are kept).
+- The file is deleted when the last Naiad view of the flowchart closes, and only if it
+  still holds what Naiad last read or wrote of it: highlights an agent wrote after
+  that are kept, to show at the next opening. The view is a window (closed, or showing
+  another file), or the last page `naiad serve` shows of it (within half a minute of
+  that page closing, and only if the file is still as it was when that page closed:
+  highlights written in that half minute are kept).
   A page that only lost its connection, as when the computer sleeps, still counts as
   open: its highlights stay until it closes, or until `naiad serve` stops by itself,
   ten minutes after its last page went.

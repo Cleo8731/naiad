@@ -117,8 +117,35 @@ fn open_held(dir: &Path) -> std::io::Result<fs::File> {
     fs::File::open(dir)
 }
 
-/// The highlights file's text, or None if there is none.
+/// The highlights file's text, or None if there is none. What was read is noted (`SEEN`).
 pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
+    let text = read_now(flowchart)?;
+    note_seen(flowchart, text.as_deref().map(str::as_bytes));
+    Ok(text)
+}
+
+/// What this program last read or wrote of each flowchart's highlights file, by the
+/// flowchart's full path (`full`): the bytes, or None for no file. A view that goes
+/// deletes the file only if it still holds them (`change`), so highlights written after
+/// the view's last read are kept (bug hunt round 5, oF23).
+static SEEN: Mutex<Vec<(String, Option<Vec<u8>>)>> = Mutex::new(Vec::new());
+
+fn note_seen(flowchart: &Path, bytes: Option<&[u8]>) {
+    let key = full(flowchart);
+    if let Ok(mut seen) = SEEN.lock() {
+        seen.retain(|(path, _)| path.to_lowercase() != key.to_lowercase());
+        seen.push((key, bytes.map(<[u8]>::to_vec)));
+    }
+}
+
+/// What `note_seen` noted for `flowchart` (a full path), taken out: None if nothing was.
+fn take_seen(flowchart: &str) -> Option<Option<Vec<u8>>> {
+    let mut seen = SEEN.lock().ok()?;
+    let at = seen.iter().position(|(path, _)| path.to_lowercase() == flowchart.to_lowercase())?;
+    Some(seen.remove(at).1)
+}
+
+fn read_now(flowchart: &Path) -> Result<Option<String>, String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
@@ -199,8 +226,17 @@ static CHANGING: Mutex<()> = Mutex::new(());
 /// if `same` says yes to the file's bytes (no file: none), and otherwise writes nothing
 /// and answers false: another view or an agent changed it since it was read (bug hunt
 /// round 4, E16). A missing file has nothing to lose, so a delete then goes ahead. The
-/// look and the change are one step for other programs too (`change_file`).
+/// look and the change are one step for other programs too (`change_file`). What was
+/// written is noted (`SEEN`).
 pub fn write(flowchart: &Path, text: &str, same: Same) -> Result<bool, String> {
+    let wrote = write_now(flowchart, text, same)?;
+    if wrote {
+        note_seen(flowchart, Some(text.as_bytes()).filter(|_| !text.trim().is_empty()));
+    }
+    Ok(wrote)
+}
+
+fn write_now(flowchart: &Path, text: &str, same: Same) -> Result<bool, String> {
     let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     if text.trim().is_empty() {
         return remove(flowchart, true, same);
@@ -609,7 +645,9 @@ fn full(flowchart: &Path) -> String {
 
 /// Records that this program now shows `flowchart`, or nothing. If it stops showing
 /// another flowchart by this, and no other view shows that one, its highlights file is
-/// deleted.
+/// deleted if it still holds what this program last read or wrote of it (`SEEN`), and
+/// otherwise kept, to show at the next opening: highlights an agent wrote after that
+/// are not lost (bug hunt round 5, oF23).
 pub fn show(flowchart: Option<&Path>) {
     change(flowchart, None);
 }
@@ -626,7 +664,7 @@ pub fn stop_showing(left: Option<&[u8]>) {
 }
 
 /// `show`, the highlights of a flowchart no longer shown deleted only if `delete_if` says
-/// yes to them (`delete`).
+/// yes to them (`delete`); with no `delete_if`, only if they hold what `SEEN` noted.
 fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     let next = flowchart.map(full);
     let before = match SHOWN.lock() {
@@ -653,8 +691,12 @@ fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     }
     if let Some(old) = before {
         let same = next.as_deref().is_some_and(|n| n.to_lowercase() == old.to_lowercase());
-        if !same && !shown_elsewhere(&dir, me, &old) {
-            let _ = delete(Path::new(&old), delete_if);
+        if !same {
+            let seen = take_seen(&old);
+            let as_seen = |now: &[u8]| matches!(&seen, Some(Some(bytes)) if bytes.as_slice() == now);
+            if !shown_elsewhere(&dir, me, &old) {
+                let _ = delete(Path::new(&old), Some(delete_if.unwrap_or(&as_seen as &dyn Fn(&[u8]) -> bool)));
+            }
         }
     }
 }
@@ -849,6 +891,48 @@ mod tests {
             .output()
             .unwrap();
         assert!(made.status.success(), "mklink /J failed");
+    }
+
+    /// Bug hunt round 5, oF23: a view that closed, or showed another flowchart, deleted
+    /// the highlights file whatever it held, so highlights an agent wrote after the
+    /// view's last read were lost. They go only if they hold what this program last read
+    /// or wrote of them.
+    #[test]
+    fn highlights_written_after_the_last_read_are_kept_when_the_view_goes() {
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = folder("of23");
+        let (flow, other) = (dir.join("flow.mmd"), dir.join("other.mmd"));
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        fs::write(&other, "flowchart TD\n").unwrap();
+        let file = file_of(&flow).unwrap();
+        let agent = |text: &str| {
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(&file, text).unwrap();
+        };
+        for (going, next) in [("closing", None), ("showing another flowchart", Some(other.as_path()))] {
+            show(Some(&flow));
+            agent("a\n");
+            assert_eq!(read(&flow), Ok(Some("a\n".into())));
+            agent("a\n# the agent's\nb\n");
+            show(next);
+            let now = fs::read_to_string(&file).ok();
+            assert_eq!(now.as_deref(), Some("a\n# the agent's\nb\n"), "{going}: written after the last read, kept");
+            show(Some(&flow));
+            assert_eq!(read(&flow), Ok(Some("a\n# the agent's\nb\n".into())));
+            show(next);
+            assert!(!file.exists(), "{going}: as last read, deleted");
+            show(Some(&flow));
+            write(&flow, "c\n", None).unwrap();
+            show(next);
+            assert!(!file.exists(), "{going}: as last written, deleted");
+            show(Some(&flow));
+            agent("d\n");
+            show(next);
+            assert!(file.exists(), "{going}: never read, kept for the next opening");
+            fs::remove_file(&file).unwrap();
+        }
+        show(None);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Bug hunt S7 (F1, F2): a link in the `.naiad` folder is never followed or removed.
