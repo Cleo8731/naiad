@@ -194,6 +194,9 @@ More text.
   unsaved edit stays in Undo. A save checks, just before it renames, that the file
   still holds exactly what Naiad last read; if it changed in between, the save is
   refused, the version on disk is taken in the same way, and the edit stays in Undo.
+  Saves that reach one Naiad program at once (two pages of `naiad serve` on one file,
+  say) are checked and renamed one after the other, so only the first of those made
+  from the same reading is done.
   An Undo that would take back a change made on disk asks first, since it saves the
   earlier version over that change; Redo brings the change back. After a change on
   disk Naiad saves nothing until the file has been quiet for a second, so a program

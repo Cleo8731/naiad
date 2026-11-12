@@ -176,6 +176,22 @@ const at = (rest) => `/${secret}/${rest}`;
   check('a save checked against the file as it is is made', r.status === 200 && fs.readFileSync(file, 'utf8') === evil, r.status);
   r = await ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': fnv(Buffer.from(evil)), 'Content-Length': original.length }, body: original });
   check('and put back the same way', r.status === 200 && sha() === before, r.status);
+  // Saves that arrive at once, made from one reading of the file: only one is done
+  // (bug hunt round 2, E7: two saves with the same hash were both done). Each text is new
+  // to the file: a save of the text the file already holds changes nothing, so a save
+  // after it rightly still finds the file as read.
+  let alone = 0;
+  for (let round = 0; round < 20; round++) {
+    const read = fnv(fs.readFileSync(file));
+    const all = await Promise.all([0, 1, 2, 3].map((k) => {
+      const body = `flowchart TD\n    writer${k}_round${round}\n`;
+      return ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': read, 'Content-Length': Buffer.byteLength(body) }, body });
+    }));
+    if (all.filter((a) => a.status === 200).length === 1 && all.filter((a) => a.status === 409).length === 3) alone++;
+  }
+  check('of 4 saves at once made from one reading, one is done and 3 are refused, in each of 20 rounds (bug hunt E7)', alone === 20, `${alone} of 20`);
+  r = await ask({ method: 'PUT', path: at('api/file'), headers: { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': fnv(fs.readFileSync(file)), 'Content-Length': original.length }, body: original });
+  check('and the file is put back', r.status === 200 && sha() === before, r.status);
   check('no temporary file is left beside it after a refused save', !fs.readdirSync(dir).some((n) => n.endsWith('.tmp')), fs.readdirSync(dir).join(', '));
 
   // ---- Other files

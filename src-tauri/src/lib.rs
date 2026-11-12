@@ -166,9 +166,15 @@ pub(crate) fn replace_file(target: &Path, contents: &[u8]) -> Result<(), String>
     replace_file_if(target, contents, None).map(|_| ())
 }
 
+/// Held from a checked write's look at the file through its rename, so two checked
+/// writes in this process never both see the file as it was read and both replace it
+/// (bug hunt round 2, E7: two saves to `naiad serve` with the same hash were both done).
+static CHECK_AND_RENAME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// `replace_file`, but when `holds` is given, only if it says yes to the file's bytes
 /// read just before the rename (a missing file says no): otherwise the temporary file
-/// is removed, the file is left as it is, and the answer is false.
+/// is removed, the file is left as it is, and the answer is false. The look and the
+/// rename are one step for the checked writes of this process (`CHECK_AND_RENAME`).
 pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
     use std::io::{ErrorKind, Write};
     use std::sync::atomic::Ordering;
@@ -194,6 +200,9 @@ pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn
         };
         let written = file.write_all(contents);
         drop(file);
+        // A panic elsewhere while holding the lock leaves nothing half done here: the
+        // lock guards no data, so a poisoned one is taken as it is.
+        let _one_at_a_time = holds.map(|_| CHECK_AND_RENAME.lock().unwrap_or_else(|e| e.into_inner()));
         let done = written
             .and_then(|()| unchanged())
             .and_then(|go| if go { fs::rename(&tmp, on_disk(target)).map(|()| true) } else { Ok(false) });
@@ -443,6 +452,31 @@ mod tests {
         replace_file(&flow, b"new").unwrap();
         assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
         assert_eq!(names(&dir).len(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 2, E7 (C27): of several checked writes started at once against the
+    /// same reading of the file, exactly one is done; the others see the file changed.
+    #[test]
+    fn of_checked_writes_at_once_only_one_is_done() {
+        let dir = folder("checked-at-once");
+        let flow = dir.join("flow.mmd");
+        for round in 0..30 {
+            fs::write(&flow, "base").unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+            let writers: Vec<_> = (0..8)
+                .map(|k| {
+                    let (flow, start) = (flow.clone(), start.clone());
+                    std::thread::spawn(move || {
+                        start.wait();
+                        replace_file_if(&flow, format!("writer {k}").as_bytes(), Some(&|now: &[u8]| now == b"base")).unwrap()
+                    })
+                })
+                .collect();
+            let done = writers.into_iter().map(|w| w.join().unwrap()).filter(|&d| d).count();
+            assert_eq!(done, 1, "round {round}: {done} writes done");
+            assert_eq!(names(&dir), ["flow.mmd"], "round {round}: nothing left behind");
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 
