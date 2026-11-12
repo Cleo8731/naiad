@@ -191,6 +191,9 @@ export function fileBridge(): Plugin {
             const text = await readBody(req);
             let link = linked();
             if (link) return refuse(link);
+            // A file Naiad cannot read may hold an agent's notes: never replaced or
+            // deleted, as highlights.rs does (bug hunt round 3, F16). Throws NotUtf8: 422.
+            if (fs.existsSync(highlights)) readText(highlights);
             if (text.trim() === '') {
               fs.rmSync(highlights, { force: true });
               for (const d of [folder, naiad]) {

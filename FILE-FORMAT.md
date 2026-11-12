@@ -278,8 +278,9 @@ collect --> clean
   be running when it is written.
 - When Naiad changes the list it writes the whole file, through a temporary file and a
   rename as for a save, and keeps every line it was not asked to change. A file Naiad cannot read
-  (one that is not UTF-8) is never replaced: switching a highlight then shows the
-  error and writes nothing. When the last item is taken
+  (one that is not UTF-8) is never replaced or deleted: switching a highlight or Clear
+  then shows the error and writes nothing, and closing the last view leaves it. When
+  the last item is taken
   off it deletes the file, and the folders it leaves empty. When it makes the `.naiad`
   folder, or finds one, it sets Windows' hidden mark on it, as git does for `.git`.
 - Naiad never follows a link there. If `.naiad`, the flowchart's folder in it or

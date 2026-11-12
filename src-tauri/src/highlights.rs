@@ -140,10 +140,11 @@ pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
 
 /// Writes the highlights file whole, through a temporary file and a rename
 /// (`replace_file`, lib.rs), with `.naiad` and its folder held (`hold`). A text with
-/// nothing but blank lines deletes it instead.
+/// nothing but blank lines deletes it instead. A file Naiad cannot read is an error,
+/// left as it is (`readable`).
 pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
-        return delete(flowchart);
+        return remove(flowchart, true);
     }
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
@@ -151,20 +152,49 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     let _naiad = hold(naiad, true)?.ok_or("No .naiad folder.")?;
     let _folder = hold(folder, true)?.ok_or("No folder in .naiad.")?;
     hide(naiad);
-    no_link(&file)?;
+    if no_link(&file)? && !readable(&file)? {
+        return Err(unreadable(&file));
+    }
     super::replace_file(&file, text.as_bytes())
+}
+
+/// Whether Naiad may replace or delete the highlights file: there is none, or it is
+/// UTF-8 text. A file Naiad cannot read (UTF-16, as Windows PowerShell 5 writes it) may
+/// hold an agent's notes that Naiad never showed, so it is left as it is (bug hunt
+/// round 3, F16).
+fn readable(file: &Path) -> Result<bool, String> {
+    match fs::read(file) {
+        Ok(bytes) => Ok(std::str::from_utf8(&bytes).is_ok()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn unreadable(file: &Path) -> String {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    format!("{name} is not UTF-8 text, so Naiad leaves it alone.")
 }
 
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
 /// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
-/// removed when the way holds a link (`checked`, `hold`).
+/// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
+/// (`readable`): it is kept, with its folders.
 pub fn delete(flowchart: &Path) -> Result<(), String> {
+    remove(flowchart, false)
+}
+
+/// `delete`; with `refuse`, a file Naiad cannot read is an error (Clear, a blank write)
+/// rather than only kept (the last view closing).
+fn remove(flowchart: &Path, refuse: bool) -> Result<(), String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
     let Some(held_naiad) = hold(naiad, false)? else { return Ok(()) };
     if let Some(held_folder) = hold(folder, false)? {
         if no_link(&file)? {
+            if !readable(&file)? {
+                return if refuse { Err(unreadable(&file)) } else { Ok(()) };
+            }
             match fs::remove_file(&file) {
                 Ok(()) => {}
                 Err(e) if e.kind() == ErrorKind::NotFound => {}
@@ -357,6 +387,26 @@ mod tests {
         assert!(!naiad.exists());
         // The flowchart's own file is untouched.
         assert_eq!(fs::read_to_string(&flow).unwrap(), "flowchart TD\n    a --> b\n");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 3, F16 and oF4: a file Naiad cannot read (UTF-16, as Windows
+    /// PowerShell 5 writes it) may hold an agent's notes. Clear (a blank write), a text
+    /// write and the last view closing all leave it as it is.
+    #[test]
+    fn a_file_naiad_cannot_read_is_never_replaced_or_deleted() {
+        let dir = folder("utf16");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a --> b\n").unwrap();
+        let file = file_of(&flow).unwrap();
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("a\r\n# a note\r\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        fs::write(&file, &utf16).unwrap();
+        assert!(read(&flow).is_err());
+        assert!(write(&flow, "").unwrap_err().contains("not UTF-8"));
+        assert!(write(&flow, "b\n").unwrap_err().contains("not UTF-8"));
+        delete(&flow).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), utf16);
         fs::remove_dir_all(&dir).unwrap();
     }
 

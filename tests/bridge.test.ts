@@ -188,6 +188,17 @@ describe('the dev page reads only UTF-8 text (bug hunt S23: C16)', () => {
     expect((await b.call('/highlights', { shows: b.file })).status).toBe(422);
   });
 
+  it('F16: Clear (a blank write) and a text write leave a highlights file that is not UTF-8 as it is (bug hunt round 3: F16, oF4)', async () => {
+    const b = await bridge();
+    const file = path.join(b.dir, '.naiad', 'flow.mmd', 'highlights.txt');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('collect\r\n# the agent\'s note\r\n', 'utf16le')]); // as Windows PowerShell 5 writes it
+    fs.writeFileSync(file, utf16);
+    expect((await b.call('/highlights', { method: 'PUT', body: '', shows: b.file })).status).toBe(422);
+    expect((await b.call('/highlights', { method: 'PUT', body: 'clean\n', shows: b.file })).status).toBe(422);
+    expect(fs.readFileSync(file).equals(utf16)).toBe(true);
+  });
+
   it('UTF-8 with a byte-order mark is read as it is, mark included', async () => {
     const text = '﻿flowchart TD\n    a[Café] --> b\n';
     const b = await bridge({ 'flow.mmd': text });
