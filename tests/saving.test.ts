@@ -302,6 +302,39 @@ describe('a Markdown flowchart block that disappears and comes back (bug hunt C5
   });
 });
 
+describe('a copy of the shown Markdown block written above it (bug hunt round 2: B8)', () => {
+  const NOTES = 'C:/hunt/copy.md';
+  const CHART = '```mermaid\nflowchart TD\n    a[A] --> b[B]\n```\n';
+  const DOC = '# Original\n\n' + CHART + '\nend\n';
+
+  async function copied(copy: string) {
+    const disk = new FakeDisk();
+    disk.files.set(NOTES, DOC);
+    const ui = await startApp(disk, NOTES);
+    disk.outside(NOTES, copy);
+    await sleep(500);
+    return { disk, ui };
+  }
+
+  it('B8: under its own heading, the edit goes to the block that was shown, not the copy', async () => {
+    const copy = '# Variant (copy)\n\n' + CHART + '\n' + DOC;
+    const { disk, ui } = await copied(copy);
+    ui.direction('LR');
+    await sleep(1800); // a second's wait after a change on disk (C19), then the save
+    expect(disk.files.get(NOTES)).toBe('# Variant (copy)\n\n' + CHART + '\n' + DOC.replace('flowchart TD', 'flowchart LR'));
+  }, 10000);
+
+  it('right beside it, nothing to tell them apart: changed nowhere, and the person is told', async () => {
+    const copy = '# Original\n\n' + CHART + '\n' + CHART + '\nend\n';
+    const { disk, ui } = await copied(copy);
+    expect(ui.area().readOnly).toBe(true);
+    expect(ui.status()).toMatch(/cannot be found/);
+    ui.direction('LR');
+    await sleep(1800);
+    expect(disk.files.get(NOTES)).toBe(copy);
+  }, 10000);
+});
+
 describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', () => {
   const NOTES = 'C:/hunt/notes.md';
   const DOC = '# Notes\n\n```mermaid\nflowchart TD\n    a[A] --> b[B]\n\n%% @a\n%% Desc of A.\n```\n\nAfter.\n';

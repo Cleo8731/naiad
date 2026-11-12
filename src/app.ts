@@ -408,7 +408,7 @@ export class App {
       if (this.md) {
         if (this.md.gone) this.note = '';
         const blocks = findBlocks(disk);
-        const index = findAgain(this.md.blocks, blocks, this.md.index);
+        const index = findAgain(this.md.file, this.md.blocks, disk, blocks, this.md.index);
         if (index < 0) {
           this.md = { ...this.md, gone: true };
           this.note = 'The flowchart block shown cannot be found after the change on disk: open the file again';

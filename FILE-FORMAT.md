@@ -211,7 +211,9 @@ More text.
   which flowchart block it was showing (the block was removed, or it changed while
   other Mermaid blocks were added, removed or changed), it changes nothing more in the
   file until it can tell again (the block is back, unchanged) or the file is opened
-  again.
+  again. When another block now holds the same text (a copy written beside it), the
+  one shown is the one whose lines around it read as they did; if the lines around
+  the two do not tell them apart, Naiad cannot tell.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
   several lines, is never changed: Mermaid reads it as part of that. It asks Mermaid's parser what the flowchart means before and after,

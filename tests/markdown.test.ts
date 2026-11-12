@@ -169,7 +169,7 @@ describe('editing a flowchart inside a Markdown file', () => {
 describe('finding the shown block again after a change on disk (bug hunt S2)', () => {
   const chart = (name: string) => '```mermaid\nflowchart TD\n  ' + name + '\n```\n';
   const file = (...names: string[]) => names.map(chart).join('\ntext\n\n');
-  const again = (before: string, after: string, was: number) => findAgain(findBlocks(before), findBlocks(after), was);
+  const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
 
   test('the same block, unchanged, moved by a block added or taken away above it', () => {
     expect(again(file('a', 'b'), file('new', 'a', 'b'), 1)).toBe(2);
@@ -191,6 +191,37 @@ describe('finding the shown block again after a change on disk (bug hunt S2)', (
 
   test('the shown block and another changed at once: not found', () => {
     expect(again(file('a', 'b', 'c'), file('A', 'B', 'c'), 1)).toBe(-1);
+  });
+});
+
+describe('a copy of the shown block written beside it (bug hunt round 2: B8)', () => {
+  const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+  const doc = '# Original\n\n' + chart + '\nend\n';
+  const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+
+  test('B8: a copy above under its own heading: the shown block is the original, now second', () => {
+    expect(again(doc, '# Variant (copy)\n\n' + chart + '\n' + doc, 0)).toBe(1);
+  });
+
+  test('a copy below, after other text: the shown block is still the first', () => {
+    expect(again(doc, doc + '\n# Copy\n\n' + chart, 0)).toBe(0);
+  });
+
+  test('a copy right beside it, nothing around them to tell them apart: not found', () => {
+    expect(again(doc, '# Original\n\n' + chart + '\n' + chart + '\nend\n', 0)).toBe(-1);
+  });
+
+  test('two alike blocks, and only the text around them changed: the same one', () => {
+    const two = '# One\n\n' + chart + '\n# Two\n\n' + chart;
+    expect(again(two, two.replace('# Two', '# Two, renamed'), 1)).toBe(1);
+    expect(again(two, 'Intro.\n\n' + two, 0)).toBe(0);
+  });
+
+  test('two alike blocks, and a third block added after them: the same one', () => {
+    const two = '# One\n\n' + chart + '\n# Two\n\n' + chart;
+    const more = two + '\n# Three\n\n```mermaid\nflowchart LR\n  c\n```\n';
+    expect(again(two, more, 0)).toBe(0);
+    expect(again(two, more, 1)).toBe(1);
   });
 });
 

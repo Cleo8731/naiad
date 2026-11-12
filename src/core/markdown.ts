@@ -143,20 +143,53 @@ function readBlock(file: string, lines: string[], open: number, close: number, i
 
 /**
  * After the file changed on disk: the index of the block that was shown, among the
- * file's Mermaid blocks `after`, or -1 when it cannot be told for certain. `before` are
- * the blocks as Naiad last read or wrote them, `was` the shown block's index then.
- * Never a guess: a wrong answer would show another flowchart, and Undo would write the
- * shown one's old text into it.
+ * Mermaid blocks `after` of the file `afterFile`, or -1 when it cannot be told for
+ * certain. `before` are the blocks of `beforeFile`, the file as Naiad last read or wrote
+ * it, and `was` the shown block's index then. Never a guess: a wrong answer would show
+ * another flowchart, or send the person's edits and Undo into a copy of the one shown.
  */
-export function findAgain(before: Block[], after: Block[], was: number): number {
-  const saved = before[was]?.text;
-  if (after[was]?.text === saved) return was;
-  const same = after.flatMap((b, i) => (b.text === saved ? [i] : []));
+export function findAgain(beforeFile: string, before: Block[], afterFile: string, after: Block[], was: number): number {
+  const shown = before[was];
+  if (!shown) return -1;
+  // Every block as it was (only the text around them changed): it is still at its place.
+  if (after.length === before.length && after.every((b, i) => b.text === before[i].text)) return was;
+  const same = after.flatMap((b, i) => (b.text === shown.text ? [i] : []));
   if (same.length === 1) return same[0]; // unchanged, and moved by a block added or removed above it
+  if (same.length > 1) {
+    // Several blocks hold its text (a copy was written beside it, bug hunt round 2 B8):
+    // the one whose surrounding lines read most like the shown block's did, when exactly
+    // one does. A tie, or no line alike, is not certain.
+    const old = beforeFile.split('\n');
+    const now = afterFile.split('\n');
+    const scores = same.map((i) => alikeAround(old, shown, now, after[i]));
+    const best = Math.max(...scores);
+    return best > 0 && scores.filter((s) => s === best).length === 1 ? same[scores.indexOf(best)] : -1;
+  }
   // The shown block itself changed: it is still the one at its place only when no block
   // was added or taken away and every other block is as it was.
   const othersAsTheyWere = after.length === before.length && after.every((b, i) => i === was || b.text === before[i].text);
   return othersAsTheyWere && after[was].flowchart ? was : -1;
+}
+
+/**
+ * How many lines read the same going up from block `a` of the lines `x` and from block
+ * `b` of the lines `y`, then going down from each, until the first that differ. Empty
+ * lines are passed over, so a blank line more or less does not decide.
+ */
+function alikeAround(x: string[], a: Block, y: string[], b: Block): number {
+  const walk = (i: number, j: number, step: number): number => {
+    let n = 0;
+    for (;;) {
+      while (i >= 0 && i < x.length && x[i].trim() === '') i += step;
+      while (j >= 0 && j < y.length && y[j].trim() === '') j += step;
+      if (i < 0 || j < 0 || i >= x.length || j >= y.length || x[i] !== y[j]) return n;
+      n++;
+      i += step;
+      j += step;
+    }
+  };
+  const below = (blk: Block, lines: string[]) => (blk.close < 0 ? lines.length : blk.close + 1);
+  return walk(a.open - 1, b.open - 1, -1) + walk(below(a, x), below(b, y), 1);
 }
 
 /** The file with one block's lines replaced. Lines outside the block are not touched. */
