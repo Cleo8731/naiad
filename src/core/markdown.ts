@@ -425,15 +425,17 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
       return same.every((m) => m === n || beats(mine, around(was, m))) && copies.every((o) => o === was || beats(mine, around(o, n)));
     });
     // Nor is it certain when another block reads more like the shown block's place, above
-    // it (where its heading is) and no less below: the shown block may have been changed
-    // there, and its old text kept elsewhere as a backup (round 3, B13), whatever text it
-    // was changed to, another block's included (round 4, B22). Lines alike below alone
-    // do not decide: a block added right below the shown one has them too.
+    // it (where its heading is) and no less below, or as much above and more below: the
+    // shown block may have been changed there, and its old text kept elsewhere as a
+    // backup (round 3, B13), whatever text it was changed to, another block's included
+    // (round 4, B22), and another block may have been changed to its text under the same
+    // heading (round 7, B29). Lines alike below decide only beside lines alike above: a
+    // block added right below a shown block with nothing alike above has them too.
     const rivalled = (n: number) =>
       after.some((_, i) => {
         const rival = around(was, i);
         const mine = around(was, n);
-        return beats(rival, mine) && rival[0] > mine[0];
+        return beats(rival, mine) && (rival[0] > mine[0] || mine[0] > 0);
       });
     // Nor when the block holding the text stands under other headings than the shown
     // block did: the shown block may have been changed in place, the text around it too,
@@ -442,7 +444,14 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
     // nearest only (B26). Lines alike above alone do not decide this: they may be lines
     // any two blocks have between them.
     const moved = (n: number) => after[n].headings !== shown.headings;
-    if (found.length === 1 && !rivalled(found[0]) && !moved(found[0])) return found[0];
+    // Nor when no block was added or taken away, the block holding the text stands at
+    // another place in their order, and the block at the shown block's place stands under
+    // its headings and reads as much like that place above: the shown block may have been
+    // changed there, the text around it too, and another block changed to its old text
+    // (round 7, B29).
+    const displaced = (n: number) =>
+      after.length === before.length && n !== was && after[was].headings === shown.headings && around(was, was)[0] >= around(was, n)[0];
+    if (found.length === 1 && !rivalled(found[0]) && !moved(found[0]) && !displaced(found[0])) return found[0];
   }
   // The shown block itself changed: it is still the one at its place only when no block
   // was added or taken away and every other block is as it was.

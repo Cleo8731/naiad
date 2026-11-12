@@ -305,6 +305,30 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(setext, 'Backup\n======\n\n' + chart + '\n' + setext, 0)).toBe(1);
   });
 
+  // Round 7: another block changed to the shown block's text, the shown block changed in
+  // place, both under the same heading and text above: its place read as like the shown
+  // block's above as the other's did, and more like it below, yet the other was taken.
+  // A heading written again another way (`Original` underlined, then `# Original`) above
+  // the shown block made it so even where the place read more like it above; and with the
+  // text next to the shown block changed too, neither place read like it above (B29).
+  test('B29: another block changed to the shown block\'s text, the shown one changed in place, both under the same heading: never the other', () => {
+    const other = '```mermaid\nflowchart TD\n  x --> y\n```\n';
+    const before = '## Two\n\nSee below.\n\n' + chart + '\n## Two\n\nSee below.\n\n' + other + '\nMore.\n';
+    expect(again(before, '## Two\n\nSee below.\n\n' + changed + '\n## Two\n\nSee below.\n\n' + chart + '\nMore.\n', 0)).toBe(-1);
+    const setext = 'Original\n===\n\nNotes\n---\n\n' + chart + '\nEnd.\n\nNotes\n---\n\n' + other;
+    expect(again(setext, '# Original\n\nNotes\n---\n\n' + changed + '\nEnd.\n\nNotes\n---\n\n' + chart, 0)).toBe(-1);
+    expect(again(setext, 'Original\n===\n\nNotes\n---\n\n' + changed + '\nEnd.\n\nNotes\n---\n\n' + chart, 0)).toBe(-1);
+    const three = '## Three\n\n' + chart + '\nend\n\n## Three\n\n' + other;
+    expect(again(three, '## Three\n\n' + changed + '\n\n## Three\n\n' + chart, 0)).toBe(-1);
+    const intro = '## One\n\nsome text\n' + chart + '\n\n## One\n\nintro\n' + other;
+    expect(again(intro, '## One\n\nedited intro\n' + changed + '\n\n## One\n\nintro\n' + chart, 0)).toBe(-1);
+    // The shown section moved below another under other headings: still followed.
+    const parts = '# A\n\nText.\n\n' + chart + '\n# B\n\n' + other;
+    expect(again(parts, '# B\n\n' + other + '\n# A\n\nText.\n\n' + chart, 0)).toBe(1);
+    // The shown block as it was and the other one changed: still the shown block.
+    expect(again(before, '## Two\n\nSee below.\n\n' + chart + '\n## Two\n\nSee below.\n\n' + changed + '\nMore.\n', 0)).toBe(0);
+  });
+
   test('a block added right after a shown block that opens the file: still the shown block', () => {
     const first = chart + '\nThe end.\n';
     const added = '```mermaid\nflowchart LR\n  c\n```\n';

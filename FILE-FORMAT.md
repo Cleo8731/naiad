@@ -262,12 +262,17 @@ More text.
   one shown is the one whose lines around it, above and below both, read more as they
   did than the other's; if the lines around the two do not tell them apart, or the
   lines above point to one and the lines below to the other, Naiad cannot tell. Nor can
-  it when another block sits where the shown block was (the same lines above it, its
-  heading say), whatever its text, even a copy of a third block's, and the shown
-  block's text is now elsewhere: the shown block may have been changed in place and
-  its old text kept as a copy. So too when the block holding the shown text now stands
-  under other headings than the shown block did (any heading above it, not only the
-  nearest, renamed, added or taken away; a heading underlined with `===` or `---`
+  it when another block sits where the shown block was (more of the lines above it read
+  as they did, its heading say; or as many, at least one, and more below), whatever
+  its text, even a copy of a third block's, and the shown block's text is now
+  elsewhere: the shown block may have been changed in place and its old text kept as a
+  copy, or another block changed to it. So too when no block was added or taken away
+  and the block holding the shown text is now at another place in their order, while
+  the block at the shown block's place stands under the same headings and its lines
+  above read as much as they did: a section moved among sections under the same
+  headings looks just like that. So too when the block holding the shown text now
+  stands under other headings than the shown block did (any heading above it, not only
+  the nearest, renamed, added or taken away; a heading underlined with `===` or `---`
   counts), whatever the lines below each say: the shown block may have been changed in
   place, with the text below it and its heading, and the old text kept with the copy.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
