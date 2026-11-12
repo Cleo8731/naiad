@@ -556,12 +556,23 @@ export class App {
    * not yet: typing still waiting, or typed while this job waited its turn. A job that
    * puts in a text from elsewhere (a reload, an edit, Undo) calls it first, so what was
    * typed becomes a step of Undo and is never written over (bug hunt C25). The pane is
-   * read when the job runs, not when it was queued.
+   * read when the job runs, not when it was queued, and read again after the typing is
+   * drawn: keys pressed during that drawing are taken in too, since the job puts in its
+   * own text right after (bug hunt round 3, oC1, oC2).
    */
   private async takeTypingNow(): Promise<void> {
-    window.clearTimeout(this.textTimer);
-    this.textTimer = undefined;
-    await this.apply(this.typed(), 'text');
+    do {
+      window.clearTimeout(this.textTimer);
+      this.textTimer = undefined;
+      await this.apply(this.typed(), 'text');
+    } while (this.typingWaits());
+  }
+
+  /** Whether the text pane holds typing that the text does not have yet and could take in. */
+  private typingWaits(): boolean {
+    let typed = this.typed();
+    if (this.md && typed !== '' && !typed.endsWith('\n')) typed += '\n'; // as `apply` puts it in
+    return typed !== this.text && !this.locked();
   }
 
   /**
@@ -629,22 +640,27 @@ export class App {
     let result: OpResult | null = null;
     // Checked and put in as one job, so a reload can never land between the two.
     await this.queue(async () => {
-      await this.takeTypingNow(); // typed while this job waited (C25)
-      const before = this.snap;
-      const why = this.locked();
-      if (why) {
-        this.toast(`This flowchart can be shown but not changed here: ${why}`);
-        this.paint();
-        return;
-      }
+      let before: Snap | null;
       let res: OpResult;
-      try {
-        res = await applyChecked(this.text, op);
-      } catch (e) {
-        this.toast(e instanceof EditError ? e.message : errorText(e));
-        this.paint(); // put the controls back to what the file says
-        return;
-      }
+      do {
+        await this.takeTypingNow(); // typed while this job waited (C25)
+        before = this.snap;
+        const why = this.locked();
+        if (why) {
+          this.toast(`This flowchart can be shown but not changed here: ${why}`);
+          this.paint();
+          return;
+        }
+        try {
+          res = await applyChecked(this.text, op);
+        } catch (e) {
+          this.toast(e instanceof EditError ? e.message : errorText(e));
+          this.paint(); // put the controls back to what the file says
+          return;
+        }
+        // Keys pressed while the edit was checked are taken in, and the edit is checked
+        // again on the text they make, rather than written over (bug hunt round 3, oC1).
+      } while (this.typingWaits());
       // Decide what stays selected before the redraw, so it is painted once.
       if (op.kind === 'deleteNode' || op.kind === 'deleteEdge' || op.kind === 'ungroup') this.selection = null;
       if (op.kind === 'addNode') this.selection = { kind: 'node', id: res.created! };
