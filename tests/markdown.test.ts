@@ -329,6 +329,39 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(before, '## Two\n\nSee below.\n\n' + chart + '\n## Two\n\nSee below.\n\n' + changed + '\nMore.\n', 0)).toBe(0);
   });
 
+  // Round 7: headings read otherwise than Markdown reads them, so a backup under another
+  // heading read as standing under the shown block's: a closing "#" with no space before
+  // it taken off (`# Original#` read as "Original", B30); a line like a numbered item
+  // that cannot start one in the middle of an underlined heading (B31); `#` alone, an
+  // empty heading, not read as one (B32); and a heading inside a list item taking the
+  // place of the file's heading above the list (oB30).
+  test('B30 to B32, oB30: a backup under a heading Markdown reads as another: never the backup', () => {
+    const backup = (head: string, other: string) => [head + '\n\nintro\n' + chart + '\nend\n',
+      other + '\n\nintro\n' + chart + '\nend\n\n' + head + '\n\nchanged intro\n' + changed + '\nchanged end\n'];
+    for (const [head, other] of [['# Original#', '# Original'], ['Title\n2. continuation\n---', 'Backup text'], ['# Title\n\n#', '# Title']]) {
+      const [before, after] = backup(head, other);
+      expect(again(before, after, 0), head).not.toBe(0);
+    }
+    const item = (outer: string, inner: string, body: string) =>
+      `# ${outer}\n\n- item\n\n  ${inner}\n\n  intro\n${body.replace(/^/gm, '  ').replace(/ +$/, '')}\n  end\n`;
+    for (const inner of ['One\n  ===', '# One']) {
+      const before = item('Top', inner, chart);
+      expect(findBlocks(before)[0].headings, inner).toBe('1 Top');
+      expect(again(before, item('Backup', inner, chart) + '\n' + item('Renamed', inner, changed), 0), inner).toBe(-1);
+    }
+    // The headings as Markdown reads them.
+    const heading = (above: string) => findBlocks(above + '\n\n' + chart)[0].heading;
+    expect(heading('# Original#')).toBe('Original#');
+    expect(heading('# Original #')).toBe('Original');
+    expect(heading('# Original \\#')).toBe('Original \\#');
+    expect(heading('## ##')).toBe('');
+    expect(findBlocks('# Top\n\n#\n\n' + chart)[0].headings).toBe('1 ');
+    expect(heading('#hashtag')).toBe('');
+    expect(heading('Title\n2. continuation\n---')).toBe('Title 2. continuation');
+    for (const list of ['1. item', '- item', '2. item']) expect(heading('Title\n\n' + list + '\n---'), list).toBe('');
+    expect(heading('Title\n1. item\n---')).toBe('');
+  });
+
   test('a block added right after a shown block that opens the file: still the shown block', () => {
     const first = chart + '\nThe end.\n';
     const added = '```mermaid\nflowchart LR\n  c\n```\n';

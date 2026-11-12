@@ -314,9 +314,10 @@ export function findBlocks(file: string): Block[] {
     // A backtick fence's first line cannot hold another backtick (that is inline code).
     const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(r, i, columns(m[1])) : null;
     if (!m || base === null) {
-      const h = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
-      if (h) under(h[1].length, h[2]);
-      else {
+      const h = ATX_HEADING.exec(lines[i]);
+      if (h) {
+        if (!inItem(r, i)) under(h[1].length, atxText(h[2]));
+      } else {
         const s = setextHeading(r, i);
         if (s !== null) under(lines[i].trim()[0] === '=' ? 1 : 2, s);
       }
@@ -352,22 +353,59 @@ export function findBlocks(file: string): Block[] {
 }
 
 /**
+ * A heading written with "#" (CommonMark's ATX heading): one to six, then a space or tab
+ * or the end of the line (`#` alone is an empty heading: bug hunt round 7, B32).
+ */
+const ATX_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
+
+/**
+ * An ATX heading's text: a closing run of "#" is taken off only after a space or tab
+ * (`# Original#` reads "Original#", `# Original #` reads "Original"), or when it is the
+ * whole text (bug hunt round 7, B30).
+ */
+function atxText(text = ''): string {
+  return /^#+$/.test(text) ? '' : text.replace(/[ \t]+#+$/, '');
+}
+
+/**
+ * Whether line k stands in a list item. A heading there is the item's, not the file's:
+ * it is not taken among the headings a block stands under (bug hunt round 7, oB30: a
+ * level 1 heading in an item took the place of the file's level 1 heading above the
+ * list). Only a line indented two columns or more can stand in an item; unsure counts
+ * as not in one.
+ */
+function inItem(r: Reading, k: number): boolean {
+  const w = columns(/^[ \t]*/.exec(r.lines[k])![0]);
+  return w >= 2 && itemText(r, k, w, 0) > 0;
+}
+
+/** A heading or a thematic break three columns in at most: no paragraph goes on past it. */
+const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4){2,}[ \t]*$)/;
+
+/**
  * The text of the heading that line i underlines (a `===` or `---` line right under
  * paragraph text), or null. Text standing in a list item, a quote, HTML or a table is
- * not taken for one: under it, a `---` is a thematic break, and a `===` more text.
+ * not taken for one: under it, a `---` is a thematic break, and a `===` more text. A
+ * line shaped like a list item that cannot start one under paragraph text (a number
+ * other than 1, or nothing after the marker) is more of the text when paragraph text
+ * stands above it (bug hunt round 7, B31: `2. continuation`).
  */
 function setextHeading(r: Reading, i: number): string | null {
   if (!/^ {0,3}(=+|-+)[ \t]*$/.test(r.lines[i])) return null;
   const text: string[] = [];
   let k = i - 1;
+  const paragraph = (j: number) => j >= 0 && r.opener[j] < 0 && r.lines[j].trim() !== '' && !HEADING_OR_BREAK.test(r.lines[j]);
   for (; k >= 0 && r.opener[k] < 0 && r.lines[k].trim() !== ''; k--) {
     const line = r.lines[k];
-    if (/^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4){2,}[ \t]*$)/.test(line)) break; // a heading or a break above: the text starts below it
-    if (LIST_ITEM.test(line) || /^[ \t]*[>|<]/.test(line) || FENCE.test(line)) return null;
+    if (HEADING_OR_BREAK.test(line)) break; // a heading or a break above: the text starts below it
+    const item = LIST_ITEM.exec(line);
+    if (item && (mayInterrupt(line, item) || !paragraph(k - 1))) return null;
+    if (/^[ \t]*[>|<]/.test(line) || FENCE.test(line)) return null;
     text.unshift(line.trim());
   }
   // Text whose first line is indented four columns or more is a code sample.
   if (!text.length || columns(/^[ \t]*/.exec(r.lines[k + 1])![0]) >= 4) return null;
+  if (inItem(r, k + 1) || inItem(r, i)) return null;
   return text.join(' ');
 }
 

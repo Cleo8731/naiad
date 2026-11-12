@@ -273,7 +273,9 @@ More text.
   headings looks just like that. So too when the block holding the shown text now
   stands under other headings than the shown block did (any heading above it, not only
   the nearest, renamed, added or taken away; a heading underlined with `===` or `---`
-  counts), whatever the lines below each say: the shown block may have been changed in
+  counts, each read as Markdown reads it: `# Original#` is "Original#", `#` alone is an
+  empty heading, and a heading inside a list item is the item's, which does not count),
+  whatever the lines below each say: the shown block may have been changed in
   place, with the text below it and its heading, and the old text kept with the copy.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
