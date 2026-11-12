@@ -149,6 +149,11 @@ More text.
   at most three spaces past the start of the item's text; a fence indented further is
   an indented code sample and is left alone. A line that looks like a list item but
   stands inside another fenced block, or in an indented code sample, starts no list.
+  The fence stands in the item only if every line between them does: a line indented
+  less than the item's text ends the item, unless it goes on with a paragraph above
+  it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
+  text after it starts a new item. Where Naiad cannot tell whether the item ended, it
+  does not find the block, so a code sample is never taken for a flowchart.
   Every line of the block must then start with the same whitespace as its opening
   line (empty lines may be fully empty, or all carry that whitespace). If they do
   not, or the closing line is missing, Naiad shows the flowchart but does not change

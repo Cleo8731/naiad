@@ -306,4 +306,19 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     // A sub-item four columns in (two past its item's text), and a fence in it.
     expect(findBlocks('- a\n\n    - b\n\n      ```mermaid\n      flowchart TD\n      ```\n').length).toBe(1);
   });
+
+  test('B15: a line less indented than an item\'s text ends the item, so a fence below it is a code sample (bug hunt round 3)', () => {
+    const sample = (ind: string) => `${ind}\`\`\`mermaid\n${ind}flowchart TD\n${ind}  a --> b\n${ind}\`\`\`\n`;
+    // A paragraph indented 2 under "1. ", whose text starts at column 3.
+    expect(findBlocks('1. Step one\n\n  A paragraph indented two spaces.\n\n' + sample('    '))).toEqual([]);
+    // A quote indented 1 under "- ".
+    expect(findBlocks('- item\n\n > a quote\n\n' + sample('    '))).toEqual([]);
+    // A fenced block left of the item's text.
+    expect(findBlocks('   * item\n   ~~~~js\n   t\n   ~~~~\n' + sample('     '))).toEqual([]);
+    // A thematic break indented 1 under "1. ".
+    expect(findBlocks('1. item\n ---\n\n' + sample('    '))).toEqual([]);
+    // An item further out still holds the fence: the paragraph ended "- b", not "- a".
+    const outer = findBlocks('- a\n  - b\n\n  para in a\n\n    ```mermaid\n    flowchart TD\n    ```\n');
+    expect(outer.map((b) => b.open)).toEqual([5]);
+  });
 });

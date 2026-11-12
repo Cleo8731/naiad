@@ -46,25 +46,128 @@ function columns(ws: string): number {
  * `opener[k]` is the opening line of the fenced block line k stands in, or -1: a line
  * inside a fenced block is text, never a list item, so the block's opening line stands
  * for it. A list item is one only when its own marker stands where a block may start
- * (bug hunt round 2, B10).
+ * (bug hunt round 2, B10). Every line between the item and the fence must stand in the
+ * item: indented to its text at least, or paragraph text going on from the line above
+ * (a lazy line); any other line ended the item (bug hunt round 3, B15). Unsure counts
+ * as ended: the block is then not found, the safe side.
  */
 function fenceBase(lines: string[], at: number, w: number, opener: Int32Array): number | null {
   if (w <= 3) return 0;
+  let least = Infinity; // the least indent of the lines passed that may have ended an item
+  const lazy: [number, number][] = []; // [its indent, the indent of the line above] of the lazy lines passed
   for (let k = at - 1; k >= 0; k--) {
     if (opener[k] >= 0) k = opener[k];
     const line = lines[k];
     if (line.trim() === '') continue;
-    const item = LIST_ITEM.exec(line);
     const lead = columns(/^[ \t]*/.exec(line)![0]);
-    if (item && fenceBase(lines, k, columns(item[1]), opener) !== null) {
-      const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
-      const text = columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 ? gap : 1);
-      if (w >= text) return w - text <= 3 ? text : null;
-      // Less indented than this item's text: it may stand in an item further out.
+    const role = lineRole(lines, k, opener);
+    if (role === 'item') {
+      const text = textColumn(LIST_ITEM.exec(line)!);
+      // A lazy line goes on with a paragraph of the item only if the line above it is
+      // no code sample in the item (four columns or more past its text).
+      if (w >= text && least >= text && lazy.every(([l, a]) => l >= text || a < text + 4)) {
+        return w - text <= 3 ? text : null;
+      }
+      // Less indented than this item's text, or a line between ended the item: the
+      // fence may stand in an item further out.
+    } else if (role === 'lazy') {
+      lazy.push([lead, columns(/^[ \t]*/.exec(lines[k - 1])![0])]);
+      continue;
     }
-    if (lead === 0) return null; // text at the margin: the fence stands in no list
+    if (lead === 0) return null; // at the margin: the fence stands in no list
+    least = Math.min(least, lead);
   }
   return null;
+}
+
+/** The column where a list item's text starts: one to four spaces past the marker, or one when more. */
+function textColumn(item: RegExpExecArray): number {
+  const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
+  return columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 ? gap : 1);
+}
+
+/** Right under paragraph text, only a bullet or a 1 with text after it can start a list item. */
+function mayInterrupt(line: string, item: RegExpExecArray): boolean {
+  return /^([-+*]|0*1[.)])$/.test(item[2]) && line.slice(item[0].length).trim() !== '';
+}
+
+/** Lines that may open a block of their own: a quote, a heading, HTML, a table row, a
+ * setext underline or a thematic break. Fences and list items are tested apart. */
+const BLOCK_START = /^[ \t]*(>|#{1,6}([ \t]|$)|<|\||=|([-*_])([ \t]*\3){2,}[ \t]*$)/;
+
+/**
+ * What line k (not blank, not in a fenced block) is to a list item above it: 'item', a
+ * list item's own line; 'lazy', paragraph text going on from the line above, which
+ * stands in an item whatever its indent; 'other', any other line, or unsure.
+ */
+function lineRole(lines: string[], k: number, opener: Int32Array): 'item' | 'lazy' | 'other' {
+  const line = lines[k];
+  const para = paragraphAbove(lines, k, opener);
+  const item = LIST_ITEM.exec(line);
+  if (!item) return para === 1 && !FENCE.test(line) && !BLOCK_START.test(line) ? 'lazy' : 'other';
+  const lead = columns(item[1]);
+  // Right under paragraph text, and indented into the item that text stands in, only a
+  // bullet or a 1 with text after it starts a list item; any other is more of the
+  // paragraph.
+  let starts: boolean | null = true;
+  if (para === -1 && !mayInterrupt(line, item)) starts = null;
+  else if (para === 1 && !mayInterrupt(line, item)) {
+    const text = paragraphItemText(lines, k - 1, opener);
+    starts = text === null ? null : lead < text;
+  }
+  if (starts === null) return 'other';
+  if (!starts) return 'lazy';
+  if (fenceBase(lines, k, lead, opener) !== null) return 'item';
+  // Its marker is four columns or more past where a block may start: under paragraph
+  // text, more of it; else a code sample.
+  return para === 1 ? 'lazy' : 'other';
+}
+
+/**
+ * The column where the text of the list item starts, when the paragraph that line k
+ * holds began on that item's own line; Infinity when it stands in a quote (a line
+ * without `>` never goes on with it as a list item); null when unsure.
+ */
+function paragraphItemText(lines: string[], k: number, opener: Int32Array): number | null {
+  for (;;) {
+    const line = lines[k];
+    const lead = /^[ \t]*/.exec(line)![0];
+    if (line[lead.length] === '>') return columns(lead) <= 3 ? Infinity : null;
+    const para = paragraphAbove(lines, k, opener);
+    const item = LIST_ITEM.exec(line);
+    if (item) {
+      const rest = line.slice(item[0].length);
+      // Maybe more of the paragraph above, or no paragraph at all: unsure.
+      if (rest.trim() === '' || (para !== 0 && !mayInterrupt(line, item))) return null;
+      if (fenceBase(lines, k, columns(item[1]), opener) === null) {
+        if (para !== 1) return null;
+        k--; // more of the paragraph above
+        continue;
+      }
+      if (rest.startsWith('>')) return columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]) <= 4 ? Infinity : null;
+      return textColumn(item);
+    }
+    if (para !== 1) return null; // began on a line of its own, or unsure
+    k--;
+  }
+}
+
+/** Whether the line right above line k holds paragraph text: 1 sure, 0 sure not, -1 unsure. */
+function paragraphAbove(lines: string[], k: number, opener: Int32Array): 1 | 0 | -1 {
+  if (k === 0 || opener[k - 1] >= 0) return 0; // nothing above, or a line of a fenced block
+  const line = lines[k - 1];
+  let above = line;
+  for (;;) { // take off the quote and list markers the text above stands in
+    const m = /^[ \t]*>[ \t]?/.exec(above) ?? LIST_ITEM.exec(above);
+    if (!m) break;
+    above = above.slice(m[0].length);
+  }
+  if (above.trim() === '') return 0; // blank, or an empty item or quote
+  if (!FENCE.test(above) && !BLOCK_START.test(above)) return 1;
+  // A heading or a thematic break (or setext underline) three columns in at most ends
+  // any paragraph; other lines like these may be more text.
+  if (above === line && /^ {0,3}(#{1,6}([ \t]|$)|([-*_])([ \t]*\3){2,}[ \t]*$)/.test(line)) return 0;
+  return -1;
 }
 
 /** True when the first line that is not empty, a comment or frontmatter starts a flowchart. */
