@@ -117,9 +117,13 @@ fn open_held(dir: &Path) -> std::io::Result<fs::File> {
     fs::File::open(dir)
 }
 
-/// The highlights file's text, or None if there is none. What was read is noted (`SEEN`).
+/// The highlights file's text, or None if there is none. What was read is noted (`SEEN`)
+/// before this program changes the file again (`CHANGING`): noted after, it could be older
+/// than what a write made meanwhile put there (bug hunt round 6, F24).
 pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
+    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     let text = read_now(flowchart)?;
+    stage("read");
     note_seen(flowchart, text.as_deref().map(str::as_bytes));
     Ok(text)
 }
@@ -215,7 +219,8 @@ fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
 }
 
 /// One change to a highlights file at a time in this program, so that the look at what
-/// a file holds and the change made from it are one step for every view it serves.
+/// a file holds and the change made from it are one step for every view it serves; a
+/// read or a write and its note in `SEEN` are one step too (bug hunt round 6, F24).
 static CHANGING: Mutex<()> = Mutex::new(());
 
 /// Writes the highlights file whole, through a temporary file and a rename
@@ -227,17 +232,19 @@ static CHANGING: Mutex<()> = Mutex::new(());
 /// and answers false: another view or an agent changed it since it was read (bug hunt
 /// round 4, E16). A missing file has nothing to lose, so a delete then goes ahead. The
 /// look and the change are one step for other programs too (`change_file`). What was
-/// written is noted (`SEEN`).
+/// written is noted (`SEEN`) before another write can run (F24).
 pub fn write(flowchart: &Path, text: &str, same: Same) -> Result<bool, String> {
+    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     let wrote = write_now(flowchart, text, same)?;
     if wrote {
+        stage("written");
         note_seen(flowchart, Some(text.as_bytes()).filter(|_| !text.trim().is_empty()));
     }
     Ok(wrote)
 }
 
+/// `write`, run while `CHANGING` is held.
 fn write_now(flowchart: &Path, text: &str, same: Same) -> Result<bool, String> {
-    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     if text.trim().is_empty() {
         return remove(flowchart, true, same);
     }
@@ -932,6 +939,48 @@ mod tests {
             fs::remove_file(&file).unwrap();
         }
         show(None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 6, F24: a read or a write noted what it read or wrote (`SEEN`) after
+    /// letting other changes in, so a write made between the two left `SEEN` holding the
+    /// older text. An agent that then wrote that older text back lost it when the view
+    /// went. Each is noted before another write can run.
+    #[test]
+    fn a_write_made_while_another_read_or_write_is_noted_leaves_the_newer_noted() {
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = folder("f24");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        let file = file_of(&flow).unwrap();
+        for (what, at) in [("a write", "written"), ("a read", "read")] {
+            show(Some(&flow));
+            write(&flow, "a\n", None).unwrap();
+            // Another view writes "b" while this one is about to note "a": it waits for
+            // the noting, or, if nothing makes it wait, ends first.
+            let other = flow.clone();
+            let (done, ended) = std::sync::mpsc::channel();
+            let second = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let into = second.clone();
+            at_stage(at, move || {
+                *into.borrow_mut() = Some(std::thread::spawn(move || {
+                    write(&other, "b\n", None).unwrap();
+                    let _ = done.send(());
+                }));
+                let _ = ended.recv_timeout(std::time::Duration::from_millis(500));
+            });
+            if at == "written" {
+                write(&flow, "a\n", None).unwrap();
+            } else {
+                assert_eq!(read(&flow), Ok(Some("a\n".into())));
+            }
+            second.borrow_mut().take().expect("the second write ran").join().unwrap();
+            assert_eq!(fs::read_to_string(&file).unwrap(), "b\n");
+            fs::write(&file, "a\n").unwrap(); // an agent writes the older text back
+            show(None);
+            assert_eq!(fs::read_to_string(&file).ok().as_deref(), Some("a\n"), "{what}: written after the last write, kept");
+            fs::remove_file(&file).unwrap();
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 
