@@ -111,6 +111,8 @@ describe('what Mermaid rejects, on the line of the file', () => {
     ['D17: a "%%" line first in the front matter', '---\n%% a comment\ntitle: T\n---\nflowchart TD\n  A --> B\n', 2, /front matter.*"# note"/],
     ['D17: a "%%" line further down the front matter', '---\ntitle: T\n%% a comment\n---\nflowchart TD\n  A --> B\n', 3, /front matter.*"# note"/],
     ['D19: "%%" before a directive above the header', '%%%%{init: {"theme": "dark"}}%%\nflowchart TD\n  A --> B\n', 1, /"%%" before "%%\{"/],
+    ['D29: a bare "%%" line in the front matter', '---\n%%\n---\nflowchart TD\nA-->B\n', 2, /front matter.*"# note"/],
+    ['D29: a bare "%%" line further down the front matter', '---\ntitle: T\n%%\n---\nflowchart TD\nA-->B\n', 3, /front matter.*"# note"/],
   ];
   for (const [name, text, line, message] of unseen) {
     test(name, async () => {
@@ -124,6 +126,11 @@ describe('what Mermaid rejects, on the line of the file', () => {
     expect(await check('---\ntitle: |\n  %% @a\n  %% x\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
     expect(await check('---\ntitle: T\n  %% indented\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
     expect(await check('flowchart TD\n  A --> B\n  %% note %%{init: {"theme": "dark"}}%%\n')).toEqual([]);
+  });
+
+  test('D29: Mermaid is given the front matter as it stands, a bare "%%" line in it too', () => {
+    expect(forMermaid('---\n%%\n---\nflowchart TD\n%%\nA\n')).toBe('---\n%%\n---\nflowchart TD\n\nA\n');
+    expect(forMermaid('---\ntitle: T\n  %%\n---\nflowchart TD\n')).toBe('---\ntitle: T\n  %%\n---\nflowchart TD\n');
   });
 
   // Mermaid ends a line at LF, CR or CRLF; with the m flag "$" also stops before U+2028

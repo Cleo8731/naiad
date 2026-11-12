@@ -2,6 +2,7 @@
 // groups. The app compares this before and after every edit (src/verify.ts).
 
 import mermaid from 'mermaid';
+import { FRONT_MATTER_RE } from './core/scan';
 
 export interface SnapNode { text: string; type: string; styles: string[]; classes: string[] }
 export interface SnapEdge {
@@ -31,10 +32,13 @@ export interface Snap {
 /**
  * A bare `%%` line is not a comment to Mermaid (it becomes a node), so it is blanked here.
  * A line ends where Mermaid ends one, at LF, CR or CRLF; not at U+2028 or U+2029, where
- * the m flag's `^` and `$` stop too (bug hunt round 4, A37).
+ * the m flag's `^` and `$` stop too (bug hunt round 4, A37). The front matter is left as
+ * it stands: Mermaid reads it as YAML before it drops comments, so a `%%` line there is
+ * the YAML reader's to accept or refuse (round 4, D29).
  */
 export function forMermaid(text: string): string {
-  return text.replace(/(^|[\r\n])[ \t]*%%[ \t]*(?=[\r\n]|$)/g, '$1');
+  const front = FRONT_MATTER_RE.exec(text)?.[0].length ?? 0;
+  return text.replace(/(^|[\r\n])[ \t]*%%[ \t]*(?=[\r\n]|$)/g, (line: string, end: string, at: number) => (at < front ? line : end));
 }
 
 const normDir = (d: unknown): string => (d === 'TD' ? 'TB' : typeof d === 'string' ? d : '');
