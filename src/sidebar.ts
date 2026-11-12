@@ -47,6 +47,9 @@ export const SWATCHES: Swatch[] = [
   { name: 'Purple', fill: '#e5dbff', stroke: '#7048e8' },
   { name: 'Grey', fill: '#e9ecef', stroke: '#868e96' },
 ];
+/** A description being written: its node, its text, and what the app calls once the text is in the file. */
+export interface Draft { id: string; text: string; written(): void }
+
 export const NEW_GROUP = '\u0000new';
 
 const PICKABLE_SHAPES = ['square', 'round', 'stadium', 'diamond', 'hexagon', 'circle', 'cylinder', 'subroutine', 'lean_right', 'trapezoid'];
@@ -76,6 +79,7 @@ export class Sidebar {
   private key = '';
   private editingDescription = false;
   private sync: ((v: View) => void)[] = [];
+  private draftOf: (() => Draft | null) | null = null;
 
   constructor(private root: HTMLElement, private actions: SidebarActions) {
     root.addEventListener('click', (e) => {
@@ -94,11 +98,21 @@ export class Sidebar {
     input?.select();
   }
 
+  /**
+   * The description being written in the panel, when the person changed it; null
+   * otherwise. The app writes it before the panel shows another item or none, and before
+   * the file is left (bug hunt round 3, C36).
+   */
+  draft(): Draft | null {
+    return this.draftOf?.() ?? null;
+  }
+
   show(view: View | null): void {
     if (!view) {
       // The item first: a box blurred as the panel is emptied must not commit (`textBox`).
       this.key = '';
       this.editingDescription = false;
+      this.draftOf = null;
       this.root.hidden = true;
       this.root.replaceChildren();
       return;
@@ -109,6 +123,7 @@ export class Sidebar {
     if (key !== this.key) {
       this.key = key;
       this.editingDescription = false;
+      this.draftOf = null;
       this.sync = [];
       this.root.hidden = false;
       this.root.replaceChildren(...this.build(view));
@@ -247,6 +262,11 @@ export class Sidebar {
       paint();
     };
     body.addEventListener('dblclick', begin);
+    this.draftOf = () => {
+      if (!this.editingDescription || area.value === started) return null;
+      const text = area.value;
+      return { id, text, written: () => { if (area.value === text) started = text; } };
+    };
     this.sync.push((v) => {
       current = (v as NodeView).description;
       // An untouched description being edited follows the file; one being typed in keeps what is typed.

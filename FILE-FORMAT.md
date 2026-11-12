@@ -193,7 +193,10 @@ More text.
   Text just typed in the text pane is part of every save, Ctrl+S, reload and Undo.
   Closing Naiad or opening another file while it holds a change that is not saved asks
   first, and so does showing another flowchart after a change on disk took an unsaved
-  edit's place (Undo holds that edit only while the flowchart stays shown).
+  edit's place (Undo holds that edit only while the flowchart stays shown). A
+  description being written in the sidebar is written to the file when the sidebar
+  turns to another item or closes, and before Naiad closes or shows another flowchart
+  or file; if it cannot be written, Naiad asks before it is lost. Cancel (Esc) drops it.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file

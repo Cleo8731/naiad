@@ -210,12 +210,26 @@ export class App {
    * displaced it and only Undo holds it (bug hunt C10). `what` names the step: "Open x".
    */
   private async leave(what: string): Promise<boolean> {
+    if (!(await this.writeDraft()) && !(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
     await this.flushSave();
     if (!this.path) return true;
     if (this.text !== this.saved) {
       return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
     }
     if (this.displaced) return this.backend.confirm(this.displacedQuestion(what));
+    return true;
+  }
+
+  /**
+   * Writes the description being written in the sidebar, when the person changed it, as
+   * Done would (bug hunt round 3, C36). False when it could not be written; it then
+   * stays in its box.
+   */
+  private async writeDraft(): Promise<boolean> {
+    const draft = this.sidebar.draft();
+    if (!draft) return true;
+    if (!(await this.edit({ kind: 'setDescription', id: draft.id, description: draft.text }))) return false;
+    draft.written();
     return true;
   }
 
@@ -447,6 +461,7 @@ export class App {
   }
 
   private async pickBlock(index: number): Promise<void> {
+    if (!(await this.writeDraft())) { this.paintBar(); return; }
     await this.flushSave();
     await this.work;
     const block = this.md?.blocks[index];
@@ -684,6 +699,7 @@ export class App {
   private async addNode(parent: string | null): Promise<void> {
     const sel = this.selection;
     const into = parent ?? (sel?.kind === 'sub' ? sel.id : null);
+    if (!(await this.writeDraft())) return; // the new node takes the panel (C36)
     const res = await this.edit({ kind: 'addNode', title: 'New node', parent: into });
     if (res) this.sidebar.focusTitle();
   }
@@ -716,6 +732,13 @@ export class App {
   }
 
   private select(target: Target | null): void {
+    // A description being written goes into the file as the panel turns to another item
+    // or none, as Done would (bug hunt round 3, C36). A node's id stays its own, so the
+    // edit is right even though it runs after the panel has changed.
+    const draft = this.sidebar.draft();
+    if (draft && !(target?.kind === 'node' && target.id === draft.id)) {
+      void this.edit({ kind: 'setDescription', id: draft.id, description: draft.text });
+    }
     this.selection = target;
     this.paint();
   }
@@ -931,7 +954,7 @@ export class App {
     window.addEventListener('beforeunload', (e) => {
       // A change not yet on disk: the browser asks before the page goes. (The desktop
       // app's window asks in canClose, before the page is unloaded.)
-      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced);
+      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null);
       void this.flushSave();
       if (waiting && this.backend.kind !== 'desktop') {
         e.preventDefault();

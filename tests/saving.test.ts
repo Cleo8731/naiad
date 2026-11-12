@@ -559,3 +559,74 @@ describe('the sidebar never puts back a value a change on disk replaced (bug hun
     expect(disk.files.get(FILE)).not.toContain('Pull the raw exports');
   });
 });
+
+describe('a description being written is saved when the person leaves it (bug hunt round 3: C36)', () => {
+  const select = (ui: Awaited<ReturnType<typeof start>>['ui'], target: unknown) =>
+    (ui.app as unknown as { select(t: unknown): void }).select(target);
+  const DRAFT = 'A long description the person typed and has not finished.';
+  async function writing(ui: Awaited<ReturnType<typeof start>>['ui']) {
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    document.querySelector<HTMLButtonElement>('.desc-head button:not(.primary):not([title="Esc"])')!.click(); // Edit
+    const area = document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!;
+    area.value = DRAFT;
+    area.dispatchEvent(new Event('input'));
+  }
+
+  it('C36: another node is clicked: the description is written', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    select(ui, { kind: 'node', id: 'clean' });
+    expect(await ui.until((t) => t.includes(`%% ${DRAFT}`))).toBe(true);
+    await sleep(800);
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    expect(disk.files.get(FILE)).not.toContain('Pull the raw exports');
+  });
+
+  it('C36: the panel is closed: the description is written', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    select(ui, null);
+    expect(await ui.until((t) => t.includes(`%% ${DRAFT}`))).toBe(true);
+    await sleep(800);
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+  });
+
+  it('C36: the window is closed: the description is written before it closes', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+  });
+
+  it('C36: the window is closed while the description cannot be written: Naiad asks', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN); // Mermaid cannot read the text, so no edit can be made
+    await sleep(400);
+    disk.answer = false;
+    expect(await disk.closeGuard!()).toBe(false);
+    expect(disk.asked.some((q) => /description/.test(q))).toBe(true);
+    expect(document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.value).toBe(DRAFT); // still there to copy
+  });
+
+  it('C36: a node is added: the description is written before the new node takes the panel', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    await (ui.app as unknown as { addNode(p: string | null): Promise<void> }).addNode(null);
+    await sleep(800);
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    expect(disk.files.get(FILE)).toContain('New node');
+  });
+
+  it('Cancel still drops the description being written', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    document.querySelector<HTMLButtonElement>('.desc-head button[title="Esc"]')!.click(); // Cancel
+    select(ui, { kind: 'node', id: 'clean' });
+    await sleep(800);
+    expect(disk.files.get(FILE)).toContain('Pull the raw exports');
+    expect(disk.files.get(FILE)).not.toContain(DRAFT);
+  });
+});
