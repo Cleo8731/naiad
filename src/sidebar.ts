@@ -80,6 +80,7 @@ export class Sidebar {
   private editingDescription = false;
   private sync: ((v: View) => void)[] = [];
   private draftOf: (() => Draft | null) | null = null;
+  private resume: ((text: string) => void) | null = null;
 
   constructor(private root: HTMLElement, private actions: SidebarActions) {
     root.addEventListener('click', (e) => {
@@ -107,12 +108,21 @@ export class Sidebar {
     return this.draftOf?.() ?? null;
   }
 
+  /**
+   * Opens the description of node `id` for writing again with `text`, when the panel
+   * shows that node and its description is not being written: a description that could
+   * not be written goes back into its box (bug hunt round 4, C40).
+   */
+  resumeDescription(id: string, text: string): void {
+    if (this.key === `node:${id}` && !this.editingDescription) this.resume?.(text);
+  }
+
   show(view: View | null): void {
     if (!view) {
       // The item first: a box blurred as the panel is emptied must not commit (`textBox`).
       this.key = '';
       this.editingDescription = false;
-      this.draftOf = null;
+      this.draftOf = this.resume = null;
       this.root.hidden = true;
       this.root.replaceChildren();
       return;
@@ -123,7 +133,7 @@ export class Sidebar {
     if (key !== this.key) {
       this.key = key;
       this.editingDescription = false;
-      this.draftOf = null;
+      this.draftOf = this.resume = null;
       this.sync = [];
       this.root.hidden = false;
       this.root.replaceChildren(...this.build(view));
@@ -267,6 +277,7 @@ export class Sidebar {
       const text = area.value;
       return { id, text, written: () => { if (area.value === text) started = text; } };
     };
+    this.resume = (text) => { begin(); area.value = text; };
     this.sync.push((v) => {
       current = (v as NodeView).description;
       // An untouched description being edited follows the file; one being typed in keeps what is typed.

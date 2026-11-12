@@ -7,6 +7,19 @@ import { chartTiming, FakeDisk, sleep, startApp, stopApps } from './app-harness'
 
 vi.mock('../src/chart', async () => (await import('./app-harness')).chartMock());
 
+// A checked edit that takes a while, when a test sets `timing.delay` (ms); otherwise the real one.
+const timing = vi.hoisted(() => ({ delay: 0 }));
+vi.mock('../src/verify', async (original) => {
+  const real = await original<typeof import('../src/verify')>();
+  return {
+    ...real,
+    applyChecked: async (...args: Parameters<typeof real.applyChecked>) => {
+      if (timing.delay) await new Promise((r) => setTimeout(r, timing.delay));
+      return real.applyChecked(...args);
+    },
+  };
+});
+
 const FILE = 'C:/hunt/flow.mmd';
 const OTHER = 'C:/hunt/other.mmd';
 const BASE = `flowchart TD
@@ -628,5 +641,66 @@ describe('a description being written is saved when the person leaves it (bug hu
     await sleep(800);
     expect(disk.files.get(FILE)).toContain('Pull the raw exports');
     expect(disk.files.get(FILE)).not.toContain(DRAFT);
+  });
+
+  // Bug hunt round 4, C40 and oC40: the description could not be written (the text pane
+  // holds an error) and went with the panel, unasked.
+  const box = () => document.querySelector<HTMLTextAreaElement>('textarea.desc-edit');
+  const shown = (ui: Awaited<ReturnType<typeof start>>['ui']) =>
+    (ui.app as unknown as { selection: unknown }).selection;
+
+  it('C40: another node is clicked while the description cannot be written: Naiad asks, and it comes back', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    disk.answer = false; // keep it
+    select(ui, { kind: 'node', id: 'clean' });
+    await sleep(800);
+    expect(disk.asked.some((q) => /description/.test(q) && /Collect data/.test(q))).toBe(true);
+    expect(shown(ui)).toEqual({ kind: 'node', id: 'collect' });
+    expect(box()!.hidden).toBe(false);
+    expect(box()!.value).toBe(DRAFT);
+  });
+
+  it('C40: the panel is closed while the description cannot be written: Naiad asks, and it can be let go', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    disk.answer = true; // lose it
+    select(ui, null);
+    await sleep(800);
+    expect(disk.asked.some((q) => /description/.test(q))).toBe(true);
+    expect(shown(ui)).toBe(null);
+    expect(disk.files.get(FILE)).not.toContain(DRAFT);
+  });
+
+  it('C40: Done while the description cannot be written: it stays in its box', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click(); // Done
+    await sleep(800);
+    expect(disk.asked).toEqual([]);
+    expect(box()!.hidden).toBe(false);
+    expect(box()!.value).toBe(DRAFT);
+  });
+
+  it('C41: text typed while closing writes the description is written too', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    timing.delay = 300; // each checked edit takes a while
+    try {
+      const closing = disk.closeGuard!();
+      await sleep(100);
+      box()!.value = `${DRAFT} And more.`;
+      box()!.dispatchEvent(new Event('input'));
+      expect(await closing).toBe(true);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT} And more.`);
+    } finally {
+      timing.delay = 0;
+    }
   });
 });

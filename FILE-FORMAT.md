@@ -198,7 +198,9 @@ More text.
   edit's place (Undo holds that edit only while the flowchart stays shown). A
   description being written in the sidebar is written to the file when the sidebar
   turns to another item or closes, and before Naiad closes or shows another flowchart
-  or file; if it cannot be written, Naiad asks before it is lost. Cancel (Esc) drops it.
+  or file, with any text typed while it is written; if it cannot be written (the text
+  pane holds an error, say), Naiad asks before it is lost, and unless the person lets
+  it go, it goes back into its box. Cancel (Esc) drops it.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file

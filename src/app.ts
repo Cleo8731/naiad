@@ -159,7 +159,7 @@ export class App {
     this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
       close: () => this.select(null),
       setTitle: (id, title) => { void this.edit({ kind: 'setTitle', id, title }); },
-      setDescription: (id, description) => { void this.edit({ kind: 'setDescription', id, description }); },
+      setDescription: (id, description) => { void this.writeDescription(id, description); },
       setShape: (id, shape) => { void this.edit({ kind: 'setShape', id, shape }); },
       setFill: (id, s) => {
         const isNode = !!this.snap?.nodes[id];
@@ -210,8 +210,16 @@ export class App {
    * displaced it and only Undo holds it (bug hunt C10). `what` names the step: "Open x".
    */
   private async leave(what: string): Promise<boolean> {
-    if (!(await this.writeDraft()) && !(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
-    await this.flushSave();
+    // Text typed into the description while it or the file was written is written too
+    // (bug hunt round 4, C41), unless the person let the description go.
+    for (let letGo = false; ;) {
+      if (!letGo && !(await this.writeDraft())) {
+        if (!(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
+        letGo = true;
+      }
+      await this.flushSave();
+      if (letGo || !this.sidebar.draft()) break;
+    }
     if (!this.path) return true;
     if (this.text !== this.saved) {
       return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
@@ -222,15 +230,36 @@ export class App {
 
   /**
    * Writes the description being written in the sidebar, when the person changed it, as
-   * Done would (bug hunt round 3, C36). False when it could not be written; it then
-   * stays in its box.
+   * Done would (bug hunt round 3, C36), and again while more was typed as it was written
+   * (round 4, C41). False when it could not be written; it then stays in its box.
    */
   private async writeDraft(): Promise<boolean> {
-    const draft = this.sidebar.draft();
-    if (!draft) return true;
-    if (!(await this.edit({ kind: 'setDescription', id: draft.id, description: draft.text }))) return false;
-    draft.written();
+    for (let draft = this.sidebar.draft(); draft; draft = this.sidebar.draft()) {
+      if (!(await this.edit({ kind: 'setDescription', id: draft.id, description: draft.text }))) return false;
+      draft.written();
+    }
     return true;
+  }
+
+  /**
+   * Writes a description the panel has left: by Done, or as the panel turns to another
+   * item or none (C36). One that cannot be written (the text pane holds an error, say) is
+   * not dropped unasked: while its node is in the panel it goes back into its box; once
+   * the panel has turned away, Naiad asks, and unless the person lets it go, turns back
+   * to it (bug hunt round 4, C40). A node deleted meanwhile takes it along (C36's case,
+   * left as a known finding).
+   */
+  private async writeDescription(id: string, text: string): Promise<void> {
+    if (await this.edit({ kind: 'setDescription', id, description: text })) return;
+    const here = () => this.selection?.kind === 'node' && this.selection.id === id;
+    if (!here()) {
+      const title = nodeLabel(this.doc, id)?.title ?? id;
+      if (!this.snap?.nodes[id]) return;
+      if (await this.backend.confirm(`The description you were writing for “${title}” could not be saved. Lose it?`)) return;
+      if (!this.snap?.nodes[id]) return;
+      if (!here()) this.select({ kind: 'node', id });
+    }
+    this.sidebar.resumeDescription(id, text);
   }
 
   /** The question asked before an edit that only Undo holds (`displaced`) is lost. */
@@ -737,7 +766,7 @@ export class App {
     // edit is right even though it runs after the panel has changed.
     const draft = this.sidebar.draft();
     if (draft && !(target?.kind === 'node' && target.id === draft.id)) {
-      void this.edit({ kind: 'setDescription', id: draft.id, description: draft.text });
+      void this.writeDescription(draft.id, draft.text);
     }
     this.selection = target;
     this.paint();
