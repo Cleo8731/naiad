@@ -73,7 +73,9 @@ describe.each(Object.keys(fixtures))('every edit on fixture "%s"', (name) => {
       }
     }
     expect(refused, `${refused.length} of ${ops.length} refused`).toEqual([]);
-  });
+    // Each fixture runs hundreds of edits through Mermaid: 0.5 to 4.5 s alone, and past
+    // Vitest's 5 s when the other test files run beside it.
+  }, 30_000);
 });
 
 describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S14)', () => {
