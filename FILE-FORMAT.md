@@ -228,8 +228,10 @@ More text.
   arrow's label or a group's title typed in the sidebar and not yet entered is written
   the same way before Naiad closes or shows another flowchart or file, with what is
   typed while it is written; if it cannot be written, Naiad asks, and unless the person
-  lets it go, it stays in its box. What is typed in the sidebar while those saves run
-  is written too.
+  lets it go, it stays in its box. One entered (Enter, or focus leaving the box) counts
+  as written only once it is in the file: until then it is treated as not yet entered,
+  and one that could not be written stays in its box. What is typed in the sidebar
+  while those saves run is written too.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file

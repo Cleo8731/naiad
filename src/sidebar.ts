@@ -186,14 +186,32 @@ export class Sidebar {
    * none, and an arrow's index may by then be another arrow's (bug hunt round 3, C33).
    * What is typed and not entered is offered to the app as `typed()` (`what` names it in
    * a question), since closing the window takes no focus away (round 6, C44).
+   * A box counts as written only once its edit is in the file: until then, while it is
+   * checked or after it was refused, the box keeps its text and `typed()` offers it, so
+   * closing writes it or asks, and the browser asks before the page goes (round 7, C56,
+   * oC58, oC56, E22). A write of the same text already under way is waited for, not
+   * made twice.
    */
   private textBox(cls: string, placeholder: string, what: string, read: (v: View) => string, commit: (value: string) => Promise<boolean>): HTMLInputElement {
     const item = this.key;
     let shown = '';
-    let start = ''; // the value the box held before the person changed it, or last committed
+    let start = ''; // the value the box held before the person changed it, or last written
+    let writing: { text: string; done: Promise<boolean> } | null = null;
+    const write = (text: string): Promise<boolean> => {
+      if (writing?.text === text) return writing.done;
+      const now = {
+        text,
+        done: commit(text).then((ok) => {
+          if (writing === now) writing = null;
+          if (ok && input.value === text) start = text;
+          return ok;
+        }),
+      };
+      writing = now;
+      return now.done;
+    };
     const input = h('input', {
       class: cls, type: 'text', placeholder, spellcheck: 'false',
-      focus: () => { start = input.value; },
       keydown: (e) => {
         const k = (e as KeyboardEvent).key;
         if (k === 'Enter') input.blur();
@@ -201,27 +219,20 @@ export class Sidebar {
       },
       blur: () => {
         if (this.key !== item) return; // the panel is going: its item is gone or changed
-        // Counted as committed at once, so closing while the edit is checked does not write it twice.
-        if (input.value !== start) void commit(start = input.value);
+        if (input.value !== start) void write(input.value);
         else input.value = shown;
       },
     });
     this.boxes.push(() => {
       if (this.key !== item || input.value === start) return null;
       const text = input.value;
-      return {
-        what,
-        write: async () => {
-          const ok = await commit(text);
-          if (ok && input.value === text) start = text;
-          return ok;
-        },
-      };
+      return { what, write: () => write(text) };
     });
     this.sync.push((v) => {
       shown = read(v);
       if (input.value === shown) { start = shown; return; }
-      if (document.activeElement === input && input.value !== start) return; // being typed in
+      // Typed and not in the file: being typed in, being written, or refused.
+      if (input.value !== start) return;
       const all = input.selectionStart === 0 && input.selectionEnd === input.value.length;
       input.value = start = shown;
       if (all && document.activeElement === input) input.select(); // as focusTitle left it

@@ -913,6 +913,92 @@ describe('a description being written is saved when the person leaves it (bug hu
     expect(titleBox().value).toBe('Collect everything');
   });
 
+  // Bug hunt round 7, C56, oC58, oC56 and E22: a box counted as committed as soon as focus
+  // left it, before its edit was checked. A title refused then went back to the old one
+  // unasked; one entered while the close saved was not waited for; the browser page went
+  // unasked while it was checked.
+  /** The title typed into node collect's box, then focus taken from it, with the text pane holding an error. */
+  async function refusedOnBlur() {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Collect everything');
+    ui.type(BROKEN); // Mermaid cannot read the text, so the edit is refused
+    await sleep(400);
+    titleBox().blur();
+    await sleep(500);
+    return { disk, ui };
+  }
+
+  it('C56: a title refused as focus leaves stays in its box, and is written once the text can be read', async () => {
+    const { disk, ui } = await refusedOnBlur();
+    expect(titleBox().value).toBe('Collect everything');
+    ui.type(BASE);
+    await sleep(500);
+    expect(titleBox().value).toBe('Collect everything');
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+  });
+
+  it('oC58: and closing while it still cannot be written asks, and keeps it on No', async () => {
+    const { disk } = await refusedOnBlur();
+    disk.answer = false;
+    expect(await disk.closeGuard!()).toBe(false);
+    expect(disk.asked.some((q) => /title/.test(q))).toBe(true);
+    expect(titleBox().value).toBe('Collect everything');
+  });
+
+  it('oC56: a title entered while the close saves the file is written before the close ends', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    ui.type(TYPED); // a change in the text pane, so closing saves
+    let release!: () => void;
+    let started!: () => void;
+    const reading = new Promise<void>((r) => (started = r));
+    disk.afterRead = () => {
+      disk.afterRead = null;
+      started();
+      return new Promise<void>((r) => (release = r));
+    };
+    const closing = disk.closeGuard!();
+    await reading;
+    typeInto(titleBox(), 'Collect everything');
+    titleBox().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); // entered: focus leaves the box
+    release();
+    expect(await closing).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('typed[Typed by the person]');
+    expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+  });
+
+  it('E22: the browser asks before the page goes while an entered title is checked, and the title is written once', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Collect everything');
+    const writes = () => disk.writes.filter((w) => w.path === FILE).length;
+    const before = writes();
+    timing.delay = 300;
+    try {
+      titleBox().blur();
+      await sleep(30);
+      expect(disk.files.get(FILE)).toBe(BASE);
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(true);
+      expect(await disk.closeGuard!()).toBe(true); // waits for that edit, and makes no other
+      expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+      expect(writes() - before).toBe(1);
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
   // Bug hunt round 6, oC53: the close's later saves, for typing in the text pane (C43),
   // looked at the text pane only: a description typed meanwhile was neither written nor
   // asked about.
