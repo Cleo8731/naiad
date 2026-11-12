@@ -349,7 +349,12 @@ describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (b
   test('A38: an edit that would change an accessible description is refused', async () => {
     const before = 'flowchart TD\naccDescr {\nFirst\n%% @a\n%%\nLast\n}\na\n';
     expect((await snapshot(before)).accDescr).toBe('First\n%%\nLast');
-    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' })).rejects.toThrow(EditError);
+    // Removing the description takes the bare line with it. (Writing one keeps it, as an
+    // empty line at the block's start, since A42, so the accessible description stays.)
+    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: '' })).rejects.toThrow(EditError);
+    const written = await applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' });
+    expect(written.text).toBe('flowchart TD\naccDescr {\nFirst\n%% @a\n%%\n%% new\nLast\n}\na\n');
+    expect((await snapshot(written.text)).accDescr).toBe('First\n%%\nLast');
   });
   test('A39: a title written over several lines keeps its bare "%%" line', async () => {
     expect((await snapshot('flowchart TD\na["First\n%%\nLast"]\n')).nodes.a.text).toBe('First\n%%\nLast');
@@ -362,7 +367,7 @@ describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (b
     expect(parseDoc(before).info.map((i) => i.kind).slice(1, 8)).toEqual(['acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'acc']);
     expect(parseDoc(before).warnings).toEqual([]);
     expect((await snapshot(before)).accDescr).toBe('First\n%%\nLast');
-    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' })).rejects.toThrow(EditError);
+    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: '' })).rejects.toThrow(EditError);
     // Over several lines too; and a "}" after the directive, on its line, still ends it.
     const several = 'flowchart TD\naccDescr {\nFirst\n%%{init: {\n"theme": "dark"}}%%\n%%\nLast\n}\na\n';
     expect(parseDoc(several).info.map((i) => i.kind).slice(1, 9)).toEqual(['acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'statement']);

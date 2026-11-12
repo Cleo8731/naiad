@@ -146,6 +146,31 @@ describe('description blocks', () => {
     expect(setDescription(sample, 'train', 'x\n  \n')).toBe(setDescription(sample, 'train', 'x'));
   });
 
+  // A block was written again whole in Naiad's spelling, so changing one line of it
+  // changed the others too (bug hunt round 6, A42).
+  test('A42: a line whose text is unchanged keeps its spelling; only changed lines are written', () => {
+    const cases: [string, string, string][] = [
+      // [the file, the new description, the file expected]
+      ['flowchart TD\na\n\n%% @a\n%%first  \n  %% second\t\n%% third\n', 'first  \nsecond\t\nchanged',
+        'flowchart TD\na\n\n%% @a\n%%first  \n  %% second\t\n%% changed\n'],
+      // The first line as written, and empty lines at the block's start and end.
+      ['flowchart TD\na\n\n  %%@a \n%%\n%% one\n%%two\n%% .\n%%\n', 'one\n2',
+        'flowchart TD\na\n\n  %%@a \n%%\n%% one\n  %% 2\n%% .\n%%\n'],
+      // A line put in takes the first line's indent; one taken out goes alone.
+      ['flowchart TD\na\n\n  %% @a\n  %%one\n%%two\n', 'one\nnew\ntwo', 'flowchart TD\na\n\n  %% @a\n  %%one\n  %% new\n%%two\n'],
+      ['flowchart TD\na\n\n%% @a\n%%one\n%% two\n%%three\n', 'one\nthree', 'flowchart TD\na\n\n%% @a\n%%one\n%%three\n'],
+      // Lines with a backslash in front, an empty line written as "%%", and a "%%\{".
+      ['flowchart TD\na\n\n%% @a\n%%\\@x\n%%\n%% 50%%\\{ off\n%% y\n', '@x\n\n50%%{ off\nz',
+        'flowchart TD\na\n\n%% @a\n%%\\@x\n%%\n%% 50%%\\{ off\n%% z\n'],
+    ];
+    for (const [before, desc, after] of cases) {
+      expect(getDescriptions(before).get('a')).not.toBe(desc);
+      const out = setDescription(before, 'a', desc);
+      expect(out, JSON.stringify(before)).toBe(after);
+      expect(getDescriptions(out).get('a')).toBe(desc);
+    }
+  });
+
   test('tolerates a hand-typed bare %% as an empty line', () => {
     expect(getDescriptions('flowchart TD\n A\n%% @A\n%% one\n%%\n%% two\n').get('A')).toBe('one\n\ntwo');
   });

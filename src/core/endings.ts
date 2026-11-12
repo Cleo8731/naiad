@@ -45,9 +45,10 @@ const MATCH_LIMIT = 1_000_000;
  * the start and the end are matched first; the middle by the longest common run of lines.
  * Of the runs that long, the one with the most lines at the same place in the middle:
  * when lines are changed in place to the text of a line beside them, which line is which
- * is told by its place, not by the first copy found (bug hunt round 4, D28).
+ * is told by its place, not by the first copy found (bug hunt round 4, D28). A
+ * description's lines are matched the same way (`descriptions.ts`).
  */
-function match(a: string[], b: string[]): Int32Array {
+export function matchLines(a: string[], b: string[]): Int32Array {
   const out = new Int32Array(b.length).fill(-1);
   let p = 0;
   while (p < a.length && p < b.length && a[p] === b[p]) { out[p] = p; p++; }
@@ -93,7 +94,7 @@ export function withEndingsOf(raw: string, text: string): string {
   const bom = raw.startsWith(BOM);
   const old = split(bom ? raw.slice(1) : raw);
   const lines = text.split('\n');
-  const matched = match(old.lines, lines);
+  const matched = matchLines(old.lines, lines);
   const fallback = commonest(old.ends);
   // For each new line, the old index of the next matched line at or below it.
   const nextOld = new Int32Array(lines.length + 1).fill(old.lines.length);
