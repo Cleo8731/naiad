@@ -322,3 +322,32 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     expect(outer.map((b) => b.open)).toEqual([5]);
   });
 });
+
+describe('a long list is read in good time (bug hunt round 3: B20)', () => {
+  const fence = ['    ```mermaid', '    flowchart TD', '      a', '    ```', ''];
+  const items = (n: number, gap: boolean) => Array.from({ length: n }, (_, i) => (gap ? [`    - item ${i}`, ''] : [`    - item ${i}`])).flat();
+  const timed = (lines: string[]) => {
+    const t = performance.now();
+    const found = findBlocks(lines.join('\n')).length;
+    return { found, ms: performance.now() - t };
+  };
+
+  // Each indented item doubled the time: 24 items took about 10 s.
+  test('24 indented items above an indented fence: under a paragraph, under a bullet, with blank lines between', () => {
+    for (const [lines, found] of [
+      [['Intro:', ...items(24, false), ...fence], 0],
+      [['- parent', ...items(24, false), ...fence], 1],
+      [['- parent', '', ...items(24, true), ...fence], 1],
+    ] as const) {
+      const r = timed([...lines]);
+      expect(r.found).toBe(found);
+      expect(r.ms).toBeLessThan(500);
+    }
+  });
+
+  test('3,000 of them', () => {
+    const r = timed(['- parent', ...items(3000, false), ...fence]);
+    expect(r.found).toBe(1);
+    expect(r.ms).toBeLessThan(2000);
+  });
+});

@@ -38,31 +38,84 @@ function columns(ws: string): number {
   return w;
 }
 
+type Role = 'item' | 'lazy' | 'other';
+
+/**
+ * What `findBlocks` knows of a file's lines as it reads them. `opener[k]` is the opening
+ * line of the fenced block line k stands in, or -1: a line inside a fenced block is
+ * text, never a list item, so the block's opening line stands for it. `role`, `base` and
+ * `itemText` keep what `lineRole`, `fenceBase` and `paragraphItemText` found, and every
+ * line up to `known` has its role. Each answer depends only on the line and the lines
+ * above it, which are final once `findBlocks` has read past them, so none is worked out
+ * twice; without that, the time doubled with each indented list item (bug hunt round 3,
+ * B20).
+ */
+interface Reading {
+  lines: string[];
+  opener: Int32Array;
+  role: (Role | undefined)[];
+  /** Each line's indent in columns, -1 for a blank line, -2 not yet worked out. */
+  indent: Int32Array;
+  /** The column where a list item's text starts, -1 not yet worked out. */
+  text: Int32Array;
+  known: number;
+  base: Map<string, number | null>;
+  itemText: Map<number, number | null>;
+}
+
 /**
  * The column a fence indented `w` columns on line `at` is measured from: 0 at the
  * margin, or the start of the text of the list item it stands in. Null when it is no
  * fence: Markdown reads a line indented four columns or more past that (at the margin,
  * or past the item's text) as an indented code sample, or as text. Unsure is null.
- * `opener[k]` is the opening line of the fenced block line k stands in, or -1: a line
- * inside a fenced block is text, never a list item, so the block's opening line stands
- * for it. A list item is one only when its own marker stands where a block may start
+ * A list item is one only when its own marker stands where a block may start
  * (bug hunt round 2, B10). Every line between the item and the fence must stand in the
  * item: indented to its text at least, or paragraph text going on from the line above
  * (a lazy line); any other line ended the item (bug hunt round 3, B15). Unsure counts
  * as ended: the block is then not found, the safe side.
  */
-function fenceBase(lines: string[], at: number, w: number, opener: Int32Array): number | null {
+function fenceBase(r: Reading, at: number, w: number): number | null {
   if (w <= 3) return 0;
+  const key = `${at} ${w}`;
+  let base = r.base.get(key);
+  if (base === undefined) {
+    know(r, at - 1);
+    base = baseAbove(r, at, w);
+    r.base.set(key, base);
+  }
+  return base;
+}
+
+/**
+ * Works out the role of each line not yet known, down to line `to`, first to last: each
+ * then finds the lines above it known, so the calls never run deep.
+ */
+function know(r: Reading, to: number): void {
+  while (r.known < to) {
+    const k = ++r.known;
+    if (r.opener[k] < 0 && r.lines[k].trim() !== '') lineRole(r, k);
+  }
+}
+
+/** Line k's indent in columns, or -1 when the line is blank. */
+function indentOf(r: Reading, k: number): number {
+  if (r.indent[k] === -2) r.indent[k] = r.lines[k].trim() === '' ? -1 : columns(/^[ \t]*/.exec(r.lines[k])![0]);
+  return r.indent[k];
+}
+
+/** `fenceBase`'s work, reading up from line `at`, the roles above it known. */
+function baseAbove(r: Reading, at: number, w: number): number | null {
+  const { lines, opener } = r;
   let least = Infinity; // the least indent of the lines passed that may have ended an item
   const lazy: [number, number][] = []; // [its indent, the indent of the line above] of the lazy lines passed
   for (let k = at - 1; k >= 0; k--) {
     if (opener[k] >= 0) k = opener[k];
-    const line = lines[k];
-    if (line.trim() === '') continue;
-    const lead = columns(/^[ \t]*/.exec(line)![0]);
-    const role = lineRole(lines, k, opener);
+    const lead = indentOf(r, k);
+    if (lead < 0) continue;
+    const role = lineRole(r, k);
     if (role === 'item') {
-      const text = textColumn(LIST_ITEM.exec(line)!);
+      if (r.text[k] < 0) r.text[k] = textColumn(LIST_ITEM.exec(lines[k])!);
+      const text = r.text[k];
       // A lazy line goes on with a paragraph of the item only if the line above it is
       // no code sample in the item (four columns or more past its text).
       if (w >= text && least >= text && lazy.every(([l, a]) => l >= text || a < text + 4)) {
@@ -71,7 +124,7 @@ function fenceBase(lines: string[], at: number, w: number, opener: Int32Array): 
       // Less indented than this item's text, or a line between ended the item: the
       // fence may stand in an item further out.
     } else if (role === 'lazy') {
-      lazy.push([lead, columns(/^[ \t]*/.exec(lines[k - 1])![0])]);
+      lazy.push([lead, indentOf(r, k - 1)]);
       continue;
     }
     if (lead === 0) return null; // at the margin: the fence stands in no list
@@ -100,9 +153,14 @@ const BLOCK_START = /^[ \t]*(>|#{1,6}([ \t]|$)|<|\||=|([-*_])([ \t]*\3){2,}[ \t]
  * list item's own line; 'lazy', paragraph text going on from the line above, which
  * stands in an item whatever its indent; 'other', any other line, or unsure.
  */
-function lineRole(lines: string[], k: number, opener: Int32Array): 'item' | 'lazy' | 'other' {
-  const line = lines[k];
-  const para = paragraphAbove(lines, k, opener);
+function lineRole(r: Reading, k: number): Role {
+  return (r.role[k] ??= roleOf(r, k));
+}
+
+/** `lineRole`'s work, the first time line k is asked about. */
+function roleOf(r: Reading, k: number): Role {
+  const line = r.lines[k];
+  const para = paragraphAbove(r, k);
   const item = LIST_ITEM.exec(line);
   if (!item) return para === 1 && !FENCE.test(line) && !BLOCK_START.test(line) ? 'lazy' : 'other';
   const lead = columns(item[1]);
@@ -112,12 +170,12 @@ function lineRole(lines: string[], k: number, opener: Int32Array): 'item' | 'laz
   let starts: boolean | null = true;
   if (para === -1 && !mayInterrupt(line, item)) starts = null;
   else if (para === 1 && !mayInterrupt(line, item)) {
-    const text = paragraphItemText(lines, k - 1, opener);
+    const text = paragraphItemText(r, k - 1);
     starts = text === null ? null : lead < text;
   }
   if (starts === null) return 'other';
   if (!starts) return 'lazy';
-  if (fenceBase(lines, k, lead, opener) !== null) return 'item';
+  if (fenceBase(r, k, lead) !== null) return 'item';
   // Its marker is four columns or more past where a block may start: under paragraph
   // text, more of it; else a code sample.
   return para === 1 ? 'lazy' : 'other';
@@ -126,36 +184,50 @@ function lineRole(lines: string[], k: number, opener: Int32Array): 'item' | 'laz
 /**
  * The column where the text of the list item starts, when the paragraph that line k
  * holds began on that item's own line; Infinity when it stands in a quote (a line
- * without `>` never goes on with it as a list item); null when unsure.
+ * without `>` never goes on with it as a list item); null when unsure. The answer is
+ * kept for every line of the paragraph walked through.
  */
-function paragraphItemText(lines: string[], k: number, opener: Int32Array): number | null {
-  for (;;) {
-    const line = lines[k];
+function paragraphItemText(r: Reading, k: number): number | null {
+  const walked: number[] = [];
+  let text: number | null | undefined;
+  while ((text = r.itemText.get(k)) === undefined) {
+    walked.push(k);
+    const line = r.lines[k];
     const lead = /^[ \t]*/.exec(line)![0];
-    if (line[lead.length] === '>') return columns(lead) <= 3 ? Infinity : null;
-    const para = paragraphAbove(lines, k, opener);
+    if (line[lead.length] === '>') {
+      text = columns(lead) <= 3 ? Infinity : null;
+      break;
+    }
+    const para = paragraphAbove(r, k);
     const item = LIST_ITEM.exec(line);
     if (item) {
       const rest = line.slice(item[0].length);
       // Maybe more of the paragraph above, or no paragraph at all: unsure.
-      if (rest.trim() === '' || (para !== 0 && !mayInterrupt(line, item))) return null;
-      if (fenceBase(lines, k, columns(item[1]), opener) === null) {
-        if (para !== 1) return null;
-        k--; // more of the paragraph above
-        continue;
+      if (rest.trim() === '' || (para !== 0 && !mayInterrupt(line, item))) {
+        text = null;
+        break;
       }
-      if (rest.startsWith('>')) return columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]) <= 4 ? Infinity : null;
-      return textColumn(item);
+      if (fenceBase(r, k, columns(item[1])) !== null) {
+        text = !rest.startsWith('>') ? textColumn(item)
+          : columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]) <= 4 ? Infinity : null;
+        break;
+      }
+      // No list item: more of the paragraph above, if there is one.
     }
-    if (para !== 1) return null; // began on a line of its own, or unsure
+    if (para !== 1) { // began on a line of its own, or unsure
+      text = null;
+      break;
+    }
     k--;
   }
+  for (const w of walked) r.itemText.set(w, text);
+  return text;
 }
 
 /** Whether the line right above line k holds paragraph text: 1 sure, 0 sure not, -1 unsure. */
-function paragraphAbove(lines: string[], k: number, opener: Int32Array): 1 | 0 | -1 {
-  if (k === 0 || opener[k - 1] >= 0) return 0; // nothing above, or a line of a fenced block
-  const line = lines[k - 1];
+function paragraphAbove(r: Reading, k: number): 1 | 0 | -1 {
+  if (k === 0 || r.opener[k - 1] >= 0) return 0; // nothing above, or a line of a fenced block
+  const line = r.lines[k - 1];
   let above = line;
   for (;;) { // take off the quote and list markers the text above stands in
     const m = /^[ \t]*>[ \t]?/.exec(above) ?? LIST_ITEM.exec(above);
@@ -193,6 +265,10 @@ export function findBlocks(file: string): Block[] {
   const lines = file.split('\n');
   const blocks: Block[] = [];
   const opener = new Int32Array(lines.length).fill(-1);
+  const r: Reading = {
+    lines, opener, role: [], indent: new Int32Array(lines.length).fill(-2), text: new Int32Array(lines.length).fill(-1),
+    known: -1, base: new Map(), itemText: new Map(),
+  };
   let heading = '';
   let i = 0;
   // YAML front matter at the top of the file ("---" to "---" or "..."): its lines are
@@ -204,7 +280,7 @@ export function findBlocks(file: string): Block[] {
   while (i < lines.length) {
     const m = FENCE.exec(lines[i]);
     // A backtick fence's first line cannot hold another backtick (that is inline code).
-    const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(lines, i, columns(m[1]), opener) : null;
+    const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(r, i, columns(m[1])) : null;
     if (!m || base === null) {
       const h = /^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
       if (h) heading = h[1];
