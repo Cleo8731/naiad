@@ -718,6 +718,9 @@ export class App {
    * (bug hunt round 7, C55, oC55). An item no longer there is let go; what was typed for
    * it in the panel cannot be written anywhere, so Naiad says so and shows the text.
    */
+  /** The arrow an edit of its label or style is putting in, and how it reads after (`edit`). */
+  private edited: { index: number; after: string } | null = null;
+
   private keepSelection(before: Snap | null): void {
     const s = this.selection;
     const snap = this.snap;
@@ -730,7 +733,9 @@ export class App {
       if (s.id in snap.subs) return;
       name = `The group “${before?.subs[s.id]?.title || s.id}”`;
     } else {
-      const at = followEdge(before, snap, s.index);
+      const edited = this.edited?.index === s.index ? this.edited.after : null;
+      const found = edited === null ? -1 : snap.edges.findIndex((e) => JSON.stringify(e) === edited);
+      const at = edited === null ? followEdge(before, snap, s.index) : found >= 0 ? found : null;
       if (at === s.index) return;
       if (at !== null) {
         this.sidebar.renumber(s.index, at);
@@ -779,15 +784,16 @@ export class App {
       if (op.kind === 'deleteNode' || op.kind === 'deleteEdge' || op.kind === 'ungroup') this.selection = null;
       if (op.kind === 'addNode') this.selection = { kind: 'node', id: res.created! };
       if (op.kind === 'renameSubgraph') this.selection = { kind: 'sub', id: res.created! };
-      let follow: string | null = null;
+      // An arrow's label or style changed: the arrow is followed to where the edit put it
+      // (`keepSelection`), and the panel stays, with what is typed in it meanwhile (bug
+      // hunt round 7, C57).
       if (before && (op.kind === 'setEdgeLabel' || op.kind === 'setEdgeStyle')) {
-        follow = JSON.stringify(expectOp(before, op, res).edges[op.index]);
-        this.selection = null;
+        this.edited = { index: op.index, after: JSON.stringify(expectOp(before, op, res).edges[op.index]) };
       }
-      await this.apply(res.text, 'chart');
-      if (follow && this.snap) {
-        const index = this.snap.edges.findIndex((e) => JSON.stringify(e) === follow);
-        if (index >= 0) this.select({ kind: 'edge', index });
+      try {
+        await this.apply(res.text, 'chart');
+      } finally {
+        this.edited = null;
       }
       if (op.kind === 'addEdge' && this.snap) this.select({ kind: 'edge', index: this.snap.edges.length - 1 });
       result = res;

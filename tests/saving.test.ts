@@ -1056,6 +1056,28 @@ describe('a description being written is saved when the person leaves it (bug hu
     expect(ui.toast()).toContain(`so the description you were typing for it was not saved: “${DRAFT}”`);
   });
 
+  // Bug hunt round 7, C57: a label's edit emptied the panel and built it again, so what
+  // was typed in the box while the close wrote the label went with it.
+  it('C57: more typed in a label while the close writes it is written too', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'edge', index: 0 });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'first');
+    timing.delay = 300;
+    try {
+      const closing = disk.closeGuard!();
+      await sleep(100); // the label's edit is being checked
+      typeInto(titleBox(), 'first and more');
+      expect(await closing).toBe(true);
+      expect(disk.asked).toEqual([]);
+      expect(disk.files.get(FILE)).toContain('collect[Collect data] -->|first and more| clean{Clean?}');
+      expect(titleBox().value).toBe('first and more');
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
   // Bug hunt round 6, oC53: the close's later saves, for typing in the text pane (C43),
   // looked at the text pane only: a description typed meanwhile was neither written nor
   // asked about.
