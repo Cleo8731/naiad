@@ -84,6 +84,15 @@ describe('a save in a browser names the text it read (bug hunt S17, C7)', () => 
     expect(sent.every((s) => !('x-naiad-path' in s.headers))).toBe(true);
   });
 
+  it('a highlights write names the text read too, and says false on 409 (bug hunt round 4, E16)', async () => {
+    const { backend, sent } = await pageAnswered(409, { error: 'The file changed on disk after it was read.', changed: true });
+    await expect(backend.writeHighlights('flow.mmd', 'a\nb\n', 'a\n')).resolves.toBe(false);
+    expect(sent[0].headers['x-naiad-expect']).toBe(fnv1a64(new TextEncoder().encode('a\n')));
+    const made = await pageAnswered(200, { ok: true });
+    await expect(made.backend.writeHighlights('flow.mmd', '')).resolves.toBe(true);
+    expect('x-naiad-expect' in made.sent[0].headers).toBe(false); // Clear names nothing
+  });
+
   it('still fails on any other error', async () => {
     const { backend } = await pageAnswered(500, { error: 'disk full' });
     await expect(backend.write('flow.mmd', 'new', 'old')).rejects.toThrow('disk full');

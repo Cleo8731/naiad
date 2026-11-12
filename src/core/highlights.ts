@@ -89,14 +89,23 @@ export function toggleHighlight(text: string, item: HighlightItem): string {
 
 /**
  * Switches one item's highlight in the file as it is on disk now: reads the file (null
- * when there is none) and writes the result. When the file cannot be read, the error is
- * thrown and nothing is written: a file Naiad cannot read is never replaced.
+ * when there is none) and writes the result, naming what it read ('' for none), so that
+ * `write` refuses it, saying false, if the file changed meanwhile (another view switched
+ * an item from the same read: bug hunt round 4, E16). Then it reads again and switches
+ * the item in that, up to `TRIES` times, and after that throws. When the file cannot be
+ * read, the error is thrown and nothing is written: a file Naiad cannot read is never
+ * replaced.
  */
 export async function toggleInFile(
   read: () => Promise<string | null>,
-  write: (text: string) => Promise<void>,
+  write: (text: string, read: string) => Promise<boolean>,
   item: HighlightItem,
 ): Promise<void> {
-  const disk = (await read()) ?? '';
-  await write(toggleHighlight(disk, item));
+  for (let i = 0; i < TRIES; i++) {
+    const disk = (await read()) ?? '';
+    if (await write(toggleHighlight(disk, item), disk)) return;
+  }
+  throw new Error('the highlights file kept changing while Naiad wrote it, so nothing was written. Try again.');
 }
+
+const TRIES = 5;

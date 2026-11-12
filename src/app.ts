@@ -361,7 +361,7 @@ export class App {
     // A highlights file that cannot be read is left as it is; the queue shows the error.
     return this.hlQueue(path, () => toggleInFile(
       () => this.backend.readHighlights(path),
-      (text) => this.writeHighlights(path, text),
+      (text, read) => this.writeHighlights(path, text, read),
       item,
     ));
   }
@@ -369,14 +369,14 @@ export class App {
   private clearHighlights(): Promise<void> {
     const path = this.path;
     if (!path) return Promise.resolve();
-    return this.hlQueue(path, () => this.writeHighlights(path, ''));
+    return this.hlQueue(path, async () => { await this.writeHighlights(path, ''); });
   }
 
-  /** Draws the new highlights at once, then writes them. */
-  private async writeHighlights(path: string, text: string): Promise<void> {
+  /** Draws the new highlights at once, then writes them (`Backend.writeHighlights`). */
+  private async writeHighlights(path: string, text: string, expected?: string): Promise<boolean> {
     this.hlText = text;
     this.paintHighlights();
-    await this.backend.writeHighlights(path, text);
+    return this.backend.writeHighlights(path, text, expected);
   }
 
   private paintHighlights(): void {

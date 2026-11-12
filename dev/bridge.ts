@@ -227,7 +227,17 @@ export function fileBridge(): Plugin {
             if (link) return refuse(link);
             // A file Naiad cannot read may hold an agent's notes: never replaced or
             // deleted, as highlights.rs does (bug hunt round 3, F16). Throws NotUtf8: 422.
-            if (fs.existsSync(highlights)) readText(highlights);
+            const there = fs.existsSync(highlights);
+            if (there) readText(highlights);
+            // The hash of the text the page read (no file: ''): refused if the file holds
+            // anything else now, as highlights.rs does (bug hunt round 4, E16). A missing
+            // file has nothing to lose, so a delete goes ahead.
+            const expect = req.headers['x-naiad-expect'];
+            const now = there ? fnv1a64(fs.readFileSync(highlights)) : fnv1a64(new Uint8Array());
+            const changed = expect !== undefined && (typeof expect !== 'string' || now !== expect.trim().toLowerCase());
+            if (changed && (there || text.trim() !== '')) {
+              return send(409, { error: 'The file changed on disk after it was read.', changed: true });
+            }
             if (text.trim() === '') {
               fs.rmSync(highlights, { force: true });
               for (const d of [folder, naiad]) {

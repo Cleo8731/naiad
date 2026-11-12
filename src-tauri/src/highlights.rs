@@ -180,13 +180,22 @@ fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
     fs::File::open(file)
 }
 
+/// One change to a highlights file at a time in this program, so that the look at what
+/// a file holds and the change made from it are one step for every view it serves.
+static CHANGING: Mutex<()> = Mutex::new(());
+
 /// Writes the highlights file whole, through a temporary file and a rename
 /// (`replace_file`, lib.rs), with `.naiad` and its folder held (`hold`). A text with
 /// nothing but blank lines deletes it instead. A file Naiad cannot read is an error,
-/// left as it is (`readable`).
-pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
+/// left as it is: it may hold an agent's notes that Naiad never showed (UTF-16, as
+/// Windows PowerShell 5 writes it; bug hunt round 3, F16). With `same`, it writes only
+/// if `same` says yes to the file's bytes (no file: none), and otherwise writes nothing
+/// and answers false: another view or an agent changed it since it was read (bug hunt
+/// round 4, E16). A missing file has nothing to lose, so a delete then goes ahead.
+pub fn write(flowchart: &Path, text: &str, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
+    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     if text.trim().is_empty() {
-        return remove(flowchart, true, None);
+        return remove(flowchart, true, same);
     }
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
@@ -194,21 +203,15 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
     let _naiad = hold(naiad, true)?.ok_or("No .naiad folder.")?;
     let _folder = hold(folder, true)?.ok_or("No folder in .naiad.")?;
     hide(naiad);
-    if no_link(&file)? && !readable(&file)? {
+    // Read as `read` reads it, never through a link (`read_unlinked`).
+    let now = if no_link(&file)? { read_unlinked(&file)? } else { None };
+    if now.as_deref().is_some_and(|bytes| std::str::from_utf8(bytes).is_err()) {
         return Err(unreadable(&file));
     }
-    super::replace_file(&file, text.as_bytes())
-}
-
-/// Whether Naiad may replace or delete the highlights file: there is none, or it is
-/// UTF-8 text. A file Naiad cannot read (UTF-16, as Windows PowerShell 5 writes it) may
-/// hold an agent's notes that Naiad never showed, so it is left as it is (bug hunt
-/// round 3, F16). Read as `read` reads it, never through a link (`read_unlinked`).
-fn readable(file: &Path) -> Result<bool, String> {
-    Ok(match read_unlinked(file)? {
-        Some(bytes) => std::str::from_utf8(&bytes).is_ok(),
-        None => true,
-    })
+    if same.is_some_and(|same| !same(now.as_deref().unwrap_or_default())) {
+        return Ok(false);
+    }
+    super::replace_file(&file, text.as_bytes()).map(|()| true)
 }
 
 fn unreadable(file: &Path) -> String {
@@ -219,27 +222,28 @@ fn unreadable(file: &Path) -> String {
 /// Deletes the highlights file, then its folder and the `.naiad` folder if they are
 /// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
 /// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
-/// (`readable`): it is kept, with its folders. With `same`, the file is deleted only if
+/// (`write`): it is kept, with its folders. With `same`, the file is deleted only if
 /// `same` says yes to its bytes, and otherwise kept, with its folders.
 pub fn delete(flowchart: &Path, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<(), String> {
-    remove(flowchart, false, same)
+    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
+    remove(flowchart, false, same).map(|_| ())
 }
 
 /// `delete`; with `refuse`, a file Naiad cannot read is an error (Clear, a blank write)
-/// rather than only kept (the last view closing).
-fn remove(flowchart: &Path, refuse: bool, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<(), String> {
+/// rather than only kept (the last view closing). False: `same` said no.
+fn remove(flowchart: &Path, refuse: bool, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
-    let Some(held_naiad) = hold(naiad, false)? else { return Ok(()) };
+    let Some(held_naiad) = hold(naiad, false)? else { return Ok(true) };
     if let Some(held_folder) = hold(folder, false)? {
         if no_link(&file)? {
             if let Some(bytes) = read_unlinked(&file)? {
                 if std::str::from_utf8(&bytes).is_err() {
-                    return if refuse { Err(unreadable(&file)) } else { Ok(()) };
+                    return if refuse { Err(unreadable(&file)) } else { Ok(true) };
                 }
                 if same.is_some_and(|same| !same(&bytes)) {
-                    return Ok(());
+                    return Ok(false);
                 }
                 match fs::remove_file(&file) {
                     Ok(()) => {}
@@ -259,7 +263,7 @@ fn remove(flowchart: &Path, refuse: bool, same: Option<&dyn Fn(&[u8]) -> bool>) 
     if no_link(naiad)? {
         let _ = fs::remove_dir(naiad);
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Sets Windows' "hidden" mark on the `.naiad` folder, as git does for `.git` (Q26).
@@ -445,7 +449,7 @@ mod tests {
         let flow = dir.join("flow.mmd");
         fs::write(&flow, "flowchart TD\n    a --> b\n").unwrap();
         assert_eq!(read(&flow).unwrap(), None);
-        write(&flow, "a\na --> b\n").unwrap();
+        write(&flow, "a\na --> b\n", None).unwrap();
         assert_eq!(read(&flow).unwrap().as_deref(), Some("a\na --> b\n"));
         let naiad = dir.join(".naiad");
         let left: Vec<_> = fs::read_dir(naiad.join("flow.mmd")).unwrap().map(|e| e.unwrap().file_name()).collect();
@@ -456,11 +460,32 @@ mod tests {
             assert_ne!(fs::metadata(&naiad).unwrap().file_attributes() & 0x2, 0, "the .naiad folder is hidden");
         }
         // Blank text deletes the file and the folders it leaves empty.
-        write(&flow, "\n  \n").unwrap();
+        write(&flow, "\n  \n", None).unwrap();
         assert_eq!(read(&flow).unwrap(), None);
         assert!(!naiad.exists());
         // The flowchart's own file is untouched.
         assert_eq!(fs::read_to_string(&flow).unwrap(), "flowchart TD\n    a --> b\n");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 4, E16: two views switch an item each from the same read. The
+    /// second write, made from what the file no longer holds, is refused and changes
+    /// nothing; so is taking the last item off. A file gone has nothing to lose.
+    #[test]
+    fn a_write_from_what_the_file_no_longer_holds_is_refused() {
+        let dir = folder("stale");
+        let flow = dir.join("flow.mmd");
+        let file = file_of(&flow).unwrap();
+        let read = |text: &'static str| move |now: &[u8]| now == text.as_bytes();
+        assert_eq!(write(&flow, "a\n", Some(&read(""))), Ok(true), "no file reads as none");
+        assert_eq!(write(&flow, "b\n", Some(&read(""))), Ok(false));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "a\n");
+        assert_eq!(write(&flow, "", Some(&read(""))), Ok(false));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "a\n");
+        assert_eq!(write(&flow, "a\nb\n", Some(&read("a\n"))), Ok(true));
+        assert_eq!(write(&flow, " \n", Some(&read("a\nb\n"))), Ok(true));
+        assert!(!dir.join(".naiad").exists());
+        assert_eq!(write(&flow, "", Some(&read("a\n"))), Ok(true), "nothing there to lose");
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -477,8 +502,8 @@ mod tests {
         let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("a\r\n# a note\r\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
         fs::write(&file, &utf16).unwrap();
         assert!(read(&flow).is_err());
-        assert!(write(&flow, "").unwrap_err().contains("not UTF-8"));
-        assert!(write(&flow, "b\n").unwrap_err().contains("not UTF-8"));
+        assert!(write(&flow, "", None).unwrap_err().contains("not UTF-8"));
+        assert!(write(&flow, "b\n", None).unwrap_err().contains("not UTF-8"));
         delete(&flow, None).unwrap();
         assert_eq!(fs::read(&file).unwrap(), utf16);
         fs::remove_dir_all(&dir).unwrap();
@@ -492,7 +517,7 @@ mod tests {
         let theirs = dir.join(".naiad").join("flow.mmd").join(".highlights.txt.naiad-tmp");
         fs::create_dir_all(theirs.parent().unwrap()).unwrap();
         fs::write(&theirs, "theirs\n").unwrap();
-        write(&flow, "a\n").unwrap();
+        write(&flow, "a\n", None).unwrap();
         assert_eq!(fs::read_to_string(&theirs).unwrap(), "theirs\n");
         assert_eq!(read(&flow).unwrap().as_deref(), Some("a\n"));
         fs::remove_dir_all(&dir).unwrap();
@@ -502,7 +527,7 @@ mod tests {
     fn a_folder_holding_something_else_is_kept() {
         let dir = folder("keep");
         let flow = dir.join("flow.mmd");
-        write(&flow, "a\n").unwrap();
+        write(&flow, "a\n", None).unwrap();
         let proposal = dir.join(".naiad").join("flow.mmd").join("a-proposal.mmd");
         fs::write(&proposal, "flowchart TD\n").unwrap();
         delete(&flow, None).unwrap();
@@ -543,8 +568,8 @@ mod tests {
             fs::create_dir_all(link.parent().unwrap()).unwrap();
             junction(&link, &to);
             assert!(read(&flow).is_err(), "read through {}", link.display());
-            assert!(write(&flow, "a\n").is_err(), "write through {}", link.display());
-            assert!(write(&flow, " \n").is_err(), "delete through {}", link.display());
+            assert!(write(&flow, "a\n", None).is_err(), "write through {}", link.display());
+            assert!(write(&flow, " \n", None).is_err(), "delete through {}", link.display());
             assert!(delete(&flow, None).is_err());
             show(Some(&flow));
             show(None); // a closing view deletes highlights: not through a link
@@ -591,7 +616,7 @@ mod tests {
     fn the_highlights_file_cannot_be_swapped_for_a_link_while_read() {
         let dir = folder("held-file");
         let flow = dir.join("flow.mmd");
-        write(&flow, "a\n").unwrap();
+        write(&flow, "a\n", None).unwrap();
         let file = file_of(&flow).unwrap();
         let other = file.with_file_name("other.txt");
         fs::write(&other, "theirs\n").unwrap();
@@ -613,8 +638,8 @@ mod tests {
         assert!(open_pinned(&file).unwrap().metadata().unwrap().file_type().is_symlink());
         assert!(read_unlinked(&file).unwrap_err().contains("is a link"));
         assert!(read(&flow).is_err());
-        assert!(write(&flow, "b\n").is_err());
-        assert!(write(&flow, " \n").is_err());
+        assert!(write(&flow, "b\n", None).is_err());
+        assert!(write(&flow, " \n", None).is_err());
         assert!(delete(&flow, None).is_err());
         assert!(fs::symlink_metadata(&file).unwrap().file_type().is_symlink(), "the link is kept");
         assert_eq!(fs::read_to_string(outside.join("theirs.txt")).unwrap(), "theirs\n");

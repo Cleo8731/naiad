@@ -191,6 +191,20 @@ describe('the dev page writes only the file it shows (bug hunt S21: C14)', () =>
     expect(expect409.status).toBe(409);
     expect(b.read(b.file)).toBe(read + '%% agent\n');
   });
+
+  it('E16: two highlights writes from the same read: the second is refused and the first stays (bug hunt round 4)', async () => {
+    const b = await bridge();
+    const file = path.join(b.dir, '.naiad', 'flow.mmd', 'highlights.txt');
+    const read = fnv1a64(new Uint8Array()); // no file yet
+    const put = (body: string, hash = read) => b.call('/highlights', { method: 'PUT', body, shows: b.file, headers: { 'x-naiad-expect': hash } });
+    expect((await put('a\n')).status).toBe(200);
+    expect((await put('b\n')).status).toBe(409);
+    expect(fs.readFileSync(file, 'utf8')).toBe('a\n');
+    // Taking the last item off from a stale read is refused too; from the file's text, made.
+    expect((await put('')).status).toBe(409);
+    expect((await put('', fnv1a64(Buffer.from('a\n')))).status).toBe(200);
+    expect(fs.existsSync(file)).toBe(false);
+  });
 });
 
 describe('the dev page never leaves or reuses a temporary file (bug hunt S22: C15)', () => {

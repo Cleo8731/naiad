@@ -282,7 +282,9 @@ collect --> clean
 - Anyone may write the file: Naiad shows a change to it within a second, and need not
   be running when it is written.
 - When Naiad changes the list it writes the whole file, through a temporary file and a
-  rename as for a save, and keeps every line it was not asked to change. A file Naiad cannot read
+  rename as for a save, and keeps every line it was not asked to change. It writes only
+  if the file still holds what it read for the change: if another view or an agent
+  changed it meanwhile, Naiad reads it again and switches the item in that. A file Naiad cannot read
   (one that is not UTF-8) is never replaced or deleted: switching a highlight or Clear
   then shows the error and writes nothing, and closing the last view leaves it. When
   the last item is taken

@@ -33,8 +33,13 @@ export interface Backend {
   watch(path: string, onChange: () => void): Promise<() => void>;
   /** The flowchart's highlights file (`.naiad/<name>/highlights.txt`), or null if there is none. */
   readHighlights(path: string): Promise<string | null>;
-  /** Writes the highlights file whole; '' deletes it, and the folders left empty. */
-  writeHighlights(path: string, text: string): Promise<void>;
+  /**
+   * Writes the highlights file whole; '' deletes it, and the folders left empty. Given
+   * `expected` (the file's text as read, '' when there was none), it writes only if the
+   * file still holds exactly that (no file counts as ''), and otherwise writes nothing
+   * and returns false: another view or an agent changed it meanwhile.
+   */
+  writeHighlights(path: string, text: string, expected?: string): Promise<boolean>;
   /**
    * Says which flowchart this view shows, so that the highlights file is deleted when
    * the last view of a flowchart closes. In the in-browser version the server does this.
@@ -88,7 +93,7 @@ async function desktop(): Promise<Backend> {
       return () => { window.clearTimeout(timer); unlisten(); };
     },
     readHighlights: (path) => invoke<string | null>('read_highlights', { path }),
-    writeHighlights: (path, text) => invoke<void>('write_highlights', { path, contents: text }),
+    writeHighlights: (path, text, expected) => invoke<boolean>('write_highlights', { path, contents: text, expected: expected ?? null }),
     viewing: (path) => { void invoke('view_file', { path }).catch(() => {}); },
     async pickOpen() {
       const picked = await dialog.open({ multiple: false, directory: false, filters: OPEN_FILTERS });
@@ -136,23 +141,25 @@ function browser(): Backend {
   // The file the page shows, so that the dev page's server refuses a request meant for
   // another (dev/bridge.ts). `naiad serve` serves one file only: it is not sent there.
   const shows = (path: string): Record<string, string> => (served ? {} : { 'x-naiad-path': encodeURIComponent(path) });
+  // A write names the text it read by its hash; the server answers 409 if the file's
+  // bytes differ, and the write says false.
+  const put = async (url: string, path: string, text: string, expected: string | undefined) => {
+    const headers = expected === undefined ? shows(path) : { ...shows(path), 'x-naiad-expect': fnv1a64(new TextEncoder().encode(expected)) };
+    try {
+      await call(url, { method: 'PUT', body: text, headers });
+      return true;
+    } catch (e) {
+      if ((e as { status?: number }).status === 409) return false;
+      throw e;
+    }
+  };
   return {
     kind: served ? 'served' : 'browser',
     cliJob: async () => null,
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
     read: async (path) => (await call('api/file', { headers: shows(path) })).text,
-    async write(path, text, expected) {
-      // The text read is named by its hash; the server answers 409 if the file's bytes differ.
-      const headers: Record<string, string> = expected === undefined ? shows(path) : { ...shows(path), 'x-naiad-expect': fnv1a64(new TextEncoder().encode(expected)) };
-      try {
-        await call('api/file', { method: 'PUT', body: text, headers });
-        return true;
-      } catch (e) {
-        if ((e as { status?: number }).status === 409) return false;
-        throw e;
-      }
-    },
+    write: (path, text, expected) => put('api/file', path, text, expected),
     async watch(_path, onChange) {
       const es = new EventSource('api/watch');
       es.onmessage = () => onChange();
@@ -170,7 +177,7 @@ function browser(): Backend {
       return () => { es.close(); window.removeEventListener('pagehide', bye); };
     },
     readHighlights: async (path) => (await call('api/highlights', { headers: shows(path) })).text,
-    writeHighlights: async (path, text) => { await call('api/highlights', { method: 'PUT', body: text, headers: shows(path) }); },
+    writeHighlights: (path, text, expected) => put('api/highlights', path, text, expected),
     viewing: () => {},
     async pickOpen() {
       if (served) return null;

@@ -361,10 +361,16 @@ fn read_highlights(path: String) -> Result<Option<String>, String> {
     highlights::read(&check(&path)?)
 }
 
-/// Writes the flowchart's highlights file whole; blank text deletes it.
+/// Writes the flowchart's highlights file whole; blank text deletes it. Given
+/// `expected`, the file's text as the page read it ('' for none), it writes only if the
+/// file still holds exactly that, and otherwise writes nothing and returns false.
 #[tauri::command]
-fn write_highlights(path: String, contents: String) -> Result<(), String> {
-    highlights::write(&check(&path)?, &contents)
+fn write_highlights(path: String, contents: String, expected: Option<String>) -> Result<bool, String> {
+    let p = check(&path)?;
+    match expected {
+        Some(text) => highlights::write(&p, &contents, Some(&|now: &[u8]| now == text.as_bytes())),
+        None => highlights::write(&p, &contents, None),
+    }
 }
 
 /// The window now shows this flowchart (and no longer the one before, if another).
@@ -574,8 +580,14 @@ mod tests {
         assert_eq!(fs::read_to_string(&flow).unwrap(), "next");
         assert_eq!(names(&dir), ["flow.mmd"], "nothing left beside it");
         fs::remove_file(&flow).unwrap();
-        assert_eq!(write_file(path, "x".into(), Some("next".into())), Ok(false), "a file gone has changed");
+        assert_eq!(write_file(path.clone(), "x".into(), Some("next".into())), Ok(false), "a file gone has changed");
         assert!(names(&dir).is_empty());
+        // The highlights too (bug hunt round 4, E16), the text read named as it is.
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        assert_eq!(write_highlights(path.clone(), "a\n".into(), Some(String::new())), Ok(true));
+        assert_eq!(write_highlights(path.clone(), "b\n".into(), Some(String::new())), Ok(false));
+        assert_eq!(highlights::read(&flow).unwrap().as_deref(), Some("a\n"));
+        assert_eq!(write_highlights(path, "".into(), Some("a\n".into())), Ok(true));
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -611,7 +623,7 @@ mod tests {
         let stream = format!("{}:flow.mmd", notes.display());
         assert!(read_file(stream.clone()).is_err());
         assert!(write_file(stream.clone(), "flowchart TD\n".into(), None).is_err());
-        assert!(write_highlights(stream.clone(), "a\n".into()).is_err());
+        assert!(write_highlights(stream.clone(), "a\n".into(), None).is_err());
         assert!(read_highlights(stream).is_err());
         assert_eq!(names(&dir), ["notes.txt"], "nothing made beside it");
         assert_eq!(fs::read_to_string(&notes).unwrap(), "the user's notes");

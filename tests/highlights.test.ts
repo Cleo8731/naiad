@@ -62,17 +62,36 @@ describe('the highlights file', () => {
 describe('switching a highlight in the file on disk (bug hunt S8)', () => {
   const collect = { kind: 'id', id: 'collect' } as const;
 
-  it('writes the file with the item switched', async () => {
-    const written: string[] = [];
-    await toggleInFile(async () => '# a note\nclean\n', async (t) => { written.push(t); }, collect);
-    await toggleInFile(async () => null, async (t) => { written.push(t); }, collect);
-    expect(written).toEqual(['# a note\nclean\ncollect\n', 'collect\n']);
+  it('writes the file with the item switched, naming what it read (none: \'\')', async () => {
+    const written: [string, string][] = [];
+    const write = async (t: string, read: string) => { written.push([t, read]); return true; };
+    await toggleInFile(async () => '# a note\nclean\n', write, collect);
+    await toggleInFile(async () => null, write, collect);
+    expect(written).toEqual([['# a note\nclean\ncollect\n', '# a note\nclean\n'], ['collect\n', '']]);
   });
 
   it('writes nothing when the file cannot be read', async () => {
     const written: string[] = [];
     const unreadable = async (): Promise<string> => { throw new Error('stream did not contain valid UTF-8'); };
-    await expect(toggleInFile(unreadable, async (t) => { written.push(t); }, collect)).rejects.toThrow(/UTF-8/);
+    await expect(toggleInFile(unreadable, async (t) => { written.push(t); return true; }, collect)).rejects.toThrow(/UTF-8/);
     expect(written).toEqual([]);
+  });
+
+  it('reads again when the file changed since its read, and switches the item in that (bug hunt round 4, E16)', async () => {
+    let disk = '# agent\n';
+    let other: string | null = '# agent\nclean\n'; // another view's write, right after this read
+    const read = async () => { const now = disk; if (other) { disk = other; other = null; } return now; };
+    const write = async (t: string, was: string) => { if (was !== disk) return false; disk = t; return true; };
+    await toggleInFile(read, write, collect);
+    expect(disk).toBe('# agent\nclean\ncollect\n');
+  });
+
+  it('gives up with an error, writing nothing, when the file keeps changing', async () => {
+    let n = 0;
+    let disk = '';
+    const read = async () => { const now = disk; disk = `# ${++n}\n`; return now; };
+    const write = async (t: string, was: string) => { if (was !== disk) return false; disk = t; return true; };
+    await expect(toggleInFile(read, write, collect)).rejects.toThrow(/kept changing/);
+    expect(disk).toBe(`# ${n}\n`);
   });
 });

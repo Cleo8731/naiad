@@ -296,6 +296,17 @@ const at = (rest) => `/${secret}/${rest}`;
   check('the flowchart\'s file is untouched by highlights', sha() === before, 'changed');
   r = await hlAsk('');
   check('writing nothing deletes the file and the .naiad folder', r.status === 200 && !fs.existsSync(naiad), r.status);
+  // Two pages switch an item each from the same read (no file): the second write, made
+  // from what the file no longer holds, is refused (bug hunt round 4, E16).
+  const hlFrom = (text, read) => hlAsk(text, { Origin: own, 'X-Naiad': '1', 'X-Naiad-Expect': fnv(Buffer.from(read)) });
+  const first = await hlFrom('a\n', '');
+  const second = await hlFrom('b\n', '');
+  check('two highlights writes from the same read: the second is refused (409) and the first stays (bug hunt round 4, E16)',
+    first.status === 200 && second.status === 409 && fs.readFileSync(hlFile, 'utf8') === 'a\n', `${first.status} ${second.status}`);
+  r = await hlFrom('', 'b\n');
+  check('taking the last item off from a stale read is refused too', r.status === 409 && fs.existsSync(hlFile), r.status);
+  r = await hlFrom('', 'a\n');
+  check('and from what the file holds, made', r.status === 200 && !fs.existsSync(naiad), r.status);
 
   // Deleted when the last page closes (Q44): this server is the only view of the copy.
   const pid = (() => {

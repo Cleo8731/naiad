@@ -407,6 +407,16 @@ fn between() {
     });
 }
 
+/// The hash of the file's bytes as the page read them (`x-naiad-expect`; src/core/hash.ts),
+/// if it sent one: the write is refused if the file holds anything else now. Err: the
+/// header is not one hexadecimal number.
+fn expected(head: &Head) -> Result<Option<u64>, ()> {
+    match head.one("x-naiad-expect")? {
+        None => Ok(None),
+        Some(hex) => u64::from_str_radix(hex.trim(), 16).map(Some).map_err(|_| ()),
+    }
+}
+
 fn handle(mut stream: TcpStream, server: &Server) {
     let (head, early) = match read_head(&mut stream) {
         Ok(read) => read,
@@ -449,16 +459,7 @@ fn handle(mut stream: TcpStream, server: &Server) {
         }
         Route::Write => {
             server.touch();
-            // The hash of the file's bytes as the page read them (src/core/hash.ts): the
-            // write is refused if the file holds anything else now.
-            let expected = match head.one("x-naiad-expect") {
-                Ok(None) => None,
-                Ok(Some(hex)) => match u64::from_str_radix(hex.trim(), 16) {
-                    Ok(hash) => Some(hash),
-                    Err(_) => return refuse(&mut stream, 400),
-                },
-                Err(()) => return refuse(&mut stream, 400),
-            };
+            let Ok(expected) = expected(&head) else { return refuse(&mut stream, 400) };
             let body = match read_body(&mut stream, &head, early) {
                 Ok(body) => body,
                 Err(status) => return refuse(&mut stream, status),
@@ -484,15 +485,18 @@ fn handle(mut stream: TcpStream, server: &Server) {
         }
         Route::WriteHighlights => {
             server.touch();
+            let Ok(expected) = expected(&head) else { return refuse(&mut stream, 400) };
             let body = match read_body(&mut stream, &head, early) {
                 Ok(body) => body,
                 Err(status) => return refuse(&mut stream, status),
             };
+            let same = |now: &[u8]| expected.is_none_or(|hash| super::fnv1a64(now) == hash);
             let written = String::from_utf8(body)
                 .map_err(|_| "The text is not valid UTF-8.".to_string())
-                .and_then(|text| super::highlights::write(Path::new(&server.file), &text));
+                .and_then(|text| super::highlights::write(Path::new(&server.file), &text, Some(&same)));
             match written {
-                Ok(()) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Ok(true) => respond_json(&mut stream, 200, "{\"ok\":true}".to_string()),
+                Ok(false) => respond_json(&mut stream, 409, "{\"error\":\"The file changed on disk after it was read.\",\"changed\":true}".to_string()),
                 Err(why) => respond_json(&mut stream, 500, format!("{{\"error\":{}}}", json_string(&why))),
             }
         }
@@ -915,7 +919,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let flow = dir.join("flow.mmd");
         fs::write(&flow, "flowchart TD\n    a --> b\n").unwrap();
-        super::super::highlights::write(&flow, "a\n").unwrap();
+        super::super::highlights::write(&flow, "a\n", None).unwrap();
         super::super::highlights::show(Some(&flow));
         let server = Server {
             port: 0,
@@ -942,7 +946,7 @@ mod tests {
         let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
         let (dir, flow, server) = after_goodbye("f21");
         let file = file_of(&flow).unwrap();
-        write(&flow, "a\n# the agent's\nb\n").unwrap();
+        write(&flow, "a\n# the agent's\nb\n", None).unwrap();
         let mut ended = false;
         server.after_ping(|| ended = true);
         assert!(!ended, "not yet ten minutes");

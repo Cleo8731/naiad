@@ -10,10 +10,14 @@ export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /** How long the stand-in chart takes to draw, in ms (a big chart takes a while). */
 export const chartTiming = { drawDelay: 0 };
 
+/** The events the app gave the last stand-in chart (a click on an item, say). */
+export const chartEvents: { last: import('../src/chart').ChartEvents | null } = { last: null };
+
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
+    constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} fit() {}
     async draw() { if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay); }
   },
@@ -33,6 +37,10 @@ export class FakeDisk {
   asked: string[] = [];
   /** The handler the app gave for closing the window (`Backend.guardClose`). */
   closeGuard: (() => Promise<boolean>) | null = null;
+  /** Each flowchart's highlights file, by the flowchart's path (none: no file). */
+  highlights = new Map<string, string>();
+  /** Called after a read of the highlights has taken its copy, before it resolves. */
+  afterHighlightsRead: ((path: string) => void) | null = null;
 
   backend(): Backend {
     return {
@@ -59,8 +67,18 @@ export class FakeDisk {
         this.watchers.set(path, set);
         return () => set.delete(onChange);
       },
-      readHighlights: async () => null,
-      writeHighlights: async () => {},
+      readHighlights: async (path) => {
+        const text = this.highlights.get(path) ?? null;
+        this.afterHighlightsRead?.(path);
+        return text;
+      },
+      writeHighlights: async (path, text, expected) => {
+        // As the backends do: refused when the file no longer holds what was read (none: '').
+        if (expected !== undefined && (this.highlights.get(path) ?? '') !== expected) return false;
+        if (text.trim() === '') this.highlights.delete(path);
+        else this.highlights.set(path, text);
+        return true;
+      },
       viewing: () => {},
       pickOpen: async () => null,
       pickSave: async () => null,
