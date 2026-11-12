@@ -316,11 +316,44 @@ export function unquote(raw: string): string {
 }
 
 /**
- * An accessible title or description: `accTitle:`, `accDescr:` or `accDescr {`, as
- * Mermaid's lexer reads one, before anything else on the line (`accTitle:::hot` is a
- * title, not a node: bug hunt round 3, A25).
+ * An accessible title or description, as Mermaid 12.3's lexer reads one (its first rules,
+ * which hold only between statements, never inside a title or a quoted text): `accTitle`
+ * or `accDescr`, then `:` and its text, the rest of the line where the next character
+ * other than a space stands (`accTitle:::hot` is a title, not a node: bug hunt round 3,
+ * A25); or `accDescr`, then `{` and its text, up to the first "}". Each `\s*` runs over
+ * line breaks (round 3, A30; round 7, D37: `accDescr` and its `{` on two lines). Matched
+ * where a token starts: at a line's start, or after a ";" (round 7, D35). Mermaid reads
+ * it once directives and comment lines are gone, so a directive before it on its line
+ * leaves it at the line's start (round 7, D36, D37), as `accSeen` lays the lines out.
  */
-const ACC = /^(accTitle\s*:|accDescr\s*[:{])/;
+const ACC_START = /^\s*acc(?:Title|Descr)/;
+const ACC_COLON = /acc(?:Title|Descr)\s*:\s*/y;
+const ACC_BLOCK = /accDescr\s*\{/y;
+
+/**
+ * The column of an accessible title or description after a ";" on a line (as `accSeen`
+ * lays it out), or -1. A ";" counts only outside quotes, brackets and an arrow's `|`
+ * label, where Mermaid would read it as text; a line whose shapes the count cannot follow
+ * is left to the check that fixes compare against.
+ */
+function accAfterSemicolon(line: string): number {
+  let quote = false;
+  let depth = 0;
+  let pipes = 0;
+  for (let k = 0; k < line.length; k++) {
+    const ch = line[k];
+    if (ch === '"') quote = !quote;
+    else if (quote) continue;
+    else if ('[({'.includes(ch)) depth++;
+    else if ('])}'.includes(ch)) depth--;
+    else if (ch === '|') pipes++;
+    else if (ch === ';' && depth === 0 && pipes % 2 === 0) {
+      const m = /^\s*acc(?:Title|Descr)/.exec(line.slice(k + 1));
+      if (m) return k + 1 + m[0].length - 8;
+    }
+  }
+  return -1;
+}
 
 /**
  * The front matter, found as Mermaid finds it (its `frontMatterRegex`, Mermaid 12.3): at
@@ -365,8 +398,47 @@ function accSeen(text: string, lines: string[], front: number): string[] {
 export function parseDoc(text: string): Doc {
   const lines = text.split('\n');
   const front = frontMatterLines(text);
-  let seen: string[] | null = null; // `accSeen`, made when an `accDescr {` needs it
-  const closes = (i: number) => (seen ??= accSeen(text, lines, front))[i].includes('}');
+  // The lines as Mermaid's lexer meets them (`accSeen`), one text, made only when the
+  // text names an accessible title or description.
+  const hasAcc = /acc(?:Title|Descr)/.test(text);
+  const seen = hasAcc ? accSeen(text, lines, front) : [];
+  const joined = seen.join('\n');
+  const starts: number[] = [];
+  for (let i = 0, at = 0; i < seen.length; at += seen[i].length + 1, i++) starts.push(at);
+  const lineAt = (p: number) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= p) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  // Lines further on that an accessible text takes, found where it starts.
+  const accAhead = new Set<number>();
+  /**
+   * Whether an accessible title or description starts at column `col` of line `i`; if
+   * so, the lines it takes are marked: those of `accTitle`/`accDescr`, its ":" and its
+   * text (the lines between them hold nothing for Mermaid, and keep their own kind), or
+   * every line up to its "}".
+   */
+  const accAt = (i: number, col: number): boolean => {
+    const p = starts[i] + col;
+    ACC_COLON.lastIndex = p;
+    const colon = ACC_COLON.exec(joined);
+    if (colon) {
+      for (let k = i + 1; k <= lineAt(p + colon[0].length); k++) if (seen[k].trim() !== '') accAhead.add(k);
+      return true;
+    }
+    ACC_BLOCK.lastIndex = p;
+    const block = ACC_BLOCK.exec(joined);
+    if (!block) return false;
+    const close = joined.indexOf('}', p + block[0].length);
+    const last = close < 0 ? lines.length - 1 : lineAt(close);
+    for (let k = i + 1; k <= last; k++) accAhead.add(k);
+    return true;
+  };
   const info: LineInfo[] = [];
   const subs: Sub[] = [];
   const edges: EdgeRef[] = [];
@@ -374,11 +446,8 @@ export function parseDoc(text: string): Doc {
   const warnings: Problem[] = [];
   const stack: { line: number; parsed: { id: string | null; title: string } }[] = [];
   let header = -1;
-  let openBlock: '' | 'directive' | 'acc' = '';
-  // After `accTitle:` or `accDescr:` with nothing after the colon: Mermaid's `\s*` runs
-  // on over the line break, so the next line that is not blank or a comment is the text
-  // (bug hunt round 3, A30).
-  let accNext = false;
+  // Inside a directive that runs over several lines.
+  let inDirective = false;
   // Inside a quoted text that runs over several lines: Mermaid reads every line up to
   // the closing quote as part of the text, a "%%" line included.
   let inString = false;
@@ -393,13 +462,15 @@ export function parseDoc(text: string): Doc {
     info.push(li);
 
     if (i < front) { li.kind = 'frontmatter'; continue; }
-    if (openBlock) {
-      li.kind = openBlock;
-      // Mermaid drops directives, then comment lines (`%%` and at least one more
-      // character, not `%%{`), before it reads, so in an accessible text a "}" in either
-      // ends nothing (bug hunt round 3, A24; round 6, A43: a directive; D33: a comment
-      // line holding a U+2028).
-      if (openBlock === 'directive' ? t.includes('}%%') : closes(i)) openBlock = '';
+    // A line an accessible text started above takes. Mermaid drops directives, then
+    // comment lines (`%%` and at least one more character, not `%%{`), before it reads,
+    // so in an accessible text a "}" in either ends nothing (bug hunt round 3, A24; round
+    // 6, A43: a directive; D33: a comment line holding a U+2028), and a bare `%%` is its
+    // text (round 5, D32, A41).
+    if (accAhead.has(i)) { li.kind = 'acc'; continue; }
+    if (inDirective) {
+      li.kind = 'directive';
+      if (t.includes('}%%')) inDirective = false;
       continue;
     }
     if (inString) {
@@ -409,15 +480,18 @@ export function parseDoc(text: string): Doc {
       continue;
     }
     if (t === '') { li.kind = 'blank'; continue; }
-    if (t.startsWith('%%{')) {
-      li.kind = 'directive';
-      if (!t.includes('}%%')) openBlock = 'directive';
+    // `accTitle:` and `accDescr:` hold plain text to the end of the line (`accDescr {` to
+    // its "}"), in which a quote opens nothing (bug hunt round 2, A15), nor a "{" (round
+    // 3, A23).
+    if (hasAcc && ACC_START.test(seen[i]) && accAt(i, seen[i].length - seen[i].trimStart().length)) {
+      li.kind = 'acc';
       continue;
     }
-    // Mermaid drops a `%%` line only when something follows the `%%`, so an `accTitle:`
-    // or `accDescr:` with nothing after the colon takes a bare one for its text (bug hunt
-    // round 5, D32, A41).
-    if (accNext && /^\s*%%$/.test(raw)) { li.kind = 'acc'; accNext = false; continue; }
+    if (t.startsWith('%%{')) {
+      li.kind = 'directive';
+      if (!t.includes('}%%')) inDirective = true;
+      continue;
+    }
     if (t.startsWith('%%')) {
       li.kind = 'comment';
       if (t === '%%') {
@@ -425,15 +499,15 @@ export function parseDoc(text: string): Doc {
       }
       continue;
     }
-    if (accNext) { li.kind = 'acc'; accNext = false; continue; }
-    // `accTitle:` and `accDescr:` hold plain text to the end of the line (`accDescr {` to
-    // its "}"), in which a quote opens nothing (bug hunt round 2, A15), nor a "{" (round
-    // 3, A23).
-    if (ACC.test(t)) {
-      li.kind = 'acc';
-      if (/^accDescr\s*\{/.test(t) && !closes(i)) openBlock = 'acc';
-      else if (/^acc(Title|Descr)\s*:\s*$/.test(t)) accNext = true;
-      continue;
+    // An accessible text after a statement and a ";" on the same line: Mermaid reads
+    // both, which the editor does not (bug hunt round 7, D35).
+    if (hasAcc && !(header < 0 && /^(flowchart|graph)\b/i.test(t))) {
+      const col = accAfterSemicolon(seen[i]);
+      if (col >= 0 && accAt(i, col)) {
+        li.kind = 'acc';
+        problems.push({ line: i, message: 'A statement and an accessible title or description on one line.' });
+        continue;
+      }
     }
     if (opensOrCloses(raw)) inString = true;
     if (header < 0 && /^(flowchart|graph)\b/i.test(t)) {

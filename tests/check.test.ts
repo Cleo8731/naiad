@@ -79,6 +79,37 @@ describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => 
     });
   }
 
+  // Accessible texts Mermaid reads where the scanner did not look for one: after a
+  // statement and a ";" (D35), after a directive on the line of `accTitle:` or `accDescr:`
+  // (D36), and with `accDescr` and its "{" on two lines or after a directive (D37). "fix"
+  // made a bare "%%" of the text a comment, changing it (bug hunt round 7).
+  const placed: [string, string, string, string][] = [
+    ['D35', 'A; accDescr {\n%%\nhello\n}', '', '%%\nhello'],
+    ['D35', 'A; accTitle:\n%%\nhello', '%%', ''],
+    ['D36', 'accTitle: %%{init: {}}%%\n%%\nhello', '%%', ''],
+    ['D36', 'accDescr: %%{init: {}}%%\n%%\nhello', '', '%%'],
+    ['D37', 'accDescr\n {\n%%\nhello\n}', '', '%%\nhello'],
+    ['D37', '%%{init}%%accDescr {\n%%\nhello\n}', '', '%%\nhello'],
+  ];
+  for (const [id, acc, title, description] of placed) {
+    test(`${id}: ${JSON.stringify(acc)} keeps its "%%", and fix leaves it`, async () => {
+      const text = `flowchart TD\n${acc}\nA-->B\n`;
+      const snap = await snapshot(text);
+      expect([snap.accTitle, snap.accDescr]).toEqual([title, description]);
+      expect((await check(text)).filter((f) => f.rule === 'bare-comment')).toEqual([]);
+      expect(await fixFile('flow.mmd', text, reading)).toEqual({ raw: text, lines: [], refused: null });
+    });
+  }
+  // Where the scanner still reads it otherwise (an accessible text after the header and a
+  // ";"), "fix" compares Mermaid's reading of the text as it stands, and refuses.
+  test('D35: fix refuses to change an accessible text the scanner does not see', async () => {
+    const text = 'flowchart TD; accTitle:\n%%\nA-->B\n';
+    expect((await snapshot(text, true)).accTitle).toBe('%%');
+    const fixed = await fixFile('flow.mmd', text, reading);
+    expect(fixed.raw).toBe(text);
+    expect(fixed.refused).toBe('the fix would have changed an accessible title or description.');
+  });
+
   // A "%%" in an accessible title or description was reported as a comment after a
   // statement, though Mermaid reads the line without error (bug hunt round 6, D34). One
   // after an `accDescr { ... }` closed on its line breaks Mermaid's reading: still

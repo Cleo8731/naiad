@@ -33,7 +33,9 @@
 // `accTitle:` or `accDescr:` before each kind of line, `accDescr { }` blocks holding a
 // bare `%%`, a directive, a description block or a comment ending in `}`, `%%` inside
 // accessible text, a `%%{` left open, and a directive and an arrow on one line. Most are
-// from GLM's widened copy of round 6 (oA42, oA43).
+// from GLM's widened copy of round 6 (oA42, oA43). Since round 7's D35 to D37, also
+// accessible texts after a directive on their line, after a statement and a ";", and
+// with `accDescr` and its "{" (or `accTitle` and its ":") on two lines.
 // An edit that is refused must be refused with an EditError (anything else is a crash).
 // A failure that matches a known finding not yet fixed (KNOWN below) is counted and
 // printed, and does not fail the run.
@@ -183,7 +185,11 @@ function descBlock(g: Gen, indent: string): void {
 function wide(g: Gen, used: string[]): void {
   const w = g.w;
   const u = g.unit;
-  if (w.chance(0.18)) g.lines.push(w.pick(['accTitle:', 'accDescr:']), ...w.pick(ACC_NEXT).split('\n'));
+  if (w.chance(0.18)) {
+    // Also after a directive on its line, or with its ":" on the next line (D36).
+    const opener = w.pick(['accTitle:', 'accDescr:', 'accTitle: %%{init: {}}%%', '%%{x}%% accDescr:', 'accTitle\n:']);
+    g.lines.push(...opener.split('\n'), ...w.pick(ACC_NEXT).split('\n'));
+  }
   if (w.chance(0.15)) {
     const id = w.pick(g.ids);
     g.lines.push(...w.pick([
@@ -196,6 +202,10 @@ function wide(g: Gen, used: string[]): void {
       `accDescr {\nFirst\n%% @${id}\n%%\nLast\n}`, // A38, A43: a description block inside
       `accDescr {\n%% @${id}\n%%first\n  %% second\n}`,
       'accDescr { one line }',
+      'accDescr\n {\nFirst\n%%\nLast\n}', // D37: `accDescr` and its "{" on two lines
+      '%%{init: {}}%%accDescr {\n%%\nLast\n}', // D37: after a directive
+      `${id}; accDescr {\n%%\nLast\n}`, // D35: after a statement and a ";"
+      `${id}; accTitle:\n%%`, // D35
     ]).split('\n'));
   }
   if (w.chance(0.1)) g.lines.push(u + w.pick(['accTitle: hello %% world', 'accTitle: 50%% off', 'accDescr: hello %% world'])); // D34

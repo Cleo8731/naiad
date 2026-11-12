@@ -53,9 +53,9 @@ const normDir = (d: unknown): string => (d === 'TD' ? 'TB' : typeof d === 'strin
 // Mermaid stores "#quot;" style entities behind placeholder characters; undo that.
 const normText = (t: unknown): string => String(t ?? '').replace(/ﬂ°°?(\w+)¶ß/g, '#$1;').trim();
 
-export async function snapshot(text: string): Promise<Snap> {
+export async function snapshot(text: string, asIs = false): Promise<Snap> {
   const api = (mermaid as unknown as { mermaidAPI: { getDiagramFromText(t: string): Promise<any> } }).mermaidAPI;
-  const diagram = await api.getDiagramFromText(forMermaid(text));
+  const diagram = await api.getDiagramFromText(asIs ? text : forMermaid(text));
   if (!String(diagram.type).startsWith('flowchart')) {
     throw new Error(`This file is a "${diagram.type}" diagram, not a flowchart.`);
   }
@@ -95,9 +95,9 @@ export async function snapshot(text: string): Promise<Snap> {
 }
 
 /** Mermaid's reading of a flowchart in the form the checker takes (src/core/check.ts). */
-export async function reading(text: string): Promise<{ ids: string[]; shape: string }> {
-  const snap = await snapshot(text);
-  return { ids: [...Object.keys(snap.nodes), ...Object.keys(snap.subs)], shape: canon(snap) };
+export async function reading(text: string, asIs = false): Promise<{ ids: string[]; shape: string; acc: string }> {
+  const snap = await snapshot(text, asIs);
+  return { ids: [...Object.keys(snap.nodes), ...Object.keys(snap.subs)], shape: canon(snap), acc: JSON.stringify([snap.accTitle, snap.accDescr]) };
 }
 
 function sortKeys<T>(rec: Record<string, T>): Record<string, T> {

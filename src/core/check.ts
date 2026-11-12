@@ -22,10 +22,20 @@ export interface Finding {
 
 /** What Mermaid makes of a flowchart: the ids it found, and a string that is the same
  *  for two texts exactly when they mean the same chart. */
-export interface Reading { ids: string[]; shape: string }
+export interface Reading {
+  ids: string[];
+  shape: string;
+  /** The accessible title and description, the same for two texts exactly when Mermaid
+   *  reads the same ones. */
+  acc?: string;
+}
 
-/** Mermaid's parser. Throws, with Mermaid's message, when it rejects the text. */
-export type Reader = (flowchartText: string) => Promise<Reading>;
+/**
+ * Mermaid's parser. Throws, with Mermaid's message, when it rejects the text. With
+ * `asIs`, the text goes to Mermaid as it stands; otherwise the bare "%%" lines the scanner
+ * warns about are blanked first (`forMermaid`).
+ */
+export type Reader = (flowchartText: string, asIs?: boolean) => Promise<Reading>;
 
 export interface Report {
   findings: Finding[];
@@ -369,6 +379,16 @@ export async function fixFile(name: string, raw: string, read: Reader): Promise<
       return { ...none, refused: 'Mermaid cannot read the flowchart, so nothing was changed. Put the other problems right first.' };
     }
     if (a.shape !== b.shape) return { ...none, refused: 'the fix would have changed what the flowchart means.' };
+    // The reading above blanks the lines the scanner takes for bare "%%" comments, so it
+    // cannot see one the scanner misreads. Mermaid's reading of the text as it stands can:
+    // there a "%%" line in an accessible text is its text (bug hunt round 7, D35 to D37).
+    const accOf = async (t: string): Promise<string | null> => {
+      try { return (await read(forReading(t.split('\n')), true)).acc ?? null; } catch { return null; }
+    };
+    const accBefore = await accOf(before[k]);
+    if (accBefore !== null && accBefore !== (await accOf(after[k]))) {
+      return { ...none, refused: 'the fix would have changed an accessible title or description.' };
+    }
     const descriptions = (t: string) => JSON.stringify(parseDescriptions(t.split('\n')).map((d) => [d.id, d.text]));
     if (descriptions(before[k]) !== descriptions(after[k])) return { ...none, refused: 'the fix would have changed a description.' };
   }

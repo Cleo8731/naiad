@@ -281,8 +281,9 @@ More text.
   an accessible title or description, `accTitle: A 5" screen`, opens no quoted text:
   Mermaid reads that line as plain text.) It asks Mermaid's parser what the flowchart
   means before and after, and changes nothing when Mermaid cannot read the flowchart,
-  when the meaning or a description would differ, or when the file changed while it
-  was being checked. The checker's `check` never writes.
+  when the meaning, a description, or the accessible title or description as Mermaid
+  reads the file as it stands would differ, or when the file changed while it was being
+  checked. The checker's `check` never writes.
 - Highlighting never touches the flowchart's file: highlights have a file of their own
   ([Highlights](#highlights)).
 - All of this holds in Naiad's window and in the page that `naiad serve <file>` shows
@@ -385,7 +386,13 @@ a comment for its text, and Naiad reads it the same way. A line holding only `%%
 not a comment there (Description blocks, point 4), so it is the text. An `accDescr {`
 runs to the first `}` Mermaid reads: Mermaid drops `%%{ ... }%%` directives and
 comment lines before it reads, so a `}` in one of them ends nothing, and Naiad reads
-it the same way.
+it the same way. For the same reason a directive on the line before `accTitle` or
+`accDescr`, or after its colon, is no text of it (`accTitle: %%{init: {}}%%` has
+nothing after the colon), and `accDescr` and its `{` (or `accTitle` and its `:`) may
+stand on two lines. Mermaid also reads one after a statement and a `;` on the same
+line (`A; accTitle: Steps`); Naiad reads its text the same way, and refuses chart edits
+while such a line stands (`check` reports it): write the accessible text on a line of
+its own.
 
 ## Checking a file from a terminal
 
