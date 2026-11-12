@@ -2,7 +2,7 @@
 // groups. The app compares this before and after every edit (src/verify.ts).
 
 import mermaid from 'mermaid';
-import { FRONT_MATTER_RE } from './core/scan';
+import { parseDoc } from './core/scan';
 
 export interface SnapNode { text: string; type: string; styles: string[]; classes: string[] }
 export interface SnapEdge {
@@ -27,18 +27,26 @@ export interface Snap {
   /** Mermaid's id for each edge, used to find the edge's line in the drawing. */
   edgeIds: string[];
   subs: Record<string, SnapSub>;
+  /** The accessible title and description, which no edit changes (bug hunt round 5, A38). */
+  accTitle: string;
+  accDescr: string;
 }
 
 /**
- * A bare `%%` line is not a comment to Mermaid (it becomes a node), so it is blanked here.
- * A line ends where Mermaid ends one, at LF, CR or CRLF; not at U+2028 or U+2029, where
- * the m flag's `^` and `$` stop too (bug hunt round 4, A37). The front matter is left as
- * it stands: Mermaid reads it as YAML before it drops comments, so a `%%` line there is
- * the YAML reader's to accept or refuse (round 4, D29).
+ * A bare `%%` line where a comment may stand is not a comment to Mermaid (it becomes a
+ * node), so it is blanked here: the lines the scanner warns about. Elsewhere Mermaid reads
+ * a bare `%%` as text, and it is left as it stands: in the front matter, which is YAML
+ * (bug hunt round 4, D29), and in a title or an accessible text written over several
+ * lines (round 5, A38, A39). A line ends where Mermaid ends one, at LF, CR or CRLF; not at
+ * U+2028 or U+2029 (round 4, A37).
  */
 export function forMermaid(text: string): string {
-  const front = FRONT_MATTER_RE.exec(text)?.[0].length ?? 0;
-  return text.replace(/(^|[\r\n])[ \t]*%%[ \t]*(?=[\r\n]|$)/g, (line: string, end: string, at: number) => (at < front ? line : end));
+  const warned = parseDoc(text.replace(/\r\n?/g, '\n')).warnings;
+  if (!warned.length) return text;
+  // Lines at even places, each followed by its line break.
+  const parts = text.split(/(\r\n|\r|\n)/);
+  for (const { line } of warned) if (/^[ \t]*%%[ \t]*$/.test(parts[2 * line] ?? '')) parts[2 * line] = '';
+  return parts.join('');
 }
 
 const normDir = (d: unknown): string => (d === 'TD' ? 'TB' : typeof d === 'string' ? d : '');
@@ -52,7 +60,10 @@ export async function snapshot(text: string): Promise<Snap> {
     throw new Error(`This file is a "${diagram.type}" diagram, not a flowchart.`);
   }
   const db = diagram.db;
-  const snap: Snap = { direction: normDir(db.getDirection()), nodes: {}, edges: [], edgeIds: [], subs: {} };
+  const snap: Snap = {
+    direction: normDir(db.getDirection()), nodes: {}, edges: [], edgeIds: [], subs: {},
+    accTitle: String(db.getAccTitle?.() ?? ''), accDescr: String(db.getAccDescription?.() ?? ''),
+  };
   for (const v of db.getVertices().values()) {
     snap.nodes[v.id] = {
       text: normText(v.text),
@@ -109,5 +120,7 @@ export function canon(s: Snap): string {
     nodes: sortKeys(s.nodes),
     edges: s.edges.map((e) => JSON.stringify(e)).sort(),
     subs: sortKeys(subs),
+    accTitle: s.accTitle,
+    accDescr: s.accDescr,
   });
 }

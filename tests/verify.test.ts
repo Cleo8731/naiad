@@ -341,6 +341,21 @@ describe('the front matter is found as Mermaid finds it, and no edit changes it 
   });
 });
 
+describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (bug hunt round 5: A38, A39)', () => {
+  // Mermaid drops a `%%` line only when something follows the `%%`. Inside an accessible
+  // description or a title written over several lines, a bare one is part of the text;
+  // only the bare lines the scanner warns about (where Mermaid would draw a node) are
+  // blanked for Mermaid.
+  test('A38: an edit that would change an accessible description is refused', async () => {
+    const before = 'flowchart TD\naccDescr {\nFirst\n%% @a\n%%\nLast\n}\na\n';
+    expect((await snapshot(before)).accDescr).toBe('First\n%%\nLast');
+    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' })).rejects.toThrow(EditError);
+  });
+  test('A39: a title written over several lines keeps its bare "%%" line', async () => {
+    expect((await snapshot('flowchart TD\na["First\n%%\nLast"]\n')).nodes.a.text).toBe('First\n%%\nLast');
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [
