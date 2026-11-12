@@ -170,6 +170,16 @@ export function fileBridge(): Plugin {
           const naiad = path.join(path.dirname(current), '.naiad');
           const folder = path.join(naiad, path.basename(current));
           const highlights = path.join(folder, 'highlights.txt');
+          if (url === '/highlights') {
+            // `.naiad`, the flowchart's folder in it and `highlights.txt` are Naiad's own:
+            // a link there (a junction, which anyone can make on Windows) would lead
+            // reads, writes and deletes elsewhere, so it is refused, never followed and
+            // never removed, as highlights.rs does (bug hunt round 2, F8).
+            const link = [naiad, folder, highlights].find((p) => {
+              try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
+            });
+            if (link) return send(500, { error: `${link} is a link; Naiad does not follow links in its .naiad folder.` });
+          }
           if (url === '/highlights' && req.method === 'GET') {
             return send(200, { text: fs.existsSync(highlights) ? readText(highlights) : null });
           }

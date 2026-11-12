@@ -193,3 +193,32 @@ describe('the dev page reads only UTF-8 text (bug hunt S23: C16)', () => {
     expect((await b.call('/file', { shows: b.file })).body.text).toBe(text);
   });
 });
+
+describe('the dev page never follows a link in its .naiad folder (bug hunt round 2: F8)', () => {
+  // As src-tauri/src/highlights.rs does: a junction, which anyone can make on Windows,
+  // would lead the highlights' reads, writes and deletes to files elsewhere.
+  it.runIf(process.platform === 'win32')('F8: a junction as .naiad, or as the flowchart\'s folder in it, is refused and kept, and the file elsewhere is untouched', async () => {
+    const b = await bridge();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'naiad-outside-'));
+    try {
+      fs.mkdirSync(path.join(outside, 'flow.mmd'));
+      const theirs = path.join(outside, 'flow.mmd', 'highlights.txt');
+      fs.writeFileSync(theirs, 'theirs\n');
+      const naiad = path.join(b.dir, '.naiad');
+      for (const [link, to] of [[naiad, outside], [path.join(naiad, 'flow.mmd'), path.join(outside, 'flow.mmd')]]) {
+        fs.mkdirSync(path.dirname(link), { recursive: true });
+        fs.symlinkSync(to, link, 'junction');
+        const got = await b.call('/highlights', { shows: b.file });
+        expect(got.status).toBe(500);
+        expect(got.body.error).toMatch(/is a link/);
+        expect((await b.call('/highlights', { method: 'PUT', body: 'a\n', shows: b.file })).status).toBe(500);
+        expect((await b.call('/highlights', { method: 'PUT', body: ' \n', shows: b.file })).status).toBe(500);
+        expect(b.read(theirs)).toBe('theirs\n');
+        expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+        fs.rmdirSync(link); // the junction only
+      }
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
