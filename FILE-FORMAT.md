@@ -211,7 +211,8 @@ More text.
   pane holds an error, say), Naiad asks before it is lost, and unless the person lets
   it go, it goes back into its box. Edit pressed again while Done writes it shows the
   text being written, and if the write fails the text stays in the box, with whatever
-  was typed into it meanwhile. Cancel (Esc) drops it.
+  was typed into it meanwhile, unless Done was pressed again since: the newer text
+  stands, and the older never comes back over it. Cancel (Esc) drops it.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file

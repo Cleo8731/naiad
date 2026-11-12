@@ -251,6 +251,7 @@ export class Sidebar {
     let current = '';
     let started = ''; // the description as Edit showed it, or as the file has it since, while untouched
     let pending: string | null = null; // what Done is writing, until that write has ended (C42)
+    let latest: string | null = null; // what the last Done pressed wrote or is writing
     const paint = () => {
       const editing = this.editingDescription;
       body.hidden = editing;
@@ -275,7 +276,7 @@ export class Sidebar {
       // puts back a text that a change on disk replaced meanwhile (bug hunt C26).
       if (save && area.value !== started) {
         const text = area.value;
-        pending = text;
+        pending = latest = text;
         void Promise.resolve(a.setDescription(id, text)).finally(() => { if (pending === text) pending = null; });
       }
       paint();
@@ -287,6 +288,9 @@ export class Sidebar {
       return { id, text, written: () => { if (area.value === text) started = text; } };
     };
     this.resume = (text) => {
+      // A Done pressed since, with other text: that text stands, written or coming back
+      // on its own, and the older one never returns over it (bug hunt round 6, oC46, C45).
+      if (latest !== null && text !== latest) return;
       // Typed into since Edit was pressed again: that typing began from `text` (`begin`),
       // so it stays (C42).
       const typed = this.editingDescription && area.value !== started;

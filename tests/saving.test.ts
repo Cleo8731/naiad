@@ -789,6 +789,55 @@ describe('a description being written is saved when the person leaves it (bug hu
     }
   });
 
+  // Bug hunt round 6, oC46 and C45: a Done that failed after a newer Done was pressed put
+  // its older text back into the box, counted as not written: closing then wrote it over
+  // the newer description the file held (oC46), or the box lost the newer text (C45).
+  it('oC46: a Done that fails after a newer Done was pressed puts nothing back, and closing keeps the newer description', async () => {
+    const { disk, ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    timing.delay = 700;
+    try {
+      done(); // cannot be written: the text pane holds an error
+      await sleep(50);
+      edit();
+      box()!.value = `${DRAFT} second`;
+      box()!.dispatchEvent(new Event('input'));
+      ui.type(BASE); // mended before the second Done is checked
+      await sleep(400);
+      done(); // can be written
+      await sleep(1600);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT} second`);
+      expect((ui.app as unknown as { sidebar: { draft(): unknown } }).sidebar.draft()).toBe(null);
+      expect(await disk.closeGuard!()).toBe(true);
+      expect(disk.asked).toEqual([]);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT} second`);
+    } finally {
+      timing.delay = 0;
+    }
+  }, 10000);
+
+  it('C45: two Dones that both fail leave the newer text in the box', async () => {
+    const { ui } = await start();
+    await writing(ui);
+    ui.type(BROKEN);
+    await sleep(400);
+    timing.delay = 300;
+    try {
+      done();
+      edit();
+      box()!.value = `${DRAFT} second`;
+      box()!.dispatchEvent(new Event('input'));
+      done();
+      await sleep(1000);
+      expect(box()!.hidden).toBe(false);
+      expect(box()!.value).toBe(`${DRAFT} second`);
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
   it('C42: Edit pressed again while a Done that can be written is checked shows what Done writes', async () => {
     const { disk, ui } = await start();
     await writing(ui);
