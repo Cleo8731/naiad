@@ -102,6 +102,30 @@ function droppedLines(lines: string[]): boolean[] {
   });
 }
 
+/** Mermaid's limit on the text of a diagram (its `maxTextSize`, which a file cannot
+ *  change): past it, Mermaid draws only "Maximum text size in diagram exceeded". */
+export const MERMAID_TEXT_LIMIT = 50_000;
+
+/** Mermaid's own pattern for a `%%{...}%%` directive (its `directiveRegex`). */
+const DIRECTIVE = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+/**
+ * The length Mermaid measures against its limit: the flowchart without its front matter,
+ * its directives, its comment lines (descriptions included) and the blank lines that
+ * start it, as Mermaid 12 prepares a text before it reads it (its `preprocessDiagram`;
+ * a comment line takes the blank lines above it along).
+ */
+export function mermaidLength(text: string): number {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const info = parseDoc(lines.join('\n')).info;
+  return lines
+    .filter((_, i) => info[i]?.kind !== 'frontmatter')
+    .join('\n')
+    .replace(DIRECTIVE, '')
+    .replace(/^\s*%%(?!\{)[^\n]+\n?/gm, '')
+    .trimStart().length;
+}
+
 /** The text as Mermaid is given it: every line it drops as a comment emptied, so that
  *  the line numbers in Mermaid's messages can be turned back into lines of the file;
  *  and a comment after a statement cut off (it is reported by itself), so that Mermaid
@@ -198,6 +222,11 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
     } else {
       add(Math.max(0, doc.header), 'mermaid', `Mermaid rejects the flowchart: ${message.split('\n')[0]}`);
     }
+  }
+  // Mermaid reads a text past its limit, and then draws only its message in its place.
+  const size = mermaidLength(text);
+  if (size > MERMAID_TEXT_LIMIT) {
+    add(Math.max(0, doc.header), 'mermaid', `The flowchart is ${size.toLocaleString('en-US')} characters long without its comments and descriptions, past Mermaid's limit of 50,000: Mermaid draws only "Maximum text size in diagram exceeded" in its place. Split it into smaller flowcharts, or move long text from titles into descriptions.`);
   }
 
   for (const w of doc.warnings) {

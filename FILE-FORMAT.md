@@ -298,7 +298,9 @@ collect --> clean
 
 ## Mermaid syntax Naiad can edit from the chart
 
-Reading: anything Mermaid's flowchart parser accepts is drawn.
+Reading: anything Mermaid's flowchart parser accepts is drawn, up to Mermaid's limit of
+50,000 characters (front matter, directives, comments and descriptions not counted);
+past it Mermaid draws only "Maximum text size in diagram exceeded".
 
 Editing from the chart or sidebar works on these forms; lines in other forms are drawn
 but must be edited as text:
@@ -338,7 +340,8 @@ naiad fix flow.mmd
 - It reports: text Mermaid's flowchart parser rejects; a line holding nothing but `%%`;
   a comment after a statement on the same line; a description block whose id matches
   no node or group; a second description block for one id; a line Naiad's scanner
-  cannot read. It reports nothing about style.
+  cannot read; a flowchart past Mermaid's limit of 50,000 characters. It reports
+  nothing about style.
 - `naiad fix` first puts right what cannot change the flowchart (see "What Naiad
   changes in a file"), then checks.
 - On Windows the installer adds the `naiad` command to the user's PATH. A terminal that

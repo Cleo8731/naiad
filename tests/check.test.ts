@@ -3,8 +3,8 @@
 // reports, on which line of the file, and what "fix" changes.
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
-import { checkFile, checkFlowchart, fixFile, formatReport, type Finding } from '../src/core/check';
-import { reading } from '../src/semantics';
+import { checkFile, checkFlowchart, fixFile, formatReport, mermaidLength, type Finding } from '../src/core/check';
+import { forMermaid, reading } from '../src/semantics';
 import { runCli, wellFormed } from '../src/cli';
 import type { Backend } from '../src/backend';
 import { fixtures } from './fixtures';
@@ -137,6 +137,51 @@ describe('what Mermaid rejects, on the line of the file', () => {
     expect(brief(await check('A --> B\n'))).toContain('1 mermaid');
     expect((await check('sequenceDiagram\n  A->>B: hi\n')).some((f) => f.rule === 'mermaid')).toBe(true);
   });
+});
+
+describe('a flowchart past Mermaid\'s 50,000-character limit (bug hunt round 3, D20)', () => {
+  // Past its limit Mermaid draws only "Maximum text size in diagram exceeded". jsdom has
+  // no layout, so the drawing gets a fixed size for each text.
+  beforeAll(() => {
+    (globalThis as any).SVGElement.prototype.getBBox = () => ({ x: 0, y: 0, width: 50, height: 20 });
+  });
+  const drawn = async (text: string): Promise<boolean> => {
+    const { svg } = await mermaid.render(`size${Math.random().toString(36).slice(2)}`, forMermaid(text));
+    return !/Maximum text size/.test(svg);
+  };
+  const limit = (fs: Finding[]) => fs.filter((f) => f.rule === 'mermaid' && /50,000/.test(f.message));
+
+  test('one long title, and many nodes, are reported on the header line', async () => {
+    const title = await check('flowchart TD\n  A["' + 'x'.repeat(60000) + '"] --> B\n');
+    expect(brief(title)).toEqual(['1 mermaid']);
+    expect(title[0].message).toMatch(/60,0\d\d characters .*limit of 50,000/);
+    const nodes = Array.from({ length: 1200 }, (_, i) => `  N${i}["Step ${i}: a node with a longer title"] --> N${i + 1}`);
+    expect(brief(limit(await check(['%% a note', 'flowchart LR', ...nodes, ''].join('\n'))))).toEqual(['2 mermaid']);
+  }, 30_000);
+
+  test('comments and descriptions do not count', async () => {
+    const description = Array.from({ length: 1000 }, (_, i) => `%% Line ${i} of a long description, which Mermaid never reads.`);
+    expect(await check(['flowchart TD', '  A --> B', '', '%% @A', ...description, ''].join('\n'))).toEqual([]);
+  });
+
+  // Each shape at the length Mermaid still draws, and one character past it.
+  const shapes: Record<string, (pad: string) => string> = {
+    plain: (p) => `flowchart TD\n  A["${p}"] --> B\n`,
+    'front matter': (p) => `---\ntitle: A title\nconfig:\n  theme: dark\n---\n\nflowchart TD\n  A["${p}"]\n`,
+    directives: (p) => `%%{init: {"theme": "dark"}}%%\n\n%%{\n  init: {"flowchart": {"curve": "basis"}}\n}%%\nflowchart TD\n  A["${p}"]\n`,
+    comments: (p) => `%% above\n\n\nflowchart TD\n\n\n  %% a note\n  A["${p}"]\n\n%% @A\n%% A description.\n%% .\n%% More.\n\n  A --> B\n`,
+    'trailing blank lines': (p) => `\n\nflowchart TD\n  A["${p}"]\n\n\n\n`,
+  };
+  for (const [name, shape] of Object.entries(shapes)) {
+    test(`${name}: reported exactly when Mermaid does not draw it`, async () => {
+      const pad = 'x'.repeat(50_000 - mermaidLength(shape('')));
+      expect(mermaidLength(shape(pad))).toBe(50_000);
+      expect(await drawn(shape(pad))).toBe(true);
+      expect(limit(await check(shape(pad)))).toEqual([]);
+      expect(await drawn(shape(pad + 'x'))).toBe(false);
+      expect(limit(await check(shape(pad + 'x')))).toHaveLength(1);
+    }, 30_000);
+  }
 });
 
 describe('what breaks the Naiad file format', () => {
