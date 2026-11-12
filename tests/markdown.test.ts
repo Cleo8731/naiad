@@ -257,6 +257,13 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(two, '## Old A\n\n' + chart + '\n## A\n\n' + changed + '\n## B\n\n```mermaid\nflowchart LR\n  b\n```\n', 0)).not.toBe(0);
   });
 
+  test('B22: the old text kept as a backup, and the shown block changed in place to another block\'s text: never the backup', () => {
+    const other = '```mermaid\nflowchart TD\n  x --> y\n```\n';
+    const before = '# Original\n\n' + chart + '\nOriginal end\n\n# Other\n\n' + other + '\nOther end\n';
+    const after = '# Backup\n\n' + chart + '\n# Original\n\n' + other + '\nOriginal end\n\n# Other\n\n' + other + '\nOther end\n';
+    expect(again(before, after, 0)).toBe(-1);
+  });
+
   test('a block added right after a shown block that opens the file: still the shown block', () => {
     const first = chart + '\nThe end.\n';
     const added = '```mermaid\nflowchart LR\n  c\n```\n';

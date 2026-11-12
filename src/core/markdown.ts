@@ -358,15 +358,13 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
       const mine = around(was, n);
       return same.every((m) => m === n || beats(mine, around(was, m))) && copies.every((o) => o === was || beats(mine, around(o, n)));
     });
-    // Nor is it certain when a block whose text no block held before reads more like the
-    // shown block's place, above it (where its heading is) and no less below: the shown
-    // block may have been changed there, and its old text kept elsewhere as a backup
-    // (round 3, B13). Lines alike below alone do not decide: a block added right below
-    // the shown one has them too.
-    const known = new Set(before.map((b) => b.text));
+    // Nor is it certain when another block reads more like the shown block's place, above
+    // it (where its heading is) and no less below: the shown block may have been changed
+    // there, and its old text kept elsewhere as a backup (round 3, B13), whatever text it
+    // was changed to, another block's included (round 4, B22). Lines alike below alone
+    // do not decide: a block added right below the shown one has them too.
     const rivalled = (n: number) =>
-      after.some((b, i) => {
-        if (known.has(b.text)) return false;
+      after.some((_, i) => {
         const rival = around(was, i);
         const mine = around(was, n);
         return beats(rival, mine) && rival[0] > mine[0];
