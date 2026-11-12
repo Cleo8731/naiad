@@ -4,7 +4,7 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
 import { checkFile, checkFlowchart, fixFile, formatReport, mermaidLength, signsUnquoted, type Finding } from '../src/core/check';
-import { forMermaid, reading } from '../src/semantics';
+import { forMermaid, reading, snapshot } from '../src/semantics';
 import { runCli, wellFormed } from '../src/cli';
 import type { Backend } from '../src/backend';
 import { fixtures } from './fixtures';
@@ -124,6 +124,21 @@ describe('what Mermaid rejects, on the line of the file', () => {
     expect(await check('---\ntitle: |\n  %% @a\n  %% x\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
     expect(await check('---\ntitle: T\n  %% indented\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
     expect(await check('flowchart TD\n  A --> B\n  %% note %%{init: {"theme": "dark"}}%%\n')).toEqual([]);
+  });
+
+  // Mermaid ends a line at LF, CR or CRLF; with the m flag "$" also stops before U+2028
+  // and U+2029, so "%%" was taken apart from the rest of its line (bug hunt round 4, A37).
+  test('A37: a "%%" line with U+2028 or U+2029 in it stays one comment', async () => {
+    for (const sep of [' ', ' ']) {
+      const text = `flowchart TD\n%%${sep}a --> b\nc\n`;
+      expect(forMermaid(text)).toBe(text);
+      const snap = await snapshot(text);
+      expect(Object.keys(snap.nodes)).toEqual(['c']);
+      expect(snap.edges).toEqual([]);
+    }
+    expect(forMermaid('flowchart TD\nx %%\nA\n')).toBe('flowchart TD\nx %%\nA\n');
+    // A bare "%%" line ended by LF, CR or CRLF, or by the end of the text, is still blanked.
+    expect(forMermaid('flowchart TD\n%%\r\n  %% \rA\n%%')).toBe('flowchart TD\n\r\n\rA\n');
   });
 
   test('the hints name the commonest causes', async () => {

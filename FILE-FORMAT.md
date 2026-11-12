@@ -77,7 +77,9 @@ Rules:
 4. **An empty line inside a description is written `%% .`** (two percent signs, a space,
    a full stop). Never write a line holding only `%%`: Mermaid 12 does not read a bare
    `%%` as a comment; it reads it as a node named `%%`. Naiad tolerates a bare `%%` when
-   it reads a file, warns about it, and offers a one-click fix.
+   it reads a file, warns about it, and offers a one-click fix. A line runs to its line
+   break, LF, CR or CRLF: a U+2028 or U+2029 after `%%` does not end it, so `%%` and the
+   text after it on that line are one comment.
 5. A description line whose whole text is `.` or `@something`, with or without spaces
    in front, is written with a backslash in front (`%% \.`, `%% \@something`,
    `%% \    @something`), so it is not taken for an empty line or for the start of

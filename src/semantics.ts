@@ -28,9 +28,13 @@ export interface Snap {
   subs: Record<string, SnapSub>;
 }
 
-/** A bare `%%` line is not a comment to Mermaid (it becomes a node), so it is blanked here. */
+/**
+ * A bare `%%` line is not a comment to Mermaid (it becomes a node), so it is blanked here.
+ * A line ends where Mermaid ends one, at LF, CR or CRLF; not at U+2028 or U+2029, where
+ * the m flag's `^` and `$` stop too (bug hunt round 4, A37).
+ */
 export function forMermaid(text: string): string {
-  return text.replace(/^[ \t]*%%[ \t]*$/gm, '');
+  return text.replace(/(^|[\r\n])[ \t]*%%[ \t]*(?=[\r\n]|$)/g, '$1');
 }
 
 const normDir = (d: unknown): string => (d === 'TD' ? 'TB' : typeof d === 'string' ? d : '');
