@@ -140,11 +140,22 @@ pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
 /// and the look is made through the held name itself: a link put there between Naiad's
 /// look and its read led the read to another file (bug hunt round 4, E19, F20).
 fn read_unlinked(file: &Path) -> Result<Option<Vec<u8>>, String> {
-    let held = match open_pinned(file) {
+    // While another program changes the file, Windows refuses this hold: wait for it.
+    let held = match waiting(|| open_pinned(file)) {
         Ok(held) => held,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.to_string()),
     };
+    a_file(file, &held)?;
+    // Read by its name, as any program reads it, while the held name stays on the file
+    // just looked at.
+    let bytes = fs::read(file).map_err(|e| e.to_string())?;
+    drop(held);
+    Ok(Some(bytes))
+}
+
+/// The held name's metadata, once it is clear that it is a file and not a link.
+fn a_file(file: &Path, held: &fs::File) -> Result<fs::Metadata, String> {
     let what = held.metadata().map_err(|e| e.to_string())?;
     if what.file_type().is_symlink() {
         return Err(link_error(file));
@@ -152,11 +163,7 @@ fn read_unlinked(file: &Path) -> Result<Option<Vec<u8>>, String> {
     if !what.is_file() {
         return Err(format!("{} is not a file.", file.display()));
     }
-    // Read by its name, as any program reads it, while the held name stays on the file
-    // just looked at.
-    let bytes = fs::read(file).map_err(|e| e.to_string())?;
-    drop(held);
-    Ok(Some(bytes))
+    Ok(what)
 }
 
 /// The file itself, never where a link there leads, shared with others for reading and
@@ -185,14 +192,15 @@ fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
 static CHANGING: Mutex<()> = Mutex::new(());
 
 /// Writes the highlights file whole, through a temporary file and a rename
-/// (`replace_file`, lib.rs), with `.naiad` and its folder held (`hold`). A text with
+/// (`change_file`), with `.naiad` and its folder held (`hold`). A text with
 /// nothing but blank lines deletes it instead. A file Naiad cannot read is an error,
 /// left as it is: it may hold an agent's notes that Naiad never showed (UTF-16, as
 /// Windows PowerShell 5 writes it; bug hunt round 3, F16). With `same`, it writes only
 /// if `same` says yes to the file's bytes (no file: none), and otherwise writes nothing
 /// and answers false: another view or an agent changed it since it was read (bug hunt
-/// round 4, E16). A missing file has nothing to lose, so a delete then goes ahead.
-pub fn write(flowchart: &Path, text: &str, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
+/// round 4, E16). A missing file has nothing to lose, so a delete then goes ahead. The
+/// look and the change are one step for other programs too (`change_file`).
+pub fn write(flowchart: &Path, text: &str, same: Same) -> Result<bool, String> {
     let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     if text.trim().is_empty() {
         return remove(flowchart, true, same);
@@ -203,15 +211,312 @@ pub fn write(flowchart: &Path, text: &str, same: Option<&dyn Fn(&[u8]) -> bool>)
     let _naiad = hold(naiad, true)?.ok_or("No .naiad folder.")?;
     let _folder = hold(folder, true)?.ok_or("No folder in .naiad.")?;
     hide(naiad);
-    // Read as `read` reads it, never through a link (`read_unlinked`).
-    let now = if no_link(&file)? { read_unlinked(&file)? } else { None };
-    if now.as_deref().is_some_and(|bytes| std::str::from_utf8(bytes).is_err()) {
-        return Err(unreadable(&file));
+    match change_file(&file, Some(text.as_bytes()), same)? {
+        Looked::Done => Ok(true),
+        Looked::Changed => Ok(false),
+        Looked::Unreadable => Err(unreadable(&file)),
     }
-    if same.is_some_and(|same| !same(now.as_deref().unwrap_or_default())) {
-        return Ok(false);
+}
+
+/// A test of the highlights file's bytes before a change (`write`): no means it changed
+/// since it was read.
+pub type Same<'a> = Option<&'a dyn Fn(&[u8]) -> bool>;
+
+/// What `change_file` found, and so did.
+enum Looked {
+    /// The change is made (for a delete, there may have been nothing there).
+    Done,
+    /// The file is not UTF-8: left as it is.
+    Unreadable,
+    /// `same` said no: left as it is.
+    Changed,
+}
+
+/// Replaces the highlights file with `new`, through a temporary file and a rename, or
+/// deletes it (None), once it is clear that it is UTF-8 and `same` says yes to its
+/// bytes (no file: a delete has nothing to do; a write asks `same` about no bytes).
+///
+/// On Windows the file is held from the look to the change, so that no other program
+/// can write, rename or delete it in between (bug hunt round 4, E18: an agent's UTF-16
+/// notes written after the look were replaced or deleted; and E16 between programs).
+/// Windows refuses other programs' writes for that moment (a few milliseconds), and
+/// most programs' reads too: they can try again, and Naiad's own reads wait
+/// (`waiting`).
+#[cfg(windows)]
+fn change_file(file: &Path, new: Option<&[u8]>, same: Same) -> Result<Looked, String> {
+    // Made before the file is held, so that it is held for as short a time as can be.
+    let tmp = new.map(|bytes| super::temp_beside(file, bytes)).transpose()?;
+    let aside = match new {
+        Some(_) => match super::temp_beside(file, b"") {
+            Ok(path) => Some(Aside { path, keep: std::cell::Cell::new(false) }),
+            Err(e) => {
+                let _ = tmp.as_deref().map(fs::remove_file);
+                return Err(e);
+            }
+        },
+        None => None,
+    };
+    let mut looked = None;
+    for _ in 0..TRIES {
+        looked = change_once(file, tmp.as_deref(), aside.as_ref(), same).transpose();
+        if looked.is_some() {
+            break;
+        }
     }
-    super::replace_file(&file, text.as_bytes()).map(|()| true)
+    let looked = looked.unwrap_or_else(|| Err(kept_changing(file)));
+    if let Some(tmp) = &tmp {
+        if !matches!(looked, Ok(Looked::Done)) {
+            let _ = fs::remove_file(tmp);
+        }
+    }
+    looked
+}
+
+/// How many times a change looks again at a file another program keeps making anew.
+#[cfg(windows)]
+const TRIES: usize = 5;
+
+#[cfg(windows)]
+fn kept_changing(file: &Path) -> String {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    format!("{name} kept changing while Naiad changed it, so Naiad changed nothing. Try again.")
+}
+
+/// A free name next to the highlights file, where its old text goes while the new one
+/// is moved in (`change_once`); removed at the end unless the old text is left there.
+#[cfg(windows)]
+struct Aside {
+    path: PathBuf,
+    keep: std::cell::Cell<bool>,
+}
+
+#[cfg(windows)]
+impl Drop for Aside {
+    fn drop(&mut self) {
+        if !self.keep.get() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// One look and change, with the file held from the look to the change. None: another
+/// program made the file in the moment its name was free (below); look again.
+#[cfg(windows)]
+fn change_once(file: &Path, tmp: Option<&Path>, aside: Option<&Aside>, same: Same) -> Result<Option<Looked>, String> {
+    let held = match waiting(|| open_locked(file)) {
+        Ok(held) => held,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // Nothing there: nothing to delete, and a write makes the file, unless
+            // `same` looked for one. Moved in only where no file is: one made meanwhile
+            // is looked at again.
+            let Some(tmp) = tmp else { return Ok(Some(Looked::Done)) };
+            if same.is_some_and(|same| !same(b"")) {
+                return Ok(Some(Looked::Changed));
+            }
+            stage("checked");
+            return match move_in(tmp, file) {
+                Ok(()) => Ok(Some(Looked::Done)),
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(None),
+                Err(e) => Err(e.to_string()),
+            };
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+    let what = a_file(file, &held)?;
+    let mut now = Vec::new();
+    std::io::Read::read_to_end(&mut &held, &mut now).map_err(|e| e.to_string())?;
+    if std::str::from_utf8(&now).is_err() {
+        return Ok(Some(Looked::Unreadable));
+    }
+    if same.is_some_and(|same| !same(&now)) {
+        return Ok(Some(Looked::Changed));
+    }
+    stage("checked");
+    let (Some(tmp), Some(aside)) = (tmp, aside) else {
+        delete_held(&held).map_err(|e| e.to_string())?;
+        return Ok(Some(Looked::Done));
+    };
+    // Windows lets nobody replace a file held this way, Naiad included: the old file is
+    // moved aside through the hold (still held), the new one moved in where no file is,
+    // and the old one deleted. A read-only file is not replaced, as Windows refuses it.
+    if what.permissions().readonly() {
+        return Err(std::io::Error::from_raw_os_error(5).to_string());
+    }
+    rename_held(&held, &aside.path, true).map_err(|e| e.to_string())?;
+    stage("moved away");
+    match move_in(tmp, file) {
+        Ok(()) => {
+            let _ = delete_held(&held); // if it stays, `Aside` removes it once let go
+            Ok(Some(Looked::Done))
+        }
+        // Another program made the file while its name was free: what it wrote comes
+        // after the old text, which goes; the new file is looked at again.
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            let _ = delete_held(&held);
+            Ok(None)
+        }
+        Err(e) => match rename_held(&held, file, false) {
+            Ok(()) => Err(e.to_string()),
+            Err(_) => {
+                aside.keep.set(true);
+                Err(format!("{e}; Naiad could not put the highlights file back: its text is in {}.", aside.path.display()))
+            }
+        },
+    }
+}
+
+/// The file itself, never where a link there leads, held so that other programs can
+/// neither write, rename nor delete it (nor read it, unless they let it be deleted
+/// meanwhile), while Naiad reads it, renames it and deletes it through this hold.
+#[cfg(windows)]
+fn open_locked(file: &Path) -> std::io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const GENERIC_READ: u32 = 0x8000_0000;
+    const DELETE: u32 = 0x0001_0000;
+    const SHARE_READ: u32 = 0x1;
+    const BACKUP_SEMANTICS: u32 = 0x0200_0000; // a folder or a junction opens too, to be refused
+    const OPEN_REPARSE_POINT: u32 = 0x0020_0000; // the link itself, if it is one
+    fs::OpenOptions::new()
+        .access_mode(GENERIC_READ | DELETE)
+        .share_mode(SHARE_READ)
+        .custom_flags(BACKUP_SEMANTICS | OPEN_REPARSE_POINT)
+        .open(file)
+}
+
+#[cfg(windows)]
+extern "system" {
+    fn SetFileInformationByHandle(file: *mut std::ffi::c_void, class: i32, info: *const std::ffi::c_void, size: u32) -> i32;
+}
+
+/// Renames the held file to `to`; an error if a file is there, unless `replace`.
+#[cfg(windows)]
+fn rename_held(held: &fs::File, to: &Path, replace: bool) -> std::io::Result<()> {
+    use std::os::windows::{ffi::OsStrExt, io::AsRawHandle};
+    /// FILE_RENAME_INFO; the name runs on past the end.
+    #[repr(C)]
+    struct RenameInfo {
+        replace: u32,
+        root: *mut std::ffi::c_void,
+        length: u32,
+        name: [u16; 1],
+    }
+    const FILE_RENAME_INFO: i32 = 3;
+    let to: Vec<u16> = std::path::absolute(to)?.as_os_str().encode_wide().collect();
+    let start = std::mem::offset_of!(RenameInfo, name);
+    let size = (start + 2 * (to.len() + 1)).max(std::mem::size_of::<RenameInfo>());
+    // Zeroed, so no root folder, and the name ends in a nul.
+    let mut buffer = vec![0u64; size.div_ceil(8)];
+    let info = buffer.as_mut_ptr().cast::<RenameInfo>();
+    // SAFETY: the buffer is aligned for RenameInfo and holds `size` bytes: the struct,
+    // then the name from `start`.
+    let done = unsafe {
+        (*info).replace = u32::from(replace);
+        (*info).length = (2 * to.len()) as u32;
+        std::ptr::copy_nonoverlapping(to.as_ptr(), info.cast::<u8>().add(start).cast::<u16>(), to.len());
+        SetFileInformationByHandle(held.as_raw_handle(), FILE_RENAME_INFO, info.cast(), size as u32)
+    };
+    if done == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Deletes the held file: at once where Windows can (from Windows 10 1809, on NTFS),
+/// otherwise when the hold is let go. A read-only file is deleted too, as
+/// `fs::remove_file` deletes it.
+#[cfg(windows)]
+fn delete_held(held: &fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    const FILE_DISPOSITION_INFO: i32 = 4;
+    const FILE_DISPOSITION_INFO_EX: i32 = 21;
+    const DELETE: u32 = 0x1;
+    const POSIX_SEMANTICS: u32 = 0x2;
+    const IGNORE_READONLY: u32 = 0x10;
+    let flags = DELETE | POSIX_SEMANTICS | IGNORE_READONLY;
+    let yes: u8 = 1;
+    // SAFETY: each buffer is the size given, and lives through the call.
+    let done = unsafe {
+        SetFileInformationByHandle(held.as_raw_handle(), FILE_DISPOSITION_INFO_EX, (&flags as *const u32).cast(), 4) != 0
+            || SetFileInformationByHandle(held.as_raw_handle(), FILE_DISPOSITION_INFO, (&yes as *const u8).cast(), 1) != 0
+    };
+    if !done {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Moves `tmp` to `file`, only where no file is (an error of kind AlreadyExists if one is).
+#[cfg(windows)]
+fn move_in(tmp: &Path, file: &Path) -> std::io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const DELETE: u32 = 0x0001_0000;
+    const OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    let held = fs::OpenOptions::new().access_mode(DELETE).custom_flags(OPEN_REPARSE_POINT).open(tmp)?;
+    rename_held(&held, file, false)
+}
+
+/// `change_file` where nothing holds a file against other programs: the look, then the
+/// change.
+#[cfg(not(windows))]
+fn change_file(file: &Path, new: Option<&[u8]>, same: Same) -> Result<Looked, String> {
+    let Some(now) = read_unlinked(file)? else {
+        let Some(new) = new else { return Ok(Looked::Done) };
+        if same.is_some_and(|same| !same(b"")) {
+            return Ok(Looked::Changed);
+        }
+        return super::replace_file(file, new).map(|()| Looked::Done);
+    };
+    if std::str::from_utf8(&now).is_err() {
+        return Ok(Looked::Unreadable);
+    }
+    if same.is_some_and(|same| !same(&now)) {
+        return Ok(Looked::Changed);
+    }
+    stage("checked");
+    match new {
+        Some(new) => super::replace_file(file, new)?,
+        None => match fs::remove_file(file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        },
+    }
+    Ok(Looked::Done)
+}
+
+/// Opens with `open`, trying again for up to half a second while another program holds
+/// the file (Windows' sharing violation), and, after that, while its name is free for
+/// the moment another program's change takes (`change_once` moves the old file aside,
+/// then the new one in).
+fn waiting(open: impl Fn() -> std::io::Result<fs::File>) -> std::io::Result<fs::File> {
+    const IN_USE: i32 = 32; // ERROR_SHARING_VIOLATION
+    let mut held_elsewhere = false;
+    let mut free = 0;
+    for _ in 0..50 {
+        match open() {
+            Err(e) if cfg!(windows) && e.raw_os_error() == Some(IN_USE) => held_elsewhere = true,
+            Err(e) if e.kind() == ErrorKind::NotFound && held_elsewhere && free < 3 => free += 1,
+            done => return done,
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    open()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Run at each named stage of a change to the highlights file (tests only): another
+    /// program acting there.
+    pub(crate) static STAGE: std::cell::RefCell<Option<Box<dyn Fn(&str)>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn stage(_name: &str) {
+    #[cfg(test)]
+    STAGE.with(|run| {
+        if let Some(run) = &*run.borrow() {
+            run(_name);
+        }
+    });
 }
 
 fn unreadable(file: &Path) -> String {
@@ -224,33 +529,23 @@ fn unreadable(file: &Path) -> String {
 /// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
 /// (`write`): it is kept, with its folders. With `same`, the file is deleted only if
 /// `same` says yes to its bytes, and otherwise kept, with its folders.
-pub fn delete(flowchart: &Path, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<(), String> {
+pub fn delete(flowchart: &Path, same: Same) -> Result<(), String> {
     let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     remove(flowchart, false, same).map(|_| ())
 }
 
 /// `delete`; with `refuse`, a file Naiad cannot read is an error (Clear, a blank write)
 /// rather than only kept (the last view closing). False: `same` said no.
-fn remove(flowchart: &Path, refuse: bool, same: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
+fn remove(flowchart: &Path, refuse: bool, same: Same) -> Result<bool, String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
     let naiad = folder.parent().ok_or("No folder.")?;
     let Some(held_naiad) = hold(naiad, false)? else { return Ok(true) };
     if let Some(held_folder) = hold(folder, false)? {
-        if no_link(&file)? {
-            if let Some(bytes) = read_unlinked(&file)? {
-                if std::str::from_utf8(&bytes).is_err() {
-                    return if refuse { Err(unreadable(&file)) } else { Ok(true) };
-                }
-                if same.is_some_and(|same| !same(&bytes)) {
-                    return Ok(false);
-                }
-                match fs::remove_file(&file) {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == ErrorKind::NotFound => {}
-                    Err(e) => return Err(e.to_string()),
-                }
-            }
+        match change_file(&file, None, same)? {
+            Looked::Done => {}
+            Looked::Changed => return Ok(false),
+            Looked::Unreadable => return if refuse { Err(unreadable(&file)) } else { Ok(true) },
         }
         // A held folder cannot be removed, even by Naiad: let it go, look again, remove.
         // Each removal fails, as it should, when the folder still holds something.
@@ -644,6 +939,156 @@ mod tests {
         assert!(fs::symlink_metadata(&file).unwrap().file_type().is_symlink(), "the link is kept");
         assert_eq!(fs::read_to_string(outside.join("theirs.txt")).unwrap(), "theirs\n");
         fs::remove_dir(&file).unwrap(); // the junction only
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The bytes Windows PowerShell 5 writes: UTF-16, with its mark.
+    #[cfg(windows)]
+    fn utf16(text: &str) -> Vec<u8> {
+        [0xFF, 0xFE].into_iter().chain(text.encode_utf16().flat_map(|u| u.to_le_bytes())).collect()
+    }
+
+    /// Runs `agent` once, at the next `stage` named `at` on this thread.
+    #[cfg(windows)]
+    fn at_stage(at: &'static str, agent: impl FnOnce() + 'static) {
+        let agent = std::cell::RefCell::new(Some(agent));
+        STAGE.with(|run| {
+            *run.borrow_mut() = Some(Box::new(move |stage: &str| {
+                if stage == at {
+                    let once = agent.borrow_mut().take();
+                    if let Some(agent) = once {
+                        agent();
+                    }
+                }
+            }))
+        });
+    }
+
+    #[cfg(windows)]
+    fn no_stage() {
+        STAGE.with(|run| *run.borrow_mut() = None);
+    }
+
+    /// What the folder of `file` holds beside it (nothing, if there is no folder).
+    #[cfg(windows)]
+    fn beside(file: &Path) -> Vec<String> {
+        let Ok(names) = fs::read_dir(file.parent().unwrap()) else { return Vec::new() };
+        let name = file.file_name().unwrap();
+        names.map(|e| e.unwrap().file_name()).filter(|n| n != name).map(|n| n.to_string_lossy().into_owned()).collect()
+    }
+
+    /// Bug hunt round 4, E18: another program writes the highlights file between Naiad's
+    /// look at it and its change (an agent's notes in UTF-16, which Naiad must never
+    /// replace or delete). A write that went through is never lost: on Windows the file
+    /// is held from the look to the change, so the agent's write fails (and it can try
+    /// again), and Naiad's change goes on.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_written_while_naiad_changes_it_is_never_lost() {
+        use std::{cell::RefCell, rc::Rc};
+        let dir = folder("e18");
+        let flow = dir.join("flow.mmd");
+        let file = file_of(&flow).unwrap();
+        let theirs = utf16("a\r\n# the agent's note\r\n");
+        let from_a = |now: &[u8]| now == b"a\n";
+        let changes: [(&str, &dyn Fn() -> Result<bool, String>); 4] = [
+            ("a write", &|| write(&flow, "b\n", None)),
+            ("a write from what was read", &|| write(&flow, "b\n", Some(&from_a))),
+            ("Clear", &|| write(&flow, " \n", None)),
+            ("the last view closing", &|| delete(&flow, None).map(|()| true)),
+        ];
+        let mut lost = Vec::new();
+        for (change, run) in changes {
+            write(&flow, "a\n", None).unwrap();
+            let agent = Rc::new(RefCell::new(None));
+            let (into, path, bytes) = (agent.clone(), file.clone(), theirs.clone());
+            at_stage("checked", move || *into.borrow_mut() = Some(fs::write(&path, &bytes)));
+            let naiad = run();
+            no_stage();
+            let agent = agent.take().unwrap_or_else(|| panic!("{change}: the agent did not write"));
+            if agent.is_ok() && fs::read(&file).ok() != Some(theirs.clone()) {
+                lost.push(change);
+            } else if agent.is_err() {
+                assert_eq!(naiad, Ok(true), "{change}: Naiad's change goes on");
+            }
+            assert_eq!(beside(&file), Vec::<String>::new(), "{change}: left beside the file");
+            let _ = fs::remove_file(&file);
+        }
+        assert_eq!(lost, Vec::<&str>::new(), "the agent's write went through, then was lost");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// While Naiad moves its text in (the old text moved aside), the name is free for a
+    /// moment: a file another program makes there then is kept, and Naiad's write, made
+    /// from what the file held before, is refused; without a precondition it comes after
+    /// the other, as a later write does. Nothing is left beside the file.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_made_while_naiad_moves_its_text_in_is_kept() {
+        let dir = folder("moved-in");
+        let flow = dir.join("flow.mmd");
+        let file = file_of(&flow).unwrap();
+        write(&flow, "a\n", None).unwrap();
+        let path = file.clone();
+        at_stage("moved away", move || fs::write(&path, "theirs\n").unwrap());
+        let wrote = write(&flow, "b\n", Some(&|now: &[u8]| now == b"a\n"));
+        no_stage();
+        assert_eq!(wrote, Ok(false));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "theirs\n");
+        assert_eq!(beside(&file), Vec::<String>::new());
+        let path = file.clone();
+        at_stage("moved away", move || fs::write(&path, "theirs again\n").unwrap());
+        let wrote = write(&flow, "c\n", None);
+        no_stage();
+        assert_eq!(wrote, Ok(true));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "c\n");
+        assert_eq!(beside(&file), Vec::<String>::new());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// While one program changes the file, another's read waits for the change, rather
+    /// than failing (Windows refuses it the file for that moment), and reads the new text.
+    #[cfg(windows)]
+    #[test]
+    fn a_read_while_another_program_changes_the_file_waits_for_it() {
+        use std::{cell::RefCell, rc::Rc};
+        let dir = folder("wait");
+        let flow = dir.join("flow.mmd");
+        write(&flow, "a\n", None).unwrap();
+        let reader = Rc::new(RefCell::new(None));
+        let (into, from) = (reader.clone(), flow.clone());
+        at_stage("checked", move || {
+            *into.borrow_mut() = Some(std::thread::spawn(move || read(&from)));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        });
+        write(&flow, "b\n", None).unwrap();
+        no_stage();
+        let read = reader.take().unwrap().join().unwrap();
+        assert_eq!(read, Ok(Some("b\n".to_string())));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A read-only highlights file is never replaced (Windows refuses it, as it did before
+    /// E18's fix), and is deleted as any other when the last view closes or on Clear.
+    #[cfg(windows)]
+    #[test]
+    fn a_read_only_file_is_not_replaced_but_is_deleted() {
+        let dir = folder("read-only");
+        let flow = dir.join("flow.mmd");
+        let file = file_of(&flow).unwrap();
+        let changes: [(&str, &dyn Fn() -> Result<bool, String>); 2] =
+            [("delete", &|| delete(&flow, None).map(|()| true)), ("Clear", &|| write(&flow, " \n", None))];
+        for (change, run) in changes {
+            write(&flow, "a\n", None).unwrap();
+            let mut read_only = fs::metadata(&file).unwrap().permissions();
+            read_only.set_readonly(true);
+            fs::set_permissions(&file, read_only).unwrap();
+            assert_eq!(write(&flow, "b\n", None), Err("Access is denied. (os error 5)".into()));
+            assert_eq!(fs::read_to_string(&file).unwrap(), "a\n");
+            assert_eq!(beside(&file), Vec::<String>::new());
+            assert_eq!(run(), Ok(true), "{change}");
+            assert!(!file.exists(), "{change}");
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 

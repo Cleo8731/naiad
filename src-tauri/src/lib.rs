@@ -177,8 +177,7 @@ static CHECK_AND_RENAME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// is removed, the file is left as it is, and the answer is false. The look and the
 /// rename are one step for the checked writes of this process (`CHECK_AND_RENAME`).
 pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn Fn(&[u8]) -> bool>) -> Result<bool, String> {
-    use std::io::{ErrorKind, Write};
-    use std::sync::atomic::Ordering;
+    use std::io::ErrorKind;
     if target.file_name().is_none() {
         return Err("The path has no file name.".into());
     }
@@ -190,6 +189,22 @@ pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn
             Err(e) => Err(e),
         },
     };
+    let tmp = temp_beside(target, contents)?;
+    // A panic elsewhere while holding the lock leaves nothing half done here: the lock
+    // guards no data, so a poisoned one is taken as it is.
+    let _one_at_a_time = holds.map(|_| CHECK_AND_RENAME.lock().unwrap_or_else(|e| e.into_inner()));
+    let done = unchanged().and_then(|go| if go { fs::rename(&tmp, on_disk(target)).map(|()| true) } else { Ok(false) });
+    if !matches!(done, Ok(true)) {
+        let _ = fs::remove_file(&tmp);
+    }
+    done.map_err(|e| e.to_string())
+}
+
+/// A new temporary file next to `target`, holding `contents` (`replace_file`). Nothing
+/// is left behind when it cannot be written whole.
+pub(crate) fn temp_beside(target: &Path, contents: &[u8]) -> Result<PathBuf, String> {
+    use std::io::{ErrorKind, Write};
+    use std::sync::atomic::Ordering;
     let me = std::process::id();
     for _ in 0..100 {
         let n = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
@@ -201,16 +216,13 @@ pub(crate) fn replace_file_if(target: &Path, contents: &[u8], holds: Option<&dyn
         };
         let written = file.write_all(contents);
         drop(file);
-        // A panic elsewhere while holding the lock leaves nothing half done here: the
-        // lock guards no data, so a poisoned one is taken as it is.
-        let _one_at_a_time = holds.map(|_| CHECK_AND_RENAME.lock().unwrap_or_else(|e| e.into_inner()));
-        let done = written
-            .and_then(|()| unchanged())
-            .and_then(|go| if go { fs::rename(&tmp, on_disk(target)).map(|()| true) } else { Ok(false) });
-        if !matches!(done, Ok(true)) {
-            let _ = fs::remove_file(&tmp);
-        }
-        return done.map_err(|e| e.to_string());
+        return match written {
+            Ok(()) => Ok(tmp),
+            Err(e) => {
+                let _ = fs::remove_file(&tmp);
+                Err(e.to_string())
+            }
+        };
     }
     Err("No free name for a temporary file next to the file.".into())
 }

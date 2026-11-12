@@ -295,8 +295,14 @@ collect --> clean
   reads, writes and deletes nothing, the link included. On Windows, while Naiad reads,
   writes or deletes the highlights file, it holds `.naiad` and the flowchart's folder
   open, so that neither can be deleted, renamed or swapped for a link meanwhile; and
-  while it reads `highlights.txt` (to show it, or to see that it is UTF-8 before it
-  replaces or deletes it), it holds that file open the same way.
+  while it reads `highlights.txt` to show it, it holds that file open the same way.
+- On Windows, when Naiad changes `highlights.txt`, it holds the file from its look
+  (that it is UTF-8 and, for a switch, still what was read) to its change, so that no
+  other program can write, rename or delete it in between. For that moment, a few
+  milliseconds, another program's write to it fails, and so may its read: it can try
+  again. To replace it, Naiad moves the old file aside under a temporary name, moves
+  the new one in, then deletes the old one; a file another program makes there in the
+  moment between is kept, and Naiad looks at it again before it changes anything.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
   the last page `naiad serve` shows of it (within half a minute of that page closing,
   and only if the file is still as it was when that page closed: highlights written
