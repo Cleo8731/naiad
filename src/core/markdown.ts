@@ -8,8 +8,13 @@ import { frontMatterLines } from './scan';
 export interface Block {
   /** Line index (from 0) of the opening fence line in the file. */
   open: number;
-  /** Line index of the closing fence line; -1 when the block runs to the end of the file. */
+  /**
+   * Line index of the closing fence line; -1 when there is none: the block runs to the
+   * end of the file, or of the list item it stands in.
+   */
   close: number;
+  /** Line index of the first line past the block: after its closing line, or the line that ended its list item, or the number of lines. */
+  end: number;
   /** The whitespace in front of the opening fence. Every line of the block carries it. */
   indent: string;
   /** Whether the block's empty lines carry the indent too (true) or are fully empty. */
@@ -86,6 +91,20 @@ function fenceBase(r: Reading, at: number, w: number): number | null {
     r.base.set(key, base);
   }
   return base;
+}
+
+/**
+ * The column where the text of the list item that the fence on line `at` (indented `w`
+ * columns, measured from `base`) stands in starts; 0 when it stands in none, or when
+ * unsure, so that the block then runs on to its closing line, as before (the safe side:
+ * its lines are never read as Markdown). A fence three columns in at most has base 0
+ * whether it stands in an item or not, so for it the item is looked for apart. An item's
+ * text starts two columns in at least.
+ */
+function itemText(r: Reading, at: number, w: number, base: number): number {
+  if (base > 0 || w < 2) return base;
+  know(r, at - 1);
+  return baseAbove(r, at, w) ?? 0;
 }
 
 /**
@@ -289,24 +308,34 @@ export function findBlocks(file: string): Block[] {
     }
     const [, indent, fence, info] = m;
     const open = i;
+    const item = itemText(r, i, columns(indent), base);
     let close = -1;
+    let end = lines.length;
     for (let j = open + 1; j < lines.length; j++) {
+      // In a list item, a line indented less than the item's text ends the item, and the
+      // block with it: a fenced block takes no lazy lines (bug hunt round 4, B23: a code
+      // example below the item was offered as a flowchart).
+      if (item > 0 && indentOf(r, j) >= 0 && indentOf(r, j) < item) { end = j; break; }
       const c = FENCE.exec(lines[j]);
-      // The closing line may be indented up to three columns past the opening's base.
-      if (c && c[2][0] === fence[0] && c[2].length >= fence.length && c[3].trim() === '' && columns(c[1]) <= base + 3) { close = j; break; }
+      // The closing line may be indented up to three columns past the opening's base, or
+      // past the item's text when the block stands in a list item.
+      if (c && c[2][0] === fence[0] && c[2].length >= fence.length && c[3].trim() === '' && columns(c[1]) <= item + 3) {
+        close = j;
+        end = j + 1;
+        break;
+      }
     }
-    const end = close < 0 ? lines.length : close;
-    opener.fill(open, open + 1, Math.min(end + 1, lines.length));
+    opener.fill(open, open + 1, end);
     if (info.trim().split(/\s+/)[0].toLowerCase() === 'mermaid') {
-      blocks.push(readBlock(file, lines, open, close, indent, heading));
+      blocks.push(readBlock(file, lines, open, close, end, indent, heading));
     }
-    i = end + 1;
+    i = end;
   }
   return blocks;
 }
 
-function readBlock(file: string, lines: string[], open: number, close: number, indent: string, heading: string): Block {
-  const content = lines.slice(open + 1, close < 0 ? lines.length : close);
+function readBlock(file: string, lines: string[], open: number, close: number, end: number, indent: string, heading: string): Block {
+  const content = lines.slice(open + 1, close < 0 ? end : close);
   let even = true;
   let plainBlank = 0;
   let indentedBlank = 0;
@@ -319,7 +348,7 @@ function readBlock(file: string, lines: string[], open: number, close: number, i
   });
   const text = inner.length ? inner.join('\n') + '\n' : '';
   const block: Block = {
-    open, close, indent, blankIndented: indentedBlank > 0 && plainBlank === 0, text,
+    open, close, end, indent, blankIndented: indentedBlank > 0 && plainBlank === 0, text,
     flowchart: isFlowchartText(text), heading, locked: null,
   };
   if (close < 0) block.locked = 'the block has no closing fence line.';
@@ -394,8 +423,7 @@ function alikeAround(x: string[], a: Block, y: string[], b: Block): [number, num
       j += step;
     }
   };
-  const below = (blk: Block, lines: string[]) => (blk.close < 0 ? lines.length : blk.close + 1);
-  return [walk(a.open - 1, b.open - 1, -1), walk(below(a, x), below(b, y), 1)];
+  return [walk(a.open - 1, b.open - 1, -1), walk(a.end, b.end, 1)];
 }
 
 /** The file with one block's lines replaced. Lines outside the block are not touched. */
@@ -403,8 +431,7 @@ export function replaceBlock(file: string, block: Block, text: string): string {
   const lines = file.split('\n');
   const body = text === '' ? [] : (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n');
   const out = body.map((line) => (line === '' ? (block.blankIndented ? block.indent : '') : block.indent + line));
-  const end = block.close < 0 ? lines.length : block.close;
-  return [...lines.slice(0, block.open + 1), ...out, ...lines.slice(end)].join('\n');
+  return [...lines.slice(0, block.open + 1), ...out, ...lines.slice(block.close < 0 ? block.end : block.close)].join('\n');
 }
 
 /**

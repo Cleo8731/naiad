@@ -98,8 +98,11 @@ describe('finding Mermaid blocks in a Markdown file', () => {
   });
 
   test('locks a block it could not put back exactly', () => {
-    const uneven = '- item\n\n  ```mermaid\n  flowchart TD\n a --> b\n  ```\n';
+    const uneven = '- item\n\n   ```mermaid\n   flowchart TD\n  a --> b\n   ```\n';
     expect(findBlocks(uneven)[0].locked).toMatch(/indented evenly/);
+    // A line indented less than the item's text ends the item, and the block (B23).
+    const ended = findBlocks('- item\n\n  ```mermaid\n  flowchart TD\n a --> b\n  ```\n');
+    expect(ended.map((b) => [b.text, b.locked])).toEqual([['flowchart TD\n', 'the block has no closing fence line.']]);
     const open = 'text\n\n```mermaid\nflowchart TD\n  a --> b\n';
     expect(findBlocks(open)[0].locked).toMatch(/no closing fence/);
     const mixedBlank = '  ```mermaid\n  flowchart TD\n  \n  a\n\n  b\n  ```\n';
@@ -330,6 +333,29 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     // An item further out still holds the fence: the paragraph ended "- b", not "- a".
     const outer = findBlocks('- a\n  - b\n\n  para in a\n\n    ```mermaid\n    flowchart TD\n    ```\n');
     expect(outer.map((b) => b.open)).toEqual([5]);
+  });
+
+  // Each document as pandoc's CommonMark reader reads it (2026-11-12): a fenced block
+  // takes no lazy lines, so a line indented less than the item's text ends both.
+  test('B23: a fenced block in a list item ends where the item ends (bug hunt round 4)', () => {
+    // `***` ends the item and its unclosed `~~~` block; the next `~~~` opens a plain
+    // block at the margin, holding a Mermaid-looking example.
+    expect(findBlocks('- a\n  ~~~\n***\n  ~~~\n     ```mermaid\n     flowchart TD\n       a --> b\n     ```\n')).toEqual([]);
+    // B17: an unclosed block in an item no longer hides a real block below the item.
+    const below = findBlocks('- a\n  ```text\n  open\nend of the list\n\n```mermaid\nflowchart TD\n  a\n```\n');
+    expect(below.map((b) => [b.open, b.locked])).toEqual([[5, null]]);
+    // A Mermaid block whose item ends before its closing line: shown, never changed,
+    // without the line that ended it.
+    const cut = findBlocks('- a\n  ```mermaid\n  flowchart TD\n    a\nnot in the item\n');
+    expect(cut.map((b) => [b.text, b.locked])).toEqual([['flowchart TD\n  a\n', 'the block has no closing fence line.']]);
+    const inner = findBlocks('- a\n  - b\n    ```mermaid\n    flowchart TD\n  in a\n    ```\n');
+    expect(inner.map((b) => [b.text, b.locked])).toEqual([['flowchart TD\n', 'the block has no closing fence line.']]);
+    // Blank lines, and lines indented to the item's text, go on in the block.
+    expect(findBlocks('- a\n  ```mermaid\n  flowchart TD\n\n    a\n  ```\n').map((b) => b.locked)).toEqual([null]);
+    // In an item, the closing line may stand up to three columns past the item's text,
+    // even when the opening line is three columns in at most.
+    const closed = findBlocks('1. step\n   ```mermaid\n   flowchart TD\n     ```\nafter\n');
+    expect(closed.map((b) => [b.text, b.close, b.locked])).toEqual([['flowchart TD\n', 3, null]]);
   });
 });
 

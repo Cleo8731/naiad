@@ -155,7 +155,9 @@ More text.
   less than the item's text ends the item, unless it goes on with a paragraph above
   it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
   text after it starts a new item. Where Naiad cannot tell whether the item ended, it
-  does not find the block, so a code sample is never taken for a flowchart.
+  does not find the block, so a code sample is never taken for a flowchart. A fenced
+  block in a list item also ends with the item: a line in it indented less than the
+  item's text (blank lines aside) ends both, and the block then has no closing line.
   Every line of the block must then start with the same whitespace as its opening
   line (empty lines may be fully empty, or all carry that whitespace). If they do
   not, or the closing line is missing, Naiad shows the flowchart but does not change
