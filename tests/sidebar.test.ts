@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The sidebar on its own, in jsdom: what it keeps while the file changes under it.
 import { describe, expect, it, vi } from 'vitest';
-import { Sidebar, type NodeView, type SidebarActions } from '../src/sidebar';
+import { Sidebar, type EdgeView, type NodeView, type SidebarActions } from '../src/sidebar';
 
 function sidebar() {
   document.body.innerHTML = '<aside></aside>';
@@ -55,5 +55,47 @@ describe('a description being written is kept while the file changes (bug hunt S
     side.show({ ...VIEW, id: 'clean', title: 'Clean', description: '' });
     expect(root.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.hidden).toBe(true);
     expect(root.querySelector('code.id')!.textContent).toBe('clean');
+  });
+});
+
+describe('a box blurred as its panel is emptied commits nothing (bug hunt round 3: C33)', () => {
+  // Chromium fires blur on a focused box as it is taken out of the page; jsdom does not,
+  // so the panel here does what Chromium does.
+  function blurOnRemoval(root: HTMLElement) {
+    const replace = root.replaceChildren.bind(root);
+    root.replaceChildren = (...nodes: (Node | string)[]) => {
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && root.contains(focused)) focused.blur();
+      replace(...nodes);
+    };
+  }
+  const EDGE: EdgeView = { kind: 'edge', index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow' };
+
+  function typing() {
+    const s = sidebar();
+    blurOnRemoval(s.root);
+    s.side.show(EDGE);
+    const box = s.root.querySelector<HTMLInputElement>('input.title')!;
+    box.focus();
+    box.value = 'TYPED LABEL';
+    return { ...s, box };
+  }
+
+  it('C33: the panel closed by a change on disk (arrow 1 has other ends now): no label is written', () => {
+    const { actions, side } = typing();
+    side.show(null);
+    expect(actions.setEdgeLabel).not.toHaveBeenCalled();
+  });
+
+  it('the panel built for another item: nothing is written to the arrow of the box', () => {
+    const { actions, side } = typing();
+    side.show({ ...EDGE, index: 2, from: 'c', to: 'd' });
+    expect(actions.setEdgeLabel).not.toHaveBeenCalled();
+  });
+
+  it('focus leaving the box while its panel stays: the label is written to its arrow', () => {
+    const { actions, box } = typing();
+    box.blur();
+    expect(actions.setEdgeLabel).toHaveBeenCalledWith(1, 'TYPED LABEL');
   });
 });

@@ -96,10 +96,11 @@ export class Sidebar {
 
   show(view: View | null): void {
     if (!view) {
-      this.root.hidden = true;
-      this.root.replaceChildren();
+      // The item first: a box blurred as the panel is emptied must not commit (`textBox`).
       this.key = '';
       this.editingDescription = false;
+      this.root.hidden = true;
+      this.root.replaceChildren();
       return;
     }
     // The panel is built again only for another item: a change on disk (a group renamed,
@@ -126,9 +127,12 @@ export class Sidebar {
    * A text box that commits on Enter or when focus leaves, and reverts on Esc. It commits
    * only a change the person made: a box left as it was never puts back a value that a
    * change on disk replaced meanwhile, and while untouched it follows the file (bug hunt
-   * C26). A box being typed in keeps what is typed.
+   * C26). A box being typed in keeps what is typed. It commits only while the panel still
+   * shows its item: Chromium blurs a box as the panel is emptied for another item or for
+   * none, and an arrow's index may by then be another arrow's (bug hunt round 3, C33).
    */
   private textBox(cls: string, placeholder: string, read: (v: View) => string, commit: (value: string) => void): HTMLInputElement {
+    const item = this.key;
     let shown = '';
     let start = ''; // the value the box held before the person changed it
     const input = h('input', {
@@ -140,6 +144,7 @@ export class Sidebar {
         if (k === 'Escape') { input.value = start = shown; input.blur(); e.stopPropagation(); }
       },
       blur: () => {
+        if (this.key !== item) return; // the panel is going: its item is gone or changed
         if (input.value !== start) commit(input.value);
         else input.value = shown;
       },
