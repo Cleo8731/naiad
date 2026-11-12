@@ -158,7 +158,7 @@ export class App {
     });
     this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
       close: () => this.select(null),
-      setTitle: (id, title) => { void this.edit({ kind: 'setTitle', id, title }); },
+      setTitle: async (id, title) => (await this.edit({ kind: 'setTitle', id, title })) !== null,
       setDescription: (id, description) => this.writeDescription(id, description),
       setShape: (id, shape) => { void this.edit({ kind: 'setShape', id, shape }); },
       setFill: (id, s) => {
@@ -171,11 +171,11 @@ export class App {
         else void this.edit({ kind: 'moveNode', id, target: group || null });
       },
       deleteNode: (id) => { void this.edit({ kind: 'deleteNode', id }); },
-      setEdgeLabel: (index, label) => { void this.edit({ kind: 'setEdgeLabel', index, label }); },
+      setEdgeLabel: async (index, label) => (await this.edit({ kind: 'setEdgeLabel', index, label })) !== null,
       setEdgeStroke: (index, stroke) => { void this.edit({ kind: 'setEdgeStyle', index, stroke }); },
       setEdgeArrow: (index, arrow) => { void this.edit({ kind: 'setEdgeStyle', index, arrow }); },
       deleteEdge: (index) => { void this.edit({ kind: 'deleteEdge', index }); },
-      renameGroup: (id, title) => { void this.edit({ kind: 'renameSubgraph', id, title }); },
+      renameGroup: async (id, title) => (await this.edit({ kind: 'renameSubgraph', id, title })) !== null,
       setGroupDirection: (id, dir) => { void this.edit({ kind: 'setSubgraphDirection', id, dir: dir || null }); },
       addNodeIn: (id) => { void this.addNode(id); },
       ungroup: (id) => { void this.edit({ kind: 'ungroup', id }); },
@@ -211,14 +211,22 @@ export class App {
    */
   private async leave(what: string): Promise<boolean> {
     // Text typed into the description while it or the file was written is written too
-    // (bug hunt round 4, C41), unless the person let the description go.
-    for (let letGo = false; ;) {
-      if (!letGo && !(await this.writeDraft())) {
+    // (bug hunt round 4, C41), unless the person let the description go; so is a title,
+    // a label or a group's title typed in the sidebar and not entered (round 6, C44).
+    for (let letGoDraft = false, letGoBox = false; ;) {
+      if (!letGoDraft && !(await this.writeDraft())) {
         if (!(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
-        letGo = true;
+        letGoDraft = true;
+      }
+      if (!letGoBox) {
+        const lost = await this.writeTyped();
+        if (lost) {
+          if (!(await this.backend.confirm(`The ${lost} you were typing could not be saved. ${what} and lose it?`))) return false;
+          letGoBox = true;
+        }
       }
       await this.flushSave();
-      if (letGo || !this.sidebar.draft()) break;
+      if ((letGoDraft || !this.sidebar.draft()) && (letGoBox || !this.sidebar.typed())) break;
     }
     // Typed in the text pane while the save read or wrote the file: saved too, or asked
     // about below, never left out (bug hunt round 5, C43).
@@ -242,6 +250,18 @@ export class App {
       draft.written();
     }
     return true;
+  }
+
+  /**
+   * Writes what was typed into a title, label or group title box and not entered, also
+   * when more is typed as it is written (bug hunt round 6, C44). Null when all is in the
+   * file; otherwise what could not be written ("title"), still in its box.
+   */
+  private async writeTyped(): Promise<string | null> {
+    for (let typed = this.sidebar.typed(); typed; typed = this.sidebar.typed()) {
+      if (!(await typed.write())) return typed.what;
+    }
+    return null;
   }
 
   /**
@@ -986,7 +1006,7 @@ export class App {
     window.addEventListener('beforeunload', (e) => {
       // A change not yet on disk: the browser asks before the page goes. (The desktop
       // app's window asks in canClose, before the page is unloaded.)
-      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null);
+      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null || this.sidebar.typed() !== null);
       void this.flushSave();
       if (waiting && this.backend.kind !== 'desktop') {
         e.preventDefault();

@@ -212,7 +212,11 @@ More text.
   it go, it goes back into its box. Edit pressed again while Done writes it shows the
   text being written, and if the write fails the text stays in the box, with whatever
   was typed into it meanwhile, unless Done was pressed again since: the newer text
-  stands, and the older never comes back over it. Cancel (Esc) drops it.
+  stands, and the older never comes back over it. Cancel (Esc) drops it. A title, an
+  arrow's label or a group's title typed in the sidebar and not yet entered is written
+  the same way before Naiad closes or shows another flowchart or file, with what is
+  typed while it is written; if it cannot be written, Naiad asks, and unless the person
+  lets it go, it stays in its box.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file

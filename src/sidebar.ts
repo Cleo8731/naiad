@@ -17,20 +17,24 @@ export interface EdgeView {
 export interface SubView { kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number }
 export type View = NodeView | EdgeView | SubView;
 
+/**
+ * The edits of the panel's text boxes resolve true when the change is in the file, so a
+ * box written as Naiad closes knows whether it was (bug hunt round 6, C44).
+ */
 export interface SidebarActions {
   close(): void;
-  setTitle(id: string, title: string): void;
+  setTitle(id: string, title: string): Promise<boolean>;
   /** Writes the description; the promise, if any, ends when the write has ended. */
   setDescription(id: string, description: string): Promise<void> | void;
   setShape(id: string, shape: string): void;
   setFill(id: string, swatch: Swatch | null): void;
   setGroup(id: string, group: string): void;
   deleteNode(id: string): void;
-  setEdgeLabel(index: number, label: string): void;
+  setEdgeLabel(index: number, label: string): Promise<boolean>;
   setEdgeStroke(index: number, stroke: LinkParts['stroke']): void;
   setEdgeArrow(index: number, arrow: ArrowKind): void;
   deleteEdge(index: number): void;
-  renameGroup(id: string, title: string): void;
+  renameGroup(id: string, title: string): Promise<boolean>;
   setGroupDirection(id: string, dir: string): void;
   addNodeIn(id: string): void;
   ungroup(id: string): void;
@@ -50,6 +54,13 @@ export const SWATCHES: Swatch[] = [
 ];
 /** A description being written: its node, its text, and what the app calls once the text is in the file. */
 export interface Draft { id: string; text: string; written(): void }
+
+/**
+ * A title, an arrow's label or a group's title typed in the panel and not yet entered:
+ * what it is ("title", "label", "group title"), and its writing, which resolves true once
+ * it is in the file (bug hunt round 6, C44).
+ */
+export interface Typed { what: string; write(): Promise<boolean> }
 
 export const NEW_GROUP = '\u0000new';
 
@@ -82,6 +93,7 @@ export class Sidebar {
   private sync: ((v: View) => void)[] = [];
   private draftOf: (() => Draft | null) | null = null;
   private resume: ((text: string) => void) | null = null;
+  private boxes: (() => Typed | null)[] = [];
 
   constructor(private root: HTMLElement, private actions: SidebarActions) {
     root.addEventListener('click', (e) => {
@@ -110,6 +122,19 @@ export class Sidebar {
   }
 
   /**
+   * A text box of the panel the person typed in and did not enter; null when none. The
+   * app writes it before the file is left (bug hunt round 6, C44): closing the window
+   * takes no focus away, so the box never commits on its own.
+   */
+  typed(): Typed | null {
+    for (const box of this.boxes) {
+      const t = box();
+      if (t) return t;
+    }
+    return null;
+  }
+
+  /**
    * Opens the description of node `id` for writing again with `text`, when the panel
    * shows that node: a description that could not be written goes back into its box
    * (bug hunt round 4, C40), also when Edit was pressed again while it was being written
@@ -125,6 +150,7 @@ export class Sidebar {
       this.key = '';
       this.editingDescription = false;
       this.draftOf = this.resume = null;
+      this.boxes = [];
       this.root.hidden = true;
       this.root.replaceChildren();
       return;
@@ -137,6 +163,7 @@ export class Sidebar {
       this.editingDescription = false;
       this.draftOf = this.resume = null;
       this.sync = [];
+      this.boxes = [];
       this.root.hidden = false;
       this.root.replaceChildren(...this.build(view));
     }
@@ -157,11 +184,13 @@ export class Sidebar {
    * C26). A box being typed in keeps what is typed. It commits only while the panel still
    * shows its item: Chromium blurs a box as the panel is emptied for another item or for
    * none, and an arrow's index may by then be another arrow's (bug hunt round 3, C33).
+   * What is typed and not entered is offered to the app as `typed()` (`what` names it in
+   * a question), since closing the window takes no focus away (round 6, C44).
    */
-  private textBox(cls: string, placeholder: string, read: (v: View) => string, commit: (value: string) => void): HTMLInputElement {
+  private textBox(cls: string, placeholder: string, what: string, read: (v: View) => string, commit: (value: string) => Promise<boolean>): HTMLInputElement {
     const item = this.key;
     let shown = '';
-    let start = ''; // the value the box held before the person changed it
+    let start = ''; // the value the box held before the person changed it, or last committed
     const input = h('input', {
       class: cls, type: 'text', placeholder, spellcheck: 'false',
       focus: () => { start = input.value; },
@@ -172,9 +201,22 @@ export class Sidebar {
       },
       blur: () => {
         if (this.key !== item) return; // the panel is going: its item is gone or changed
-        if (input.value !== start) commit(input.value);
+        // Counted as committed at once, so closing while the edit is checked does not write it twice.
+        if (input.value !== start) void commit(start = input.value);
         else input.value = shown;
       },
+    });
+    this.boxes.push(() => {
+      if (this.key !== item || input.value === start) return null;
+      const text = input.value;
+      return {
+        what,
+        write: async () => {
+          const ok = await commit(text);
+          if (ok && input.value === text) start = text;
+          return ok;
+        },
+      };
     });
     this.sync.push((v) => {
       shown = read(v);
@@ -234,7 +276,7 @@ export class Sidebar {
   private buildNode(view: NodeView): HTMLElement[] {
     const { id } = view;
     const a = this.actions;
-    const title = this.textBox('title', 'Title', (v) => (v as NodeView).title, (value) => a.setTitle(id, value));
+    const title = this.textBox('title', 'Title', 'title', (v) => (v as NodeView).title, (value) => a.setTitle(id, value));
 
     const body = h('div', { class: 'desc-body' });
     const area = h('textarea', {
@@ -336,7 +378,7 @@ export class Sidebar {
       const e = v as EdgeView;
       ends.replaceChildren(h('span', {}, e.from), h('span', { class: 'arrow' }, '→'), h('span', {}, e.to));
     });
-    const label = this.textBox('title', 'Label (optional)', (v) => (v as EdgeView).label, (value) => a.setEdgeLabel(index, value));
+    const label = this.textBox('title', 'Label (optional)', 'label', (v) => (v as EdgeView).label, (value) => a.setEdgeLabel(index, value));
     const stroke = this.select(
       () => [option('normal', 'Solid'), option('dotted', 'Dotted'), option('thick', 'Thick'), option('invisible', 'Invisible')],
       (v) => (v as EdgeView).stroke, (value) => a.setEdgeStroke(index, value as LinkParts['stroke']));
@@ -355,7 +397,7 @@ export class Sidebar {
   private buildSub(view: SubView): HTMLElement[] {
     const { id } = view;
     const a = this.actions;
-    const title = this.textBox('title', 'Group title', (v) => (v as SubView).title, (value) => a.renameGroup(id, value));
+    const title = this.textBox('title', 'Group title', 'group title', (v) => (v as SubView).title, (value) => a.renameGroup(id, value));
     const dir = this.select(
       () => [option('', 'Same as chart'), option('TB', 'Top to bottom'), option('LR', 'Left to right'), option('BT', 'Bottom to top'), option('RL', 'Right to left')],
       (v) => (v as SubView).dir, (value) => a.setGroupDirection(id, value));

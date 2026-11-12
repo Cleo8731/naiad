@@ -838,6 +838,81 @@ describe('a description being written is saved when the person leaves it (bug hu
     }
   });
 
+  // Bug hunt round 6, C44 and oC45: a title, an arrow's label or a group's title typed in
+  // the sidebar and not yet entered went with the window, unwritten and unasked: a box
+  // commits when focus leaves it, and closing the window takes no focus away.
+  const titleBox = () => document.querySelector<HTMLInputElement>('input.title')!;
+  const typeInto = (input: HTMLInputElement, text: string) => {
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+  };
+
+  it('oC45: a title typed and not entered is written when the window closes', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Collect everything');
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+  });
+
+  it('oC45: so is an arrow\'s label, and a group\'s title', async () => {
+    const { disk, ui } = await start(BASE.replace('    clean -- yes', '    subgraph g [Group]\n      x[X]\n    end\n    clean -- yes'));
+    select(ui, { kind: 'edge', index: 0 });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'first');
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.files.get(FILE)).toContain('collect[Collect data] -->|first| clean');
+    select(ui, { kind: 'sub', id: 'g' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Renamed group');
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('subgraph g["Renamed group"]');
+  });
+
+  it('C44: a title typed while closing saves the file is written too', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    ui.type(TYPED); // a change in the text pane, so closing saves
+    let release!: () => void;
+    let started!: () => void;
+    const reading = new Promise<void>((r) => (started = r));
+    disk.afterRead = () => {
+      disk.afterRead = null;
+      started();
+      return new Promise<void>((r) => (release = r));
+    };
+    const closing = disk.closeGuard!();
+    await reading;
+    typeInto(titleBox(), 'Collect everything');
+    release();
+    expect(await closing).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('typed[Typed by the person]');
+    expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
+  });
+
+  it('C44: a title that cannot be written is asked about, and stays in its box on No', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Collect everything');
+    ui.type(BROKEN); // Mermaid cannot read the text, so no edit can be made
+    await sleep(400);
+    disk.answer = false;
+    expect(await disk.closeGuard!()).toBe(false);
+    expect(disk.asked.some((q) => /title/.test(q))).toBe(true);
+    expect(titleBox().value).toBe('Collect everything');
+  });
+
   it('C42: Edit pressed again while a Done that can be written is checked shows what Done writes', async () => {
     const { disk, ui } = await start();
     await writing(ui);
