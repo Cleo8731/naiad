@@ -202,8 +202,8 @@ More text.
   always works.
 - The file is saved only while it is a valid Mermaid flowchart (Ctrl+S saves it anyway).
   Text just typed in the text pane is part of every save, Ctrl+S, reload and Undo.
-  Closing Naiad or opening another file while it holds a change that is not saved asks
-  first, and so does showing another flowchart after a change on disk took an unsaved
+  Closing Naiad or opening another file saves it first, with what is typed while that
+  save runs; while it holds a change that cannot be saved, it asks first, and so does showing another flowchart after a change on disk took an unsaved
   edit's place (Undo holds that edit only while the flowchart stays shown). A
   description being written in the sidebar is written to the file when the sidebar
   turns to another item or closes, and before Naiad closes or shows another flowchart

@@ -123,6 +123,36 @@ describe('what was just typed is never lost (bug hunt S16: C1, C12, C13)', () =>
     disk.answer = true;
     expect(await disk.closeGuard!()).toBe(true);
   });
+
+  /** Closes the window, typing `late` into the text pane while the close's save reads the file. */
+  async function closeTypingDuringRead(disk: FakeDisk, ui: Awaited<ReturnType<typeof start>>['ui'], late: string) {
+    let reading!: () => void;
+    let release!: () => void;
+    const read = new Promise<void>((r) => { reading = r; });
+    disk.afterRead = () => { disk.afterRead = null; reading(); return new Promise<void>((r) => { release = r; }); };
+    const closing = disk.closeGuard!();
+    await read;
+    ui.type(late);
+    release();
+    return closing;
+  }
+
+  it('C43: text typed while closing reads the file is saved too (bug hunt round 5)', async () => {
+    const { disk, ui } = await start();
+    const late = TYPED + '    late[Typed while closing]\n';
+    ui.type(TYPED);
+    expect(await closeTypingDuringRead(disk, ui, late)).toBe(true);
+    expect(disk.files.get(FILE)).toBe(late);
+    expect(disk.asked).toEqual([]);
+  });
+
+  it('C43: and typing that cannot be saved then is asked about, and stays on No', async () => {
+    const { disk, ui } = await start();
+    ui.type(TYPED);
+    expect(await closeTypingDuringRead(disk, ui, BROKEN)).toBe(false);
+    expect(disk.asked).toEqual(['flow.mmd holds a change that is not saved (Mermaid cannot read the text). Close Naiad and lose it?']);
+    expect(ui.area().value).toBe(BROKEN);
+  });
 });
 
 describe('a save never overwrites a change made on disk meanwhile (bug hunt S17: C7, C8, C11)', () => {

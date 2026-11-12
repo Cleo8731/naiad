@@ -220,8 +220,11 @@ export class App {
       await this.flushSave();
       if (letGo || !this.sidebar.draft()) break;
     }
+    // Typed in the text pane while the save read or wrote the file: saved too, or asked
+    // about below, never left out (bug hunt round 5, C43).
+    for (let more = 0; more < 5 && this.typingWaits(); more++) await this.flushSave();
     if (!this.path) return true;
-    if (this.text !== this.saved) {
+    if (this.text !== this.saved || this.typingWaits()) {
       return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
     }
     if (this.displaced) return this.backend.confirm(this.displacedQuestion(what));
