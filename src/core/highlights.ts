@@ -40,10 +40,16 @@ function sameItem(a: HighlightItem, b: HighlightItem): boolean {
   return itemText(a) === itemText(b);
 }
 
+/**
+ * A line ends at LF, CRLF or a lone CR, as in the flowchart's file (FILE-FORMAT.md):
+ * a file whose lines end in CR alone was read as one line (bug hunt round 4, F19).
+ */
+const LINE_END = /\r\n|\r|\n/;
+
 /** Every item in the file's text, in order, each once. */
 export function parseHighlights(text: string): HighlightItem[] {
   const out: HighlightItem[] = [];
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of text.split(LINE_END)) {
     const item = parseItem(line);
     if (item && !out.some((o) => sameItem(o, item))) out.push(item);
   }
@@ -78,7 +84,7 @@ export function itemOf(target: HighlightTarget, chart: HighlightChart): Highligh
  * the file is then deleted.
  */
 export function toggleHighlight(text: string, item: HighlightItem): string {
-  const lines = text === '' ? [] : text.replace(/\r?\n$/, '').split(/\r?\n/);
+  const lines = text === '' ? [] : text.replace(/(?:\r\n|\r|\n)$/, '').split(LINE_END);
   const kept = lines.filter((l) => {
     const i = parseItem(l);
     return !(i && sameItem(i, item));

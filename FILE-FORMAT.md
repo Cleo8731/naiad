@@ -276,6 +276,8 @@ collect --> clean
   `from --> to` (the first arrow with those ends).
 - Blank lines and lines starting with `#` are ignored, and so is a line that names
   nothing on the chart. In a Markdown file the items apply to the flowchart shown.
+- A line ends at LF, CRLF or a lone CR. When Naiad changes the list, every line it
+  writes ends in LF.
 - In Naiad, the **Highlight** switch in the toolbar (key H) makes a click on an item
   highlight it, or take its highlight off, instead of selecting it. **Clear** takes
   every highlight off.

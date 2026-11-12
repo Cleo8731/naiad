@@ -57,6 +57,18 @@ describe('the highlights file', () => {
     expect(toggleHighlight('collect\n', { kind: 'id', id: 'collect' })).toBe('');
     expect(toggleHighlight('# only a note left\ncollect\n\n', { kind: 'id', id: 'collect' })).toBe('');
   });
+
+  it('ends a line at a lone CR too, as at LF and CRLF (bug hunt round 4, F19)', () => {
+    expect(parseHighlights('collect\rclean\r')).toEqual([{ kind: 'id', id: 'collect' }, { kind: 'id', id: 'clean' }]);
+    expect(resolveHighlights(parseHighlights('collect\rclean\r'), chart)).toEqual([
+      { kind: 'node', id: 'collect' },
+      { kind: 'node', id: 'clean' },
+    ]);
+    // A switch writes LF endings, as it does for a CRLF file (F5, a known finding).
+    expect(toggleHighlight('collect\r# note\rclean\r', { kind: 'id', id: 'collect' })).toBe('# note\nclean\n');
+    expect(toggleHighlight('collect\rclean', { kind: 'id', id: 'review' })).toBe('collect\nclean\nreview\n');
+    expect(toggleHighlight('collect\r\r', { kind: 'id', id: 'collect' })).toBe('');
+  });
 });
 
 describe('switching a highlight in the file on disk (bug hunt S8)', () => {
