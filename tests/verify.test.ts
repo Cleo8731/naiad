@@ -216,6 +216,26 @@ describe('a single " in an accessible title or description (bug hunt round 2: A1
   }
 });
 
+describe('a "%%" line in the front matter is not a description (bug hunt round 3: xA23)', () => {
+  // Mermaid reads the front matter (a first line `---` to the next `---` line) before it
+  // drops comments, so a `%%` line in it is YAML text: an edit leaves it as it is.
+  const front = '---\ntitle: |\n  %% @a\n  %% Original metadata\n---\n';
+  const before = `${front}flowchart TD\n  a\n`;
+  test('a description set on the node is added below the chart', async () => {
+    expect((await applyChecked(before, { kind: 'setDescription', id: 'a', description: 'New description' })).text)
+      .toBe(`${before}\n%% @a\n%% New description\n`);
+  });
+  test('deleting the node leaves the front matter', async () => {
+    expect((await applyChecked(before, { kind: 'deleteNode', id: 'a' })).text).toBe(`${front}flowchart TD\n`);
+  });
+  test('the node has no description until one is written below', () => {
+    expect(getDescriptions(before).get('a')).toBeUndefined();
+    expect(getDescriptions(`${before}\n%% @a\n%% Real one\n`).get('a')).toBe('Real one');
+    // Only at the very top: Mermaid finds no front matter after a blank line.
+    expect(getDescriptions(`\n${before}`).get('a')).toBe('Original metadata');
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

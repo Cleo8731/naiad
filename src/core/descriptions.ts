@@ -42,9 +42,25 @@ function encodeLine(line: string): string {
   return `%% ${escapeDirectives(s)}`;
 }
 
+/**
+ * How many lines the front matter at the top takes, or 0. As Mermaid finds it: a first
+ * line `---` (spaces or tabs around it), to the next line that starts with the same
+ * spaces and `---` and has a line after it. Mermaid reads the front matter before it
+ * drops comments, so a `%%` line in it is YAML text, never part of a description
+ * (bug hunt round 3, xA23).
+ */
+function frontMatterLines(lines: string[]): number {
+  const open = /^([ \t]*)---\s*$/.exec(lines[0] ?? '');
+  if (!open) return 0;
+  for (let k = 1; k < lines.length - 1; k++) {
+    if (lines[k].startsWith(open[1] + '---') && /^\s*$/.test(lines[k].slice(open[1].length + 3))) return k + 1;
+  }
+  return 0;
+}
+
 export function parseDescriptions(lines: string[]): DescBlock[] {
   const blocks: DescBlock[] = [];
-  let i = 0;
+  let i = frontMatterLines(lines);
   while (i < lines.length) {
     const h = HEADER_RE.exec(lines[i]);
     if (!h) { i++; continue; }

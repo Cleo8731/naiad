@@ -89,7 +89,10 @@ Rules:
 8. A block whose id matches no node is kept as it is and shown nowhere, and Naiad never
    gives its id to a node or group it adds.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
-   alone. `%%{ ... }%%` directives are not description lines.
+   alone. `%%{ ... }%%` directives are not description lines. Nor is a `%%` line inside
+   the front matter at the top of the file (from a first line `---` to the next line
+   `---`): Mermaid reads it as part of that YAML, not as a comment, and Naiad leaves it
+   alone.
 10. **`%%{` inside a description line is written `%%\{`.** Mermaid reads `%%{` anywhere
     in the file, comment lines included, as a directive that sets the chart's settings
     (its theme, for example). Where backslashes already stand between `%%` and `{`, one
