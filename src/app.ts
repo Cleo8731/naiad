@@ -418,6 +418,7 @@ export class App {
         this.md = { file: disk, blocks, index, gone: false };
         disk = blocks[index].text;
       }
+      await this.takeTypingNow(); // typed while the file was read or this job waited (C25)
       const hadUnsaved = this.text !== this.saved;
       if (disk === this.saved) {
         // Only the Markdown around the flowchart changed: an unsaved edit still stands.
@@ -547,11 +548,20 @@ export class App {
     if (this.textTimer === undefined) return this.work;
     window.clearTimeout(this.textTimer);
     this.textTimer = undefined;
-    return this.change(this.typed(), 'text');
+    return this.queue(() => this.takeTypingNow());
   }
 
-  private change(next: string, source: Source): Promise<void> {
-    return this.queue(() => this.apply(next, source));
+  /**
+   * Takes in, from inside a job of the queue, what the text pane holds and the text does
+   * not yet: typing still waiting, or typed while this job waited its turn. A job that
+   * puts in a text from elsewhere (a reload, an edit, Undo) calls it first, so what was
+   * typed becomes a step of Undo and is never written over (bug hunt C25). The pane is
+   * read when the job runs, not when it was queued.
+   */
+  private async takeTypingNow(): Promise<void> {
+    window.clearTimeout(this.textTimer);
+    this.textTimer = undefined;
+    await this.apply(this.typed(), 'text');
   }
 
   /**
@@ -619,6 +629,7 @@ export class App {
     let result: OpResult | null = null;
     // Checked and put in as one job, so a reload can never land between the two.
     await this.queue(async () => {
+      await this.takeTypingNow(); // typed while this job waited (C25)
       const before = this.snap;
       const why = this.locked();
       if (why) {
@@ -670,6 +681,7 @@ export class App {
   private async history(back: boolean): Promise<void> {
     await this.takeTyping();
     await this.queue(async () => {
+      await this.takeTypingNow(); // typed while this job waited (C25)
       const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
       const step = from[from.length - 1];
       if (!step) return;
@@ -820,7 +832,7 @@ export class App {
       const lines = this.doc.warnings.map((w) => this.lineName(w.line)).join(', ');
       notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, {
         label: 'Change to "%% ."',
-        run: () => { void this.change(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); },
+        run: () => { void this.queue(async () => { await this.takeTypingNow(); await this.apply(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); }); },
       });
     }
     this.el.notices.replaceChildren(...items);
@@ -861,7 +873,7 @@ export class App {
 
     this.el.area.addEventListener('input', () => {
       window.clearTimeout(this.textTimer);
-      this.textTimer = window.setTimeout(() => { this.textTimer = undefined; void this.change(this.typed(), 'text'); }, 220);
+      this.textTimer = window.setTimeout(() => { this.textTimer = undefined; void this.queue(() => this.takeTypingNow()); }, 220);
     });
     this.el.area.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;

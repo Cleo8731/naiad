@@ -438,3 +438,40 @@ describe('showing another flowchart of a Markdown file asks before an edit is lo
     expect(disk.files.get(NOTES)).toBe(AGENT);
   });
 });
+
+describe('text typed while a change on disk is being taken in is kept (bug hunt round 2: C25)', () => {
+  const AGENT = BASE + '\n%% agent\n';
+  const LINE = 'typed[Typed by the person]';
+
+  /** Everything the person could see of their typing: the pane, the file, and each step of Undo. */
+  async function seenThroughUndo(disk: FakeDisk, ui: Awaited<ReturnType<typeof start>>['ui'], steps: number) {
+    const seen = [ui.area().value, disk.files.get(FILE)!];
+    disk.answer = true;
+    for (let i = 0; i < steps && ui.undoEnabled(); i++) { ui.undo(); await sleep(150); seen.push(ui.area().value); }
+    return seen;
+  }
+
+  it('C25: typing while the file is read is not written over by the reload', async () => {
+    const { disk, ui } = await start();
+    disk.afterRead = async () => { await sleep(250); };
+    disk.outside(FILE, AGENT); // seen 70 ms later; the reload's read takes 250 ms
+    await sleep(150);
+    ui.type(BASE + `    ${LINE}\n`);
+    await sleep(1500);
+    expect(ui.area().value).toContain('%% agent');
+    expect(ui.toast()).toMatch(/Undo brings it back/);
+    expect((await seenThroughUndo(disk, ui, 4)).some((t) => t.includes(LINE))).toBe(true);
+  });
+
+  it('C25: typing while the reload waits behind a drawing is not written over', async () => {
+    const { disk, ui } = await start();
+    chartTiming.drawDelay = 400;
+    ui.direction('LR'); // draws for 400 ms
+    await sleep(30);
+    disk.outside(FILE, AGENT); // the reload waits behind the drawing
+    await sleep(300);
+    ui.type(ui.area().value + `    ${LINE}\n`);
+    await sleep(2500);
+    expect((await seenThroughUndo(disk, ui, 5)).some((t) => t.includes(LINE))).toBe(true);
+  });
+});
