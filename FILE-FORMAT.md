@@ -290,7 +290,9 @@ collect --> clean
   `highlights.txt` is a symbolic link or a junction, highlighting shows an error and
   reads, writes and deletes nothing, the link included. On Windows, while Naiad reads,
   writes or deletes the highlights file, it holds `.naiad` and the flowchart's folder
-  open, so that neither can be deleted, renamed or swapped for a link meanwhile.
+  open, so that neither can be deleted, renamed or swapped for a link meanwhile; and
+  while it reads `highlights.txt` (to show it, or to see that it is UTF-8 before it
+  replaces or deletes it), it holds that file open the same way.
 - The file is deleted when the last Naiad view of the flowchart closes: its window, or
   the last page `naiad serve` shows of it (within half a minute of that page closing).
   A page that only lost its connection, as when the computer sleeps, still counts as

@@ -127,15 +127,57 @@ pub fn read(flowchart: &Path) -> Result<Option<String>, String> {
     if !no_link(&file)? {
         return Ok(None);
     }
-    match fs::read_to_string(&file) {
-        Ok(text) => {
-            // An agent may have made the folder: hide it as Naiad's own (Q26).
-            hide(naiad);
-            Ok(Some(text))
-        }
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
+    let Some(bytes) = read_unlinked(&file)? else { return Ok(None) };
+    let text = String::from_utf8(bytes).map_err(|_| unreadable(&file))?;
+    // An agent may have made the folder: hide it as Naiad's own (Q26).
+    hide(naiad);
+    Ok(Some(text))
+}
+
+/// The bytes of `file`, never those of a file a link there leads to (None: there is no
+/// file). The name is opened as it is, a link there not followed, and held so that
+/// nobody can delete it, rename it or put a link in its place until the read is done,
+/// and the look is made through the held name itself: a link put there between Naiad's
+/// look and its read led the read to another file (bug hunt round 4, E19, F20).
+fn read_unlinked(file: &Path) -> Result<Option<Vec<u8>>, String> {
+    let held = match open_pinned(file) {
+        Ok(held) => held,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let what = held.metadata().map_err(|e| e.to_string())?;
+    if what.file_type().is_symlink() {
+        return Err(link_error(file));
     }
+    if !what.is_file() {
+        return Err(format!("{} is not a file.", file.display()));
+    }
+    // Read by its name, as any program reads it, while the held name stays on the file
+    // just looked at.
+    let bytes = fs::read(file).map_err(|e| e.to_string())?;
+    drop(held);
+    Ok(Some(bytes))
+}
+
+/// The file itself, never where a link there leads, shared with others for reading and
+/// writing but never for deleting or renaming.
+#[cfg(windows)]
+fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const SHARE_READ: u32 = 0x1;
+    const SHARE_WRITE: u32 = 0x2;
+    const BACKUP_SEMANTICS: u32 = 0x0200_0000; // a folder or a junction opens too, to be refused
+    const OPEN_REPARSE_POINT: u32 = 0x0020_0000; // the link itself, if it is one
+    fs::OpenOptions::new()
+        .read(true)
+        .share_mode(SHARE_READ | SHARE_WRITE)
+        .custom_flags(BACKUP_SEMANTICS | OPEN_REPARSE_POINT)
+        .open(file)
+}
+
+#[cfg(not(windows))]
+fn open_pinned(file: &Path) -> std::io::Result<fs::File> {
+    fs::File::open(file)
 }
 
 /// Writes the highlights file whole, through a temporary file and a rename
@@ -161,13 +203,12 @@ pub fn write(flowchart: &Path, text: &str) -> Result<(), String> {
 /// Whether Naiad may replace or delete the highlights file: there is none, or it is
 /// UTF-8 text. A file Naiad cannot read (UTF-16, as Windows PowerShell 5 writes it) may
 /// hold an agent's notes that Naiad never showed, so it is left as it is (bug hunt
-/// round 3, F16).
+/// round 3, F16). Read as `read` reads it, never through a link (`read_unlinked`).
 fn readable(file: &Path) -> Result<bool, String> {
-    match fs::read(file) {
-        Ok(bytes) => Ok(std::str::from_utf8(&bytes).is_ok()),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(true),
-        Err(e) => Err(e.to_string()),
-    }
+    Ok(match read_unlinked(file)? {
+        Some(bytes) => std::str::from_utf8(&bytes).is_ok(),
+        None => true,
+    })
 }
 
 fn unreadable(file: &Path) -> String {
@@ -505,6 +546,45 @@ mod tests {
         // The look through the held folder sees it too, as when the junction is made after the first look.
         assert!(open_held(&naiad).unwrap().metadata().unwrap().file_type().is_symlink());
         fs::remove_dir(&naiad).unwrap(); // the junction only
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 4 (E19, F20): while Naiad reads `highlights.txt`, nobody can delete,
+    /// rename or replace it, so a link cannot take its place between Naiad's look and
+    /// its read; and the look, made through the held name, sees a link there.
+    #[cfg(windows)]
+    #[test]
+    fn the_highlights_file_cannot_be_swapped_for_a_link_while_read() {
+        let dir = folder("held-file");
+        let flow = dir.join("flow.mmd");
+        write(&flow, "a\n").unwrap();
+        let file = file_of(&flow).unwrap();
+        let other = file.with_file_name("other.txt");
+        fs::write(&other, "theirs\n").unwrap();
+        let held = open_pinned(&file).unwrap();
+        assert!(fs::remove_file(&file).is_err(), "deleted while held");
+        assert!(fs::rename(&file, file.with_file_name("moved.txt")).is_err(), "renamed while held");
+        assert!(fs::rename(&other, &file).is_err(), "replaced while held");
+        assert_eq!(fs::read_to_string(&file).unwrap(), "a\n", "others still read it");
+        drop(held);
+        assert_eq!(read(&flow).unwrap().as_deref(), Some("a\n"));
+
+        // A junction in its place (Windows lets anyone make one; a symbolic link to a file
+        // needs a right most accounts lack): refused, never followed, never removed.
+        let outside = dir.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("theirs.txt"), "theirs\n").unwrap();
+        fs::remove_file(&file).unwrap();
+        junction(&file, &outside);
+        assert!(open_pinned(&file).unwrap().metadata().unwrap().file_type().is_symlink());
+        assert!(read_unlinked(&file).unwrap_err().contains("is a link"));
+        assert!(read(&flow).is_err());
+        assert!(write(&flow, "b\n").is_err());
+        assert!(write(&flow, " \n").is_err());
+        assert!(delete(&flow).is_err());
+        assert!(fs::symlink_metadata(&file).unwrap().file_type().is_symlink(), "the link is kept");
+        assert_eq!(fs::read_to_string(outside.join("theirs.txt")).unwrap(), "theirs\n");
+        fs::remove_dir(&file).unwrap(); // the junction only
         fs::remove_dir_all(&dir).unwrap();
     }
 
