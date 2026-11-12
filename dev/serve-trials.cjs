@@ -416,6 +416,44 @@ const at = (rest) => `/${secret}/${rest}`;
     second.req.destroy();
   }
 
+  // ---- The folder above the file's folder deleted and made again, the folders one
+  // after another (bug hunt round 3, C34)
+  const upDir = path.join(dir, 'up');
+  const lowDir = path.join(upDir, 'low');
+  fs.mkdirSync(lowDir, { recursive: true });
+  const low = path.join(lowDir, 'flow.mmd');
+  fs.copyFileSync(file, low);
+  const lm = execFileSync(cli, ['serve', low], { encoding: 'utf8' }).trim().match(/^http:\/\/127\.0\.0\.1:(\d+)\/([0-9a-f]{32})\/$/);
+  check('a file two folders down is served', !!lm, 'no address');
+  if (lm) {
+    const [lowPort, lowAt] = [Number(lm[1]), `/${lm[2]}/`];
+    ports.push(lowPort);
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const page = { d: '' };
+    await new Promise((resolve) => {
+      page.req = http.get({ host: '127.0.0.1', port: lowPort, path: lowAt + 'api/watch' }, (res) => {
+        res.on('data', (c) => { page.d += c; });
+        resolve();
+      });
+      page.req.on('error', resolve);
+    });
+    const changes = () => (page.d.match(/data: changed/g) ?? []).length;
+    await wait(300);
+    const content = fs.readFileSync(low);
+    fs.rmSync(upDir, { recursive: true });
+    await wait(500);
+    fs.mkdirSync(upDir);
+    await wait(300);
+    fs.mkdirSync(lowDir);
+    fs.writeFileSync(low, content);
+    await wait(1000);
+    const mid = changes();
+    fs.appendFileSync(low, '%% after\n');
+    await wait(1000);
+    check('after the folder above the file\'s folder is deleted and made again, the stream still says when the file changed (bug hunt round 3, C34)', changes() > mid, `${changes() - mid} more after ${mid}`);
+    page.req.destroy();
+  }
+
   cleanUp();
   console.log(`${count} trials, ${failed} failed`);
   process.exit(failed ? 1 : 0);

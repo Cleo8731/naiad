@@ -270,12 +270,15 @@ pub(crate) struct Watch {
 /// `naiad serve`. The folder is watched rather than the file, because many editors save
 /// by replacing the file.
 ///
-/// The folder above is watched too, for the folder's own name. A watch on Windows ends
-/// without a word when its folder is deleted, and follows its folder when it is renamed;
-/// so when a folder of that name is made or renamed into the place, the watch is made
-/// again on it, and `on_change` is called, since the file may have changed meanwhile
-/// (bug hunt round 2, E8). The watch is made again on a thread of its own: the watcher
-/// cannot be asked to watch from inside its own handler.
+/// Every folder above is watched too, up to the root, each for the name of the folder
+/// below it. A watch on Windows ends without a word when its folder is deleted, and
+/// follows its folder when it is renamed; so when a folder of the name is made or renamed
+/// into its place, the watch is made again on it and on each folder below it that is
+/// there, and `on_change` is called once the file's folder is watched again, since the
+/// file may have changed meanwhile (bug hunt round 2, E8; for a folder further up, round
+/// 3, C34). The watches are made again on a thread of their own: the watcher cannot be
+/// asked to watch from inside its own handler. A folder below one that is watched again
+/// but made later is heard by that folder's watch.
 pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + Sync + 'static) -> Result<Watch, String> {
     let dir = path
         .parent()
@@ -286,22 +289,28 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + Sync + 'st
     // form (`\\?\C:\...`), which `canonicalize` gives; the watcher passes the path on as
     // it is (bug hunt E3).
     let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
-    let above = dir.parent().map(Path::to_path_buf);
-    let folder = dir.file_name().map(OsStr::to_os_string);
+    // The file's folder first, then each folder above it, up to the root.
+    let chain: Vec<PathBuf> = dir.ancestors().map(Path::to_path_buf).collect();
     let on_change = Arc::new(on_change);
-    let (again, asked) = std::sync::mpsc::channel::<()>();
+    // The place in `chain` of a folder made again.
+    let (again, asked) = std::sync::mpsc::channel::<usize>();
 
     let tell = on_change.clone();
-    let seen_from = above.clone();
+    let levels = chain.clone();
     let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };
-        let up = |q: &&PathBuf| seen_from.is_some() && q.parent() == seen_from.as_deref();
-        if event.paths.iter().any(|q| !up(&q) && names_file(q, &name)) {
-            tell();
-        }
         let made = matches!(event.kind, EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)));
-        if made && event.paths.iter().any(|q| up(&q) && folder.as_deref().is_some_and(|f| names_file(q, f))) {
-            let _ = again.send(());
+        let mut told = false;
+        for q in &event.paths {
+            let Some(level) = levels.iter().position(|l| q.parent() == Some(l.as_path())) else { continue };
+            if level == 0 {
+                if !told && names_file(q, &name) {
+                    told = true;
+                    tell();
+                }
+            } else if made && levels[level - 1].file_name().is_some_and(|f| names_file(q, f)) {
+                let _ = again.send(level - 1);
+            }
         }
     })
     .map_err(|e| e.to_string())?;
@@ -309,7 +318,7 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + Sync + 'st
     {
         let mut w = watcher.lock().map_err(|e| e.to_string())?;
         w.watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
-        if let Some(above) = &above {
+        for above in &chain[1..] {
             let _ = w.watch(above, RecursiveMode::NonRecursive);
         }
     }
@@ -317,12 +326,17 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + Sync + 'st
     // Ends when the watch is dropped: the handler, and with it `again`, goes too.
     let held = Arc::downgrade(&watcher);
     std::thread::spawn(move || {
-        while asked.recv().is_ok() {
-            while asked.try_recv().is_ok() {}
+        while let Ok(first) = asked.recv() {
+            let top = asked.try_iter().fold(first, usize::max);
             let Some(watcher) = held.upgrade() else { return };
             let Ok(mut w) = watcher.lock() else { return };
-            let _ = w.unwatch(&dir);
-            if w.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
+            // From the highest folder made again down: a folder not there yet has nothing
+            // below it.
+            let watched = chain[..=top].iter().rev().all(|f| {
+                let _ = w.unwatch(f);
+                w.watch(f, RecursiveMode::NonRecursive).is_ok()
+            });
+            if watched {
                 on_change();
             }
         }
@@ -732,6 +746,38 @@ mod tests {
         });
         assert!(heard(&calls, || fs::write(&flow, "flowchart TD\n    c\n").unwrap()) > 0);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 3, C34 (E13, oE1): after a folder above the file's folder is deleted
+    /// and made again, a change to the file is still heard: one folder up or two, the
+    /// folders made at once or one after another.
+    #[test]
+    fn a_folder_above_deleted_and_made_again_is_still_watched() {
+        for (depth, slow) in [(1, false), (1, true), (2, false), (2, true)] {
+            let dir = folder(&format!("remade-above-{depth}-{slow}"));
+            let top = dir.join("a");
+            let inner = (0..depth).fold(top.clone(), |d, _| d.join("b"));
+            let flow = inner.join("flow.mmd");
+            fs::create_dir_all(&inner).unwrap();
+            fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+            let (_watcher, calls) = watching(&flow);
+            heard(&calls, || fs::remove_dir_all(&top).unwrap());
+            heard(&calls, || {
+                let mut made = top.clone();
+                fs::create_dir(&made).unwrap();
+                for _ in 0..depth {
+                    if slow {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                    made = made.join("b");
+                    fs::create_dir(&made).unwrap();
+                }
+                fs::write(&flow, "flowchart TD\n    b\n").unwrap();
+            });
+            let later = heard(&calls, || fs::write(&flow, "flowchart TD\n    c\n").unwrap());
+            fs::remove_dir_all(&dir).unwrap();
+            assert!(later > 0, "{depth} folders up, made one after another: {slow}");
+        }
     }
 
     /// The same when another folder is renamed into the folder's place: the watch must
