@@ -67,6 +67,18 @@ describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => 
     expect((await snapshot(text)).accTitle).toBe('%%');
   });
 
+  // A U+2028 does not end a line for Mermaid, so `%%`, a U+2028 and a "}" make one comment
+  // line, which Mermaid drops; the scanner took the "}" for the end of the accessible
+  // description, and "fix" changed a bare "%%" of its text (bug hunt round 6, D33).
+  for (const sep of [' ', ' ']) {
+    test(`D33: a "}" after "%%" and U+${sep.charCodeAt(0).toString(16).toUpperCase()} ends no accessible description`, async () => {
+      const text = `flowchart TD\naccDescr {\n%%${sep}}\n%%\nhello\n}\nA-->B\n`;
+      expect((await snapshot(text)).accDescr).toBe('%%\nhello');
+      expect(await check(text)).toEqual([]);
+      expect(await fixFile('flow.mmd', text, reading)).toEqual({ raw: text, lines: [], refused: null });
+    });
+  }
+
   // Also valid in Mermaid 12.3.0; the checker called them broken (bug hunt round 2, D11).
   const more = [
     'A --> B\n  click A "https://example.com/a%%b" "50%% off"', 'A --> B\n  click A call cb() "tip%%"',

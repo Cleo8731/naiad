@@ -354,6 +354,21 @@ describe('a bare "%%" line Mermaid reads as text reaches Mermaid as it stands (b
   test('A39: a title written over several lines keeps its bare "%%" line', async () => {
     expect((await snapshot('flowchart TD\na["First\n%%\nLast"]\n')).nodes.a.text).toBe('First\n%%\nLast');
   });
+  // Mermaid drops directives before it reads, so a "}" in one ends no accessible
+  // description; the scanner ended it there, warned about the bare line after it, and
+  // the checked edit could not see that line go (bug hunt round 6, A43).
+  test('A43: a directive inside an accessible description ends nothing', async () => {
+    const before = 'flowchart TD\naccDescr {\nFirst\n%%{init: {"theme":"dark"}}%%\n%% @a\n%%\nLast\n}\na\n';
+    expect(parseDoc(before).info.map((i) => i.kind).slice(1, 8)).toEqual(['acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'acc']);
+    expect(parseDoc(before).warnings).toEqual([]);
+    expect((await snapshot(before)).accDescr).toBe('First\n%%\nLast');
+    await expect(applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' })).rejects.toThrow(EditError);
+    // Over several lines too; and a "}" after the directive, on its line, still ends it.
+    const several = 'flowchart TD\naccDescr {\nFirst\n%%{init: {\n"theme": "dark"}}%%\n%%\nLast\n}\na\n';
+    expect(parseDoc(several).info.map((i) => i.kind).slice(1, 9)).toEqual(['acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'acc', 'statement']);
+    expect((await snapshot(several)).accDescr).toBe((await snapshot(before)).accDescr);
+    expect(parseDoc('flowchart TD\naccDescr {\nx %%{init: {}}%% }\n%%\na\n').info[3].kind).toBe('comment');
+  });
 });
 
 describe('a bare "%%" after an empty accessible title is its text (bug hunt round 5: A41, D32)', () => {

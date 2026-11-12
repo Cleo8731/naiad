@@ -338,9 +338,35 @@ export function frontMatterLines(text: string): number {
   return m ? m[0].split('\n').length : 0;
 }
 
+// Mermaid 12.3's own pattern for a `%%{ ... }%%` directive (`directiveRegex`, used by
+// its `removeDirectives`), copied: a directive may run over several lines, and one
+// left open runs to the end of the text.
+const DIRECTIVE_RE = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+/**
+ * The lines of `text` as Mermaid's parser sees them inside `accDescr { ... }`, with the
+ * same line breaks: every directive blanked, as Mermaid removes directives before it
+ * reads (after the front matter, its `cleanupText` having made every CR a line break),
+ * and every comment line (`%%` and at least one more character up to the line break, a
+ * U+2028 included) blanked, as its `cleanupComments` drops them next.
+ */
+function accSeen(text: string, lines: string[], front: number): string[] {
+  const from = front ? lines.slice(0, front).join('\n').length + 1 : 0;
+  const probe = text.replace(/\r(?!\n)/g, '\n'); // same length: offsets stay
+  const chars = text.split('');
+  DIRECTIVE_RE.lastIndex = from;
+  for (let m = DIRECTIVE_RE.exec(probe); m; m = DIRECTIVE_RE.exec(probe)) {
+    if (m[0] === '') { DIRECTIVE_RE.lastIndex++; continue; }
+    for (let k = m.index; k < m.index + m[0].length; k++) if (chars[k] !== '\n' && chars[k] !== '\r') chars[k] = ' ';
+  }
+  return chars.join('').split('\n').map((l) => l.replace(/^\s*%%(?!\{)[^\n\r]+/gm, ''));
+}
+
 export function parseDoc(text: string): Doc {
   const lines = text.split('\n');
   const front = frontMatterLines(text);
+  let seen: string[] | null = null; // `accSeen`, made when an `accDescr {` needs it
+  const closes = (i: number) => (seen ??= accSeen(text, lines, front))[i].includes('}');
   const info: LineInfo[] = [];
   const subs: Sub[] = [];
   const edges: EdgeRef[] = [];
@@ -369,10 +395,11 @@ export function parseDoc(text: string): Doc {
     if (i < front) { li.kind = 'frontmatter'; continue; }
     if (openBlock) {
       li.kind = openBlock;
-      // Mermaid drops a comment line before it reads (`%%` and at least one more
-      // character, not `%%{`), so in an accessible text its "}" ends nothing (bug hunt
-      // round 3, A24).
-      if (openBlock === 'directive' ? t.includes('}%%') : t.includes('}') && !/^\s*%%(?!\{)./.test(raw)) openBlock = '';
+      // Mermaid drops directives, then comment lines (`%%` and at least one more
+      // character, not `%%{`), before it reads, so in an accessible text a "}" in either
+      // ends nothing (bug hunt round 3, A24; round 6, A43: a directive; D33: a comment
+      // line holding a U+2028).
+      if (openBlock === 'directive' ? t.includes('}%%') : closes(i)) openBlock = '';
       continue;
     }
     if (inString) {
@@ -404,7 +431,7 @@ export function parseDoc(text: string): Doc {
     // 3, A23).
     if (ACC.test(t)) {
       li.kind = 'acc';
-      if (/^accDescr\s*\{/.test(t) && !t.includes('}')) openBlock = 'acc';
+      if (/^accDescr\s*\{/.test(t) && !closes(i)) openBlock = 'acc';
       else if (/^acc(Title|Descr)\s*:\s*$/.test(t)) accNext = true;
       continue;
     }

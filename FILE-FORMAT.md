@@ -359,7 +359,10 @@ An accessible title or description (`accTitle: text`, `accDescr: text`, `accDesc
 (`accTitle:::hot`). Write its text on the same line: Mermaid reads an `accTitle:` or
 `accDescr:` with nothing after the colon as taking the next line that is not blank or
 a comment for its text, and Naiad reads it the same way. A line holding only `%%` is
-not a comment there (Description blocks, point 4), so it is the text.
+not a comment there (Description blocks, point 4), so it is the text. An `accDescr {`
+runs to the first `}` Mermaid reads: Mermaid drops `%%{ ... }%%` directives and
+comment lines before it reads, so a `}` in one of them ends nothing, and Naiad reads
+it the same way.
 
 ## Checking a file from a terminal
 
