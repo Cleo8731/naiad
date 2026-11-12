@@ -2,7 +2,7 @@
 // the new text must parse, and must differ from the old chart in exactly the way the
 // edit intends. Anything else is refused and the file is left as it was.
 
-import { parseDoc } from './core/scan';
+import { FRONT_MATTER_RE, parseDoc } from './core/scan';
 import { parseDescriptions, setDescription } from './core/descriptions';
 import * as E from './core/edits';
 import { canon, snapshot, type Snap } from './semantics';
@@ -172,6 +172,11 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
   if (directives(text) !== directives(res.text)) {
     throw new E.EditError('That change would have changed the chart\'s settings (a %%{ }%% directive), so it was not made. Make it in the text pane instead.');
   }
+  // The front matter holds the chart's title and settings, which `snapshot` does not
+  // compare: no edit changes it (bug hunt round 4, A35).
+  if (frontMatter(text) !== frontMatter(res.text)) {
+    throw new E.EditError('That change would have changed the front matter (the settings between the "---" lines at the top), so it was not made. Make it in the text pane instead.');
+  }
   let after: Snap;
   try {
     after = await snapshot(res.text);
@@ -193,6 +198,11 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
  * settings from it, which `snapshot` does not compare (bug hunt A7).
  */
 const DIRECTIVE_RE = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+
+/** The front matter as Mermaid finds it, its fences included; '' for none. */
+function frontMatter(text: string): string {
+  return FRONT_MATTER_RE.exec(text)?.[0] ?? '';
+}
 
 /** Every directive Mermaid finds in the text, in order. */
 function directives(text: string): string {

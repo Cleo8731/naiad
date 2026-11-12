@@ -88,6 +88,9 @@ describe('finding Mermaid blocks in a Markdown file', () => {
     expect(isFlowchartText('flowchart TD\n a --> b\n')).toBe(true);
     expect(isFlowchartText('---\ntitle: x\n---\n\n%% a comment\ngraph LR\n')).toBe(true);
     expect(isFlowchartText('---\ntitle: x\n---\npie\n')).toBe(false);
+    // An indented `---` in a YAML text ends nothing, as in Mermaid (bug hunt round 4, A36).
+    expect(isFlowchartText('---\ntitle: |\n  ---\n  a\n---\nflowchart TD\n')).toBe(true);
+    expect(isFlowchartText('---\ntitle: |\n  ---\n  flowchart TD\n---\npie\n')).toBe(false);
     expect(isFlowchartText('sequenceDiagram\n')).toBe(false);
     expect(isFlowchartText('')).toBe(false);
     expect(isMarkdownPath('C:\\notes\\Plan.MD')).toBe(true);

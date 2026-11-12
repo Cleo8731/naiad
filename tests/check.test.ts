@@ -201,6 +201,8 @@ describe('a flowchart past Mermaid\'s 50,000-character limit (bug hunt round 3, 
   const shapes: Record<string, (pad: string) => string> = {
     plain: (p) => `flowchart TD\n  A["${p}"] --> B\n`,
     'front matter': (p) => `---\ntitle: A title\nconfig:\n  theme: dark\n---\n\nflowchart TD\n  A["${p}"]\n`,
+    // An indented `---` in a YAML text ends nothing (bug hunt round 4, D30).
+    'front matter with "---" in a YAML text': (p) => `---\ntitle: |\n  ---\n  ${'y'.repeat(2000)}\n---\nflowchart TD\n  A["${p}"]\n`,
     directives: (p) => `%%{init: {"theme": "dark"}}%%\n\n%%{\n  init: {"flowchart": {"curve": "basis"}}\n}%%\nflowchart TD\n  A["${p}"]\n`,
     comments: (p) => `%% above\n\n\nflowchart TD\n\n\n  %% a note\n  A["${p}"]\n\n%% @A\n%% A description.\n%% .\n%% More.\n\n  A --> B\n`,
     'trailing blank lines': (p) => `\n\nflowchart TD\n  A["${p}"]\n\n\n\n`,

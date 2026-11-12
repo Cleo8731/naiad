@@ -3,6 +3,8 @@
 // browser code. Every line outside the block's own lines is carried over as it is
 // (file safety first), and a block that cannot be put back exactly is locked.
 
+import { frontMatterLines } from './scan';
+
 export interface Block {
   /** Line index (from 0) of the opening fence line in the file. */
   open: number;
@@ -247,11 +249,9 @@ export function isFlowchartText(text: string): boolean {
   const lines = text.split('\n');
   let i = 0;
   while (i < lines.length && lines[i].trim() === '') i++;
-  if (i < lines.length && lines[i].trim() === '---') {
-    i++;
-    while (i < lines.length && lines[i].trim() !== '---') i++;
-    i++;
-  }
+  // The front matter as Mermaid finds it: an indented `---` in a YAML text ends nothing
+  // (bug hunt round 4, A36).
+  i += frontMatterLines(lines.slice(i).join('\n'));
   for (; i < lines.length; i++) {
     const t = lines[i].trim();
     if (t === '' || t.startsWith('%%')) continue;

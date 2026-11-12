@@ -315,6 +315,32 @@ describe('a "%%" line in the front matter is not a description (bug hunt round 3
   });
 });
 
+describe('the front matter is found as Mermaid finds it, and no edit changes it (bug hunt round 4: A35, A36)', () => {
+  // Mermaid's pattern: the closing `---` stands after exactly the spaces the opening one
+  // stands after, which may be any space but a line break (a no-break space too).
+  test('fences after a no-break space: a description is added below the chart, the YAML left as it is', async () => {
+    const before = '\u00a0---\ntitle: |\n  %% @a\n  %% precious\n\u00a0---\nflowchart TD\na\n';
+    expect(Object.keys((await snapshot(before)).nodes)).toEqual(['a']);
+    expect((await applyChecked(before, { kind: 'setDescription', id: 'a', description: 'new' })).text)
+      .toBe(`${before}\n%% @a\n%% new\n`);
+    expect(getDescriptions(before).get('a')).toBeUndefined();
+  });
+  test('an indented "---" inside a YAML text does not end the front matter', async () => {
+    const before = '---\ntitle: |\n  ---\n  a\n---\nflowchart TD\na\n';
+    expect(Object.keys((await snapshot(before)).nodes)).toEqual(['a']);
+    expect((await applyChecked(before, { kind: 'setTitle', id: 'a', title: 'new' })).text)
+      .toBe(before.replace('\na\n', '\na[new]\n'));
+    expect(parseDoc(before).info.map((l) => l.kind).slice(0, 6))
+      .toEqual(['frontmatter', 'frontmatter', 'frontmatter', 'frontmatter', 'frontmatter', 'header']);
+  });
+  test('the front matter is read at the very top only, and only when it is closed', () => {
+    expect(parseDoc('\n---\ntitle: x\n---\nflowchart TD\na\n').info[1].kind).not.toBe('frontmatter');
+    expect(parseDoc('---\ntitle: x\nflowchart TD\na\n').info[0].kind).not.toBe('frontmatter');
+    expect(parseDoc('  ---\ntitle: x\n  ---\nflowchart TD\na\n').info.map((l) => l.kind).slice(0, 4))
+      .toEqual(['frontmatter', 'frontmatter', 'frontmatter', 'header']);
+  });
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [

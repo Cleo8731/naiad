@@ -322,8 +322,25 @@ export function unquote(raw: string): string {
  */
 const ACC = /^(accTitle\s*:|accDescr\s*[:{])/;
 
+/**
+ * The front matter, found as Mermaid finds it (its `frontMatterRegex`, Mermaid 12.3): at
+ * the very top of the text, a `---` line, up to the next line that is `---` after
+ * exactly the same spaces as the first, which may be any space but a line break (a
+ * no-break space too), with a line after it. Mermaid reads it before it drops comments,
+ * so all that stands in it is YAML text: no description, no statement (bug hunt round
+ * 3, xA23; round 4, A35, A36). The match runs from the top to the closing `---`.
+ */
+export const FRONT_MATTER_RE = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}(?=\s*[\n\r])/s;
+
+/** The number of lines the front matter takes at the top of `text`; 0 for none. */
+export function frontMatterLines(text: string): number {
+  const m = FRONT_MATTER_RE.exec(text);
+  return m ? m[0].split('\n').length : 0;
+}
+
 export function parseDoc(text: string): Doc {
   const lines = text.split('\n');
+  const front = frontMatterLines(text);
   const info: LineInfo[] = [];
   const subs: Sub[] = [];
   const edges: EdgeRef[] = [];
@@ -331,8 +348,6 @@ export function parseDoc(text: string): Doc {
   const warnings: Problem[] = [];
   const stack: { line: number; parsed: { id: string | null; title: string } }[] = [];
   let header = -1;
-  let inFront = false;
-  let seenContent = false;
   let openBlock: '' | 'directive' | 'acc' = '';
   // After `accTitle:` or `accDescr:` with nothing after the colon: Mermaid's `\s*` runs
   // on over the line break, so the next line that is not blank or a comment is the text
@@ -351,17 +366,13 @@ export function parseDoc(text: string): Doc {
     const li: LineInfo = { kind: 'opaque', indent, parent };
     info.push(li);
 
+    if (i < front) { li.kind = 'frontmatter'; continue; }
     if (openBlock) {
       li.kind = openBlock;
       // Mermaid drops a comment line before it reads (`%%` and at least one more
       // character, not `%%{`), so in an accessible text its "}" ends nothing (bug hunt
       // round 3, A24).
       if (openBlock === 'directive' ? t.includes('}%%') : t.includes('}') && !/^\s*%%(?!\{)./.test(raw)) openBlock = '';
-      continue;
-    }
-    if (inFront) {
-      li.kind = 'frontmatter';
-      if (t === '---') inFront = false;
       continue;
     }
     if (inString) {
@@ -371,7 +382,6 @@ export function parseDoc(text: string): Doc {
       continue;
     }
     if (t === '') { li.kind = 'blank'; continue; }
-    if (!seenContent && t === '---') { li.kind = 'frontmatter'; inFront = true; seenContent = true; continue; }
     if (t.startsWith('%%{')) {
       li.kind = 'directive';
       if (!t.includes('}%%')) openBlock = 'directive';
@@ -384,7 +394,6 @@ export function parseDoc(text: string): Doc {
       }
       continue;
     }
-    seenContent = true;
     if (accNext) { li.kind = 'acc'; accNext = false; continue; }
     // `accTitle:` and `accDescr:` hold plain text to the end of the line (`accDescr {` to
     // its "}"), in which a quote opens nothing (bug hunt round 2, A15), nor a "{" (round

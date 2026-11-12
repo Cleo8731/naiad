@@ -90,9 +90,11 @@ Rules:
    gives its id to a node or group it adds.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
    alone. `%%{ ... }%%` directives are not description lines. Nor is a `%%` line inside
-   the front matter at the top of the file (from a first line `---` to the next line
-   `---`): Mermaid reads it as part of that YAML, not as a comment, and Naiad leaves it
-   alone.
+   the front matter: Mermaid reads it as part of that YAML, not as a comment, and Naiad
+   leaves it alone. The front matter is found as Mermaid finds it: the very first line
+   of the flowchart is `---`, and it runs to the next line that is `---` after exactly
+   the same spaces as the first (none, or any spaces but a line break) and has a line
+   after it. An indented `---` inside a YAML text ends nothing.
 10. **`%%{` inside a description line is written `%%\{`.** Mermaid reads `%%{` anywhere
     in the file, comment lines included, as a directive that sets the chart's settings
     (its theme, for example). Where backslashes already stand between `%%` and `{`, one
@@ -185,7 +187,7 @@ More text.
   written, or the one of the node being deleted, is refused. So is an edit that would
   add, change or remove a `%%{ ... }%%` directive anywhere in the flowchart (one in a
   title, or one written by hand inside a description), since Mermaid takes the chart's
-  settings from it.
+  settings from it, and an edit that would change the front matter in any way.
 - A line Naiad's scanner cannot read is left alone, and chart edits are refused (with a
   message naming the line) until it is fixed in the text pane. Typing in the text pane
   always works.
