@@ -97,7 +97,9 @@ Rules:
     `%% Use %%\{init}%%` is the description "Use %%{init}%%".
 
 A comment must be on a line of its own. Mermaid 12 rejects a comment after a statement
-on the same line (`a --> b %% note` is a syntax error).
+on the same line (`a --> b %% note` is a syntax error). A `%%` inside a title or a
+label is part of its text, quoted or not (`A["50%% off"]`, `a -->|50%% off| b`): in the
+middle of a line Mermaid reads `%%` as text.
 
 ## A flowchart inside a Markdown file
 

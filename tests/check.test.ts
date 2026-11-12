@@ -26,6 +26,36 @@ describe('a file with nothing wrong', () => {
   });
 });
 
+describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => {
+  // Mermaid 12.3.0 reads a "%%" in the middle of a line as text: all of these are valid.
+  const lines = [
+    'A["50%% off"]', 'A[50%% off]', 'A("50%% off")', 'A["`50%% off`"]', 'A@{ label: "50%% off" }',
+    'A -->|50%% off| B', 'A -- "50%% off" --> B', 'A -- 50%% off --> B', 'A == 50%% off ==> B',
+    'A -. 50%% off .-> B', 'A["50%% off"] --> B["a %% b"]',
+  ];
+  for (const line of lines) {
+    test(`D2: ${line}`, async () => {
+      expect(await check(`flowchart TD\n  ${line}\n`)).toEqual([]);
+    });
+  }
+
+  test('in front matter, and on the last line of a directive written over several lines', async () => {
+    expect(await check('---\ntitle: 50%% off\n---\nflowchart TD\n  A --> B\n')).toEqual([]);
+    expect(await check('%%{init: {\n  "theme": "dark"\n}}%%\nflowchart TD\n  A --> B\n')).toEqual([]);
+  });
+
+  test('inside a quoted title that runs over several lines: only the lines Naiad does not edit are named', async () => {
+    const found = await check('flowchart TD\n  A["line one\n  50%% off"] --> B\n');
+    expect(brief(found)).toEqual(['2 unreadable-line', '3 unreadable-line']);
+  });
+
+  test('fix puts right a bare "%%" in such a file, and leaves the title', async () => {
+    const fixed = await fixFile('flow.mmd', 'flowchart TD\n  A["50%% off"] --> B\n%%\n', reading);
+    expect(fixed.refused).toBeNull();
+    expect(fixed.raw).toBe('flowchart TD\n  A["50%% off"] --> B\n%% .\n');
+  });
+});
+
 describe('what Mermaid rejects, on the line of the file', () => {
   const cases: [string, string, number][] = [
     ['parentheses in a title', 'flowchart TD\n  A --> B\n  C[Title with (parens)] --> B\n', 3],
@@ -66,6 +96,12 @@ describe('what breaks the Naiad file format', () => {
   test('a comment after a statement does not hide a problem further down', async () => {
     const found = await check('flowchart TD\n  A --> B %% note\n  B --> C\n  D[Title with (parens)] --> B\n');
     expect(brief(found)).toEqual(['2 comment-after-statement', '4 mermaid']);
+  });
+
+  test('a comment after a title holding "%%", and after "end"', async () => {
+    const found = await check('flowchart TD\n  A["a %% b"] %% c\n  A --> B["x %% y"] %% z\n  D[Title with (parens)] --> B\n');
+    expect(brief(found)).toEqual(['2 comment-after-statement', '3 comment-after-statement', '4 mermaid']);
+    expect(brief(await check('flowchart TD\n  subgraph S\n    A\n  end %% c\n'))).toContain('4 comment-after-statement');
   });
 
   test('a bare %% line, inside a description and outside', async () => {

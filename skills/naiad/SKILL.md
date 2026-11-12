@@ -108,7 +108,8 @@ flowchart TD
    `%%{` inside a description line is written `%%\{`: Mermaid reads `%%{` anywhere,
    comments included, as a directive that changes the chart's settings.
 6. A comment is always on a line of its own. A comment after a statement on the same
-   line (`a --> b %% note`) is a syntax error.
+   line (`a --> b %% note`) is a syntax error. A `%%` inside a title or a label
+   (`A["50%% off"]`) is part of its text.
 7. One description block per id; if two name the same id, only the first is used.
 8. A `%%` comment that follows no `%% @id` line is an ordinary comment. Leave such
    comments, and `%%{ ... }%%` directives, as they are. An ordinary comment written

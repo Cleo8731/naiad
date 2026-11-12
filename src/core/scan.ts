@@ -5,7 +5,7 @@
 export type LineKind =
   | 'blank' | 'comment' | 'directive' | 'frontmatter' | 'header' | 'subgraph' | 'end'
   | 'direction' | 'statement' | 'style' | 'classDef' | 'class' | 'linkStyle' | 'click'
-  | 'acc' | 'opaque';
+  | 'acc' | 'string' | 'opaque';
 
 export interface Shape {
   open: string;
@@ -343,6 +343,7 @@ export function parseDoc(text: string): Doc {
       continue;
     }
     if (inString) {
+      li.kind = 'string';
       problems.push({ line: i, message: 'A line inside a quoted text that runs over several lines.' });
       if (opensOrCloses(raw)) inString = false;
       continue;

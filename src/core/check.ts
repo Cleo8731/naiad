@@ -5,7 +5,7 @@
 import { parseDescriptions } from './descriptions';
 import { plainText, withEndingsOf } from './endings';
 import { findBlocks, isMarkdownPath } from './markdown';
-import { parseDoc, usedIds } from './scan';
+import { parseDoc, usedIds, type LineKind } from './scan';
 
 export type Rule =
   | 'mermaid' | 'comment-after-statement' | 'bare-comment' | 'unreadable-line'
@@ -36,20 +36,44 @@ export interface Report {
 const COMMENT_LINE = /^[ \t]*%%(?!\{)/;
 const BARE_COMMENT = /^([ \t]*)%%[ \t]*$/;
 
-const DIRECTIVE_LINE = /^[ \t]*%%\{/;
-/** A comment that follows something else on its line. */
-const TRAILING_COMMENT = /^([ \t]*\S.*?)[ \t]*%%.*$/;
+/** Lines that never hold a statement, so a "%%" in them never starts a comment. */
+const NO_STATEMENT = new Set<LineKind>(['comment', 'directive', 'frontmatter', 'string']);
+
+/**
+ * The comments after a statement: for each line holding one, where its "%%" stands.
+ * Mermaid has no such comment. It reads a "%%" in the middle of a line as text, which
+ * belongs in a title or a label (`A["50%% off"]`, `A -->|50%% off| B`) and breaks a
+ * statement anywhere else. So a comment starts at the first "%%" whose text before it
+ * is a whole line the scanner can read (a statement, the header, a group's first or
+ * last line, a style...); before a "%%" inside a title stands a text still open (bug
+ * hunt D2). Front matter, a directive and a quoted text over several lines hold none.
+ */
+function commentsAfter(lines: string[]): Map<number, number> {
+  const info = parseDoc(lines.join('\n')).info;
+  const found = new Map<number, number>();
+  lines.forEach((l, i) => {
+    if (NO_STATEMENT.has(info[i].kind)) return;
+    for (let at = l.indexOf('%%'); at >= 0; at = l.indexOf('%%', at + 1)) {
+      const before = l.slice(0, at).trim();
+      if (before && (/^end\s*;?$/.test(before) || parseDoc(before).info[0].kind !== 'opaque')) {
+        found.set(i, at);
+        return;
+      }
+    }
+  });
+  return found;
+}
 
 /** The text as Mermaid is given it: every comment line emptied, so that the line
  *  numbers in Mermaid's messages can be turned back into lines of the file; and a
  *  comment after a statement cut off (it is reported by itself), so that Mermaid goes
  *  on to judge the lines below it. */
-function forReading(lines: string[]): string {
+function forReading(lines: string[], comments = commentsAfter(lines)): string {
   return lines
-    .map((l) => {
+    .map((l, i) => {
       if (COMMENT_LINE.test(l)) return '';
-      if (DIRECTIVE_LINE.test(l)) return l;
-      return TRAILING_COMMENT.exec(l)?.[1] ?? l;
+      const at = comments.get(i);
+      return at === undefined ? l : l.slice(0, at).trimEnd();
     })
     .join('\n');
 }
@@ -95,19 +119,15 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
   };
 
   // A comment that follows something else on its line.
-  const trailing = new Set<number>();
-  lines.forEach((l, i) => {
-    if (COMMENT_LINE.test(l) || DIRECTIVE_LINE.test(l)) return;
-    if (TRAILING_COMMENT.test(l)) {
-      trailing.add(i);
-      add(i, 'comment-after-statement', 'A comment must have its line to itself: Mermaid has no comment after a statement. Move the "%%" part to a line of its own.');
-    }
-  });
+  const trailing = commentsAfter(lines);
+  for (const i of trailing.keys()) {
+    add(i, 'comment-after-statement', 'A comment must have its line to itself: Mermaid has no comment after a statement. Move the "%%" part to a line of its own.');
+  }
 
   // Mermaid's own verdict.
   let ids: Set<string> | null = null;
   try {
-    ids = new Set((await read(forReading(lines))).ids);
+    ids = new Set((await read(forReading(lines, trailing))).ids);
   } catch (e) {
     const message = String((e as Error)?.message ?? e);
     const at = /Parse error on line (\d+)/.exec(message);
