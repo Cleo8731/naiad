@@ -37,8 +37,13 @@ export interface Report {
 const COMMENT_LINE = /^\s*%%(?!\{)./;
 const BARE_COMMENT = /^([ \t]*)%%[ \t]*$/;
 
-/** Lines that never hold a statement, so a "%%" in them never starts a comment. */
-const NO_STATEMENT = new Set<LineKind>(['comment', 'directive', 'frontmatter', 'string']);
+/**
+ * Lines that never hold a statement, so a "%%" in them never starts a comment. An
+ * accessible title or description (`acc`) is text Mermaid reads without error with a
+ * "%%" in it (bug hunt round 6, D34); a "%%" after an `accDescr { ... }` closed on its
+ * line breaks Mermaid's reading, which the check reports as Mermaid's own error.
+ */
+const NO_STATEMENT = new Set<LineKind>(['comment', 'directive', 'frontmatter', 'string', 'acc']);
 
 /**
  * The comments after a statement: for each line holding one, where its "%%" stands.

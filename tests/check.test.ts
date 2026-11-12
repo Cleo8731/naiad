@@ -79,6 +79,29 @@ describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => 
     });
   }
 
+  // A "%%" in an accessible title or description was reported as a comment after a
+  // statement, though Mermaid reads the line without error (bug hunt round 6, D34). One
+  // after an `accDescr { ... }` closed on its line breaks Mermaid's reading: still
+  // reported, as Mermaid's error.
+  const accessible = [
+    'accTitle: hello %% world', 'accTitle: 50%% off', 'accDescr: hello %% world', 'accDescr { hi %% world }',
+    'accDescr {\n hi %% world\n}', 'accTitle:\n hi %% world', 'accDescr:\n\n hi %% world',
+  ];
+  for (const acc of accessible) {
+    test(`D34: ${JSON.stringify(acc)} is no comment after a statement`, async () => {
+      const chart = `flowchart TD\n${acc}\nA-->B\n`;
+      await mermaid.parse(chart); // Mermaid reads it
+      expect(await check(chart)).toEqual([]);
+      expect(await fixFile('flow.mmd', chart, reading)).toEqual({ raw: chart, lines: [], refused: null });
+    });
+  }
+  test('D34: a "%%" after an accessible description closed on its line is still reported', async () => {
+    for (const chart of ['flowchart TD\naccDescr { hi } %% world\nA-->B\n', 'flowchart TD\naccDescr {\n hi\n} %% world\nA-->B\n']) {
+      await expect(mermaid.parse(chart)).rejects.toThrow();
+      expect((await check(chart)).length).toBeGreaterThan(0);
+    }
+  });
+
   // Also valid in Mermaid 12.3.0; the checker called them broken (bug hunt round 2, D11).
   const more = [
     'A --> B\n  click A "https://example.com/a%%b" "50%% off"', 'A --> B\n  click A call cb() "tip%%"',

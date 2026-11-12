@@ -110,7 +110,9 @@ on the same line (`a --> b %% note` is a syntax error). A `%%` inside a title or
 label is part of its text, quoted or not (`A["50%% off"]`, `a -->|50%% off| b`): in the
 middle of a line Mermaid reads `%%` as text. So is one in a group's title
 (`subgraph s ["Sales %% growth"]`), in a `click` line's link or tooltip, and on the
-lines of a title in brackets written over several lines. There, and inside
+lines of a title in brackets written over several lines. An accessible title or
+description (`accTitle: 50%% off`, `accDescr { ... }`) with a `%%` in it is read by
+Mermaid without error, and `check` does not report it. There, and inside
 `accDescr { ... }`, a line holding only `%%` is part of the text: Naiad neither warns
 about it nor changes it, and no edit is made that would change an accessible title or
 description.
