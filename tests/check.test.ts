@@ -3,7 +3,7 @@
 // reports, on which line of the file, and what "fix" changes.
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
-import { checkFile, checkFlowchart, fixFile, formatReport, mermaidLength, type Finding } from '../src/core/check';
+import { checkFile, checkFlowchart, fixFile, formatReport, mermaidLength, signsUnquoted, type Finding } from '../src/core/check';
 import { forMermaid, reading } from '../src/semantics';
 import { runCli, wellFormed } from '../src/cli';
 import type { Backend } from '../src/backend';
@@ -136,6 +136,39 @@ describe('what Mermaid rejects, on the line of the file', () => {
   test('a text with no header, and a diagram that is not a flowchart', async () => {
     expect(brief(await check('A --> B\n'))).toContain('1 mermaid');
     expect((await check('sequenceDiagram\n  A->>B: hi\n')).some((f) => f.rule === 'mermaid')).toBe(true);
+  });
+});
+
+describe('a long line Mermaid rejects is checked in good time (bug hunt round 3, D18)', () => {
+  // D's three files: a line of 8,000 brackets in three patterns.
+  const lines: Record<string, string> = {
+    parens: 'C' + '('.repeat(8000),
+    'brackets and letters': 'C[x' + '(a'.repeat(8000),
+    'two kinds of bracket': 'C' + '[('.repeat(8000) + 'x',
+    'a label': 'A --' + '('.repeat(8000) + ' B',
+  };
+  for (const [name, line] of Object.entries(lines)) {
+    test(`${name}: under 2 s`, async () => {
+      const start = performance.now();
+      const found = await check(`flowchart TD\n  A --> B\n  ${line}\n`);
+      expect(performance.now() - start).toBeLessThan(2000);
+      expect(brief(found)).toContain('3 mermaid');
+    }, 30_000);
+  }
+
+  test('the hint for a title in brackets is given for the same lines as before', () => {
+    // The two patterns signsUnquoted replaces, which take minutes on a long line.
+    const before = (s: string) => /[\[({][^"\])}]*[()\[\]{}|][^"]*[\])}]/.test(s) || /--[^->|]*[\[\](){}][^->]*--?>/.test(s);
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const signs = '([{)]}|"->x -';
+    let matched = 0;
+    for (let n = 0; n < 100_000; n++) {
+      const s = Array.from({ length: Math.floor(random() * 14) }, () => signs[Math.floor(random() * signs.length)]).join('');
+      expect(signsUnquoted(s), JSON.stringify(s)).toBe(before(s));
+      if (before(s)) matched++;
+    }
+    expect(matched).toBeGreaterThan(10_000);
   });
 });
 

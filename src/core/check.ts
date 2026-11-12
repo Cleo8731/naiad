@@ -165,11 +165,36 @@ function hint(line: string): string {
   }
   if (/^(style|classDef|linkStyle)\b.*,\s*$/.test(s)) return ' The style list ends with a comma: take it off.';
   if (/%%%%\{/.test(s)) return ' Take off the "%%" before "%%{": Mermaid takes the directive out, and the "%%" left is no comment.';
-  // A title with brackets, quotes or a bar inside it and no double quotes around it.
-  if (/[\[({][^"\])}]*[()\[\]{}|][^"]*[\])}]/.test(s) || /--[^->|]*[\[\](){}][^->]*--?>/.test(s)) {
+  if (signsUnquoted(s)) {
     return ' A title or label that holds brackets or other signs goes in double quotes: id["Title (with brackets)"].';
   }
   return '';
+}
+
+/**
+ * Whether a line holds a title or label with brackets or a bar inside it and no double
+ * quotes around it. A title: an opening bracket; then a bracket or a bar, with no quote
+ * or closing bracket before it; then a closing bracket, with no quote before it. A
+ * label: "--"; then a bracket, with no "-", ">" or "|" before it; then "->" or "-->",
+ * with no "-" or ">" before it. Read in one pass, so a long line takes no longer than
+ * its length (bug hunt round 3, D18: the two patterns this replaces, which match the same
+ * lines, took minutes on a line of brackets).
+ */
+export function signsUnquoted(s: string): boolean {
+  let opened = false; // an opening bracket, and no quote or closing bracket since
+  let signed = false; // that, then a bracket or a bar, and no quote since
+  let dashed = false; // "--", and no "-", ">" or "|" since
+  let bracketed = false; // that, then a bracket, and no "-" or ">" since
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (signed && (c === ']' || c === ')' || c === '}')) return true;
+    if (bracketed && c === '-' && (s[i + 1] === '>' || (s[i + 1] === '-' && s[i + 2] === '>'))) return true;
+    signed = (signed && c !== '"') || (opened && '()[]{}|'.includes(c));
+    opened = '[({'.includes(c) || (opened && !'"])}'.includes(c));
+    bracketed = (bracketed && c !== '-' && c !== '>') || (dashed && '[](){}'.includes(c));
+    dashed = (c === '-' && s[i - 1] === '-') || (dashed && !'->|'.includes(c));
+  }
+  return false;
 }
 
 /** Checks one flowchart. Lines are counted from 1 within `text`. */
