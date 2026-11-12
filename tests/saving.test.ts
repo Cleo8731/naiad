@@ -999,6 +999,63 @@ describe('a description being written is saved when the person leaves it (bug hu
     }
   });
 
+  // Bug hunt round 7, C55 and oC55: a change on disk that gave the selected arrow another
+  // number, or took the selected item away, emptied the panel, and what was typed in it
+  // went unwritten and unasked.
+  it('C55: an arrow added on disk above the one whose label is typed: the label is kept, and written to that arrow', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'edge', index: 0 });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'first');
+    disk.outside(FILE, BASE.replace('flowchart TD\n', 'flowchart TD\n    x[X] --> y[Y]\n'));
+    await sleep(600);
+    expect(titleBox().value).toBe('first');
+    expect(document.querySelector('.sidebar code.id')!.textContent).toBe('#1');
+    expect(await disk.closeGuard!()).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('collect[Collect data] -->|first| clean{Clean?}');
+    expect(disk.files.get(FILE)).toContain('x[X] --> y[Y]');
+  });
+
+  it('oC55: an arrow taken away on disk above it: the label is kept, and written to that arrow', async () => {
+    const { disk, ui } = await start('flowchart TD\n    a[A] --> b[B]\n    b --> c[C]\n    a --> c\n');
+    select(ui, { kind: 'edge', index: 2 });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'typed label');
+    disk.outside(FILE, 'flowchart TD\n    b[B] --> c[C]\n    a[A] --> c\n');
+    await sleep(600);
+    expect(titleBox().value).toBe('typed label');
+    titleBox().blur(); // entered: written to the arrow's new number
+    await sleep(800);
+    expect(disk.files.get(FILE)).toBe('flowchart TD\n    b[B] --> c[C]\n    a[A] -->|typed label| c\n');
+  });
+
+  it('oC55: an item taken away on disk while its title is typed: Naiad says so, with the text', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'train' });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'Train the model again');
+    disk.outside(FILE, BASE.replace('    clean -- yes --> train[Train model]\n', ''));
+    await sleep(600);
+    expect(ui.toast()).toMatch(/“Train model” is no longer in the flowchart, so the title you were typing for it was not saved: “Train the model again”/);
+    expect(await disk.closeGuard!()).toBe(true);
+  });
+
+  it('oC55: and so for a description being written (C36\'s case)', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    edit();
+    box()!.value = DRAFT;
+    box()!.dispatchEvent(new Event('input'));
+    disk.outside(FILE, 'flowchart TD\n    clean{Clean?} -- yes --> train[Train model]\n');
+    await sleep(600);
+    expect(ui.toast()).toContain(`so the description you were typing for it was not saved: “${DRAFT}”`);
+  });
+
   // Bug hunt round 6, oC53: the close's later saves, for typing in the text pane (C43),
   // looked at the text pane only: a description typed meanwhile was neither written nor
   // asked about.

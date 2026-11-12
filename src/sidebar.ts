@@ -60,7 +60,7 @@ export interface Draft { id: string; text: string; written(): void }
  * what it is ("title", "label", "group title"), and its writing, which resolves true once
  * it is in the file (bug hunt round 6, C44).
  */
-export interface Typed { what: string; write(): Promise<boolean> }
+export interface Typed { what: string; text: string; write(): Promise<boolean> }
 
 export const NEW_GROUP = '\u0000new';
 
@@ -89,6 +89,8 @@ export function renderMarkdown(source: string): string {
 
 export class Sidebar {
   private key = '';
+  /** Counts the panels built; a box acts only while the panel it is in is shown (`textBox`). */
+  private built = 0;
   private editingDescription = false;
   private sync: ((v: View) => void)[] = [];
   private draftOf: (() => Draft | null) | null = null;
@@ -144,9 +146,19 @@ export class Sidebar {
     if (this.key === `node:${id}`) this.resume?.(text);
   }
 
+  /**
+   * The arrow the panel shows is now arrow `to` in the file's order (one was added or
+   * taken away above it): the panel stays, with what is typed in it, and its edits go to
+   * the arrow's new number (bug hunt round 7, C55, oC55).
+   */
+  renumber(from: number, to: number): void {
+    if (this.key === `edge:${from}`) this.key = `edge:${to}`;
+  }
+
   show(view: View | null): void {
     if (!view) {
-      // The item first: a box blurred as the panel is emptied must not commit (`textBox`).
+      // The panel first: a box blurred as the panel is emptied must not commit (`textBox`).
+      this.built++;
       this.key = '';
       this.editingDescription = false;
       this.draftOf = this.resume = null;
@@ -159,6 +171,7 @@ export class Sidebar {
     // say) updates it in place, so a description being written is kept (bug hunt C17).
     const key = `${view.kind}:${view.kind === 'edge' ? view.index : view.id}`;
     if (key !== this.key) {
+      this.built++;
       this.key = key;
       this.editingDescription = false;
       this.draftOf = this.resume = null;
@@ -193,7 +206,7 @@ export class Sidebar {
    * made twice.
    */
   private textBox(cls: string, placeholder: string, what: string, read: (v: View) => string, commit: (value: string) => Promise<boolean>): HTMLInputElement {
-    const item = this.key;
+    const built = this.built;
     let shown = '';
     let start = ''; // the value the box held before the person changed it, or last written
     let writing: { text: string; done: Promise<boolean> } | null = null;
@@ -218,15 +231,15 @@ export class Sidebar {
         if (k === 'Escape') { input.value = start = shown; input.blur(); e.stopPropagation(); }
       },
       blur: () => {
-        if (this.key !== item) return; // the panel is going: its item is gone or changed
+        if (this.built !== built) return; // the panel is going: its item is gone or changed
         if (input.value !== start) void write(input.value);
         else input.value = shown;
       },
     });
     this.boxes.push(() => {
-      if (this.key !== item || input.value === start) return null;
+      if (this.built !== built || input.value === start) return null;
       const text = input.value;
-      return { what, write: () => write(text) };
+      return { what, text, write: () => write(text) };
     });
     this.sync.push((v) => {
       shown = read(v);
@@ -382,11 +395,14 @@ export class Sidebar {
   }
 
   private buildEdge(view: EdgeView): HTMLElement[] {
-    const { index } = view;
+    let { index } = view; // the arrow's number, followed when it changes (`renumber`)
     const a = this.actions;
+    const head = this.header('Arrow', `#${index}`);
     const ends = h('div', { class: 'ends' });
     this.sync.push((v) => {
       const e = v as EdgeView;
+      index = e.index;
+      head.querySelector('code')!.textContent = `#${index}`;
       ends.replaceChildren(h('span', {}, e.from), h('span', { class: 'arrow' }, '→'), h('span', {}, e.to));
     });
     const label = this.textBox('title', 'Label (optional)', 'label', (v) => (v as EdgeView).label, (value) => a.setEdgeLabel(index, value));
@@ -397,7 +413,7 @@ export class Sidebar {
       () => [option('arrow', 'Arrow'), option('none', 'No head'), option('both', 'Both ways'), option('circle', 'Circle'), option('cross', 'Cross')],
       (v) => (v as EdgeView).arrow, (value) => a.setEdgeArrow(index, value as ArrowKind));
     return [
-      this.header('Arrow', `#${index}`),
+      head,
       ends,
       label,
       h('div', { class: 'props' }, this.row('Line', stroke), this.row('Head', arrow)),

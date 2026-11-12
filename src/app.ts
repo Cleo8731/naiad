@@ -31,6 +31,23 @@ function errorText(e: unknown): string {
   return msg.split('\n').filter((l) => l.trim()).slice(0, 4).join('\n');
 }
 
+/**
+ * Where arrow `index` of `before` is in `now`: at the same number when its ends are the
+ * same there; otherwise the arrow just like it (counted among the arrows just like it,
+ * when there are as many as before); null when it cannot be told (bug hunt round 7, C55).
+ */
+function followEdge(before: Snap | null, now: Snap, index: number): number | null {
+  const was = before?.edges[index];
+  if (!was) return null;
+  const here = now.edges[index];
+  if (here && here.start === was.start && here.end === was.end) return index;
+  const key = JSON.stringify(was);
+  const alike = (s: Snap) => s.edges.flatMap((e, k) => (JSON.stringify(e) === key ? [k] : []));
+  const then = alike(before!);
+  const found = alike(now);
+  return found.length === then.length ? found[then.indexOf(index)] : null;
+}
+
 function remember(key: string, value?: string): string | null {
   try {
     if (value === undefined) return localStorage.getItem(key);
@@ -695,16 +712,41 @@ export class App {
   }
   private chartText: string | null = null;
 
+  /**
+   * After a new text, keeps the selection on its item. An arrow whose number changed (one
+   * added or taken away above it) is followed, with the panel and what is typed in it
+   * (bug hunt round 7, C55, oC55). An item no longer there is let go; what was typed for
+   * it in the panel cannot be written anywhere, so Naiad says so and shows the text.
+   */
   private keepSelection(before: Snap | null): void {
     const s = this.selection;
-    if (!s || !this.snap) return;
-    if (s.kind === 'node' && !(s.id in this.snap.nodes)) this.selection = null;
-    if (s.kind === 'sub' && !(s.id in this.snap.subs)) this.selection = null;
-    if (s.kind === 'edge') {
-      const was = before?.edges[s.index];
-      const now = this.snap.edges[s.index];
-      if (!was || !now || was.start !== now.start || was.end !== now.end) this.selection = null;
+    const snap = this.snap;
+    if (!s || !snap) return;
+    let name: string;
+    if (s.kind === 'node') {
+      if (s.id in snap.nodes) return;
+      name = `“${before?.nodes[s.id]?.text ?? s.id}”`;
+    } else if (s.kind === 'sub') {
+      if (s.id in snap.subs) return;
+      name = `The group “${before?.subs[s.id]?.title || s.id}”`;
+    } else {
+      const at = followEdge(before, snap, s.index);
+      if (at === s.index) return;
+      if (at !== null) {
+        this.sidebar.renumber(s.index, at);
+        this.selection = { kind: 'edge', index: at };
+        return;
+      }
+      const e = before?.edges[s.index];
+      const end = (id: string) => before?.nodes[id]?.text ?? before?.subs[id]?.title ?? id;
+      name = e ? `The arrow from “${end(e.start)}” to “${end(e.end)}”` : 'The arrow';
     }
+    const lost = this.sidebar.typed() ?? (() => { const d = this.sidebar.draft(); return d && { what: 'description', text: d.text }; })();
+    if (lost) {
+      const text = lost.text.length > 120 ? `${lost.text.slice(0, 120)}…` : lost.text;
+      this.toast(`${name} is no longer in the flowchart, so the ${lost.what} you were typing for it was not saved: “${text}”`);
+    }
+    this.selection = null;
   }
 
   private async edit(op: Op): Promise<OpResult | null> {

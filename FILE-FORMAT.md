@@ -231,7 +231,11 @@ More text.
   lets it go, it stays in its box. One entered (Enter, or focus leaving the box) counts
   as written only once it is in the file: until then it is treated as not yet entered,
   and one that could not be written stays in its box. What is typed in the sidebar
-  while those saves run is written too.
+  while those saves run is written too. When a change on disk gives the arrow shown in
+  the sidebar another number (an arrow added or taken away above it), the sidebar
+  follows it, with what is typed there. When a change takes away the item a title,
+  label or description was being typed for, there is nowhere to write it: Naiad says
+  so, and shows the text.
 - A save writes the whole text to a new temporary file beside it, named
   `.naiad-<number>-<number>.tmp`, then renames that over the file, so the file is
   never left half written. The temporary name is always one no file has yet: a file
