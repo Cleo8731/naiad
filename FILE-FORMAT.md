@@ -220,10 +220,12 @@ More text.
   the two do not tell them apart, Naiad cannot tell.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
-  several lines, is never changed: Mermaid reads it as part of that. It asks Mermaid's parser what the flowchart means before and after,
-  and changes nothing when Mermaid cannot read the flowchart, when the meaning or a
-  description would differ, or when the file changed while it was being checked. The
-  checker's `check` never writes.
+  several lines, is never changed: Mermaid reads it as part of that. (A double quote in
+  an accessible title or description, `accTitle: A 5" screen`, opens no quoted text:
+  Mermaid reads that line as plain text.) It asks Mermaid's parser what the flowchart
+  means before and after, and changes nothing when Mermaid cannot read the flowchart,
+  when the meaning or a description would differ, or when the file changed while it
+  was being checked. The checker's `check` never writes.
 - Highlighting never touches the flowchart's file: highlights have a file of their own
   ([Highlights](#highlights)).
 - All of this holds in Naiad's window and in the page that `naiad serve <file>` shows

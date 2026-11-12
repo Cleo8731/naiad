@@ -196,6 +196,26 @@ describe('a node named END or SUBGRAPH on a line of its own (bug hunt A8)', () =
   }
 });
 
+describe('a single " in an accessible title or description (bug hunt round 2: A15)', () => {
+  // Mermaid reads `accTitle:` and `accDescr:` as plain text to the end of the line, and
+  // `accDescr {` to its "}": a quote there opens no string.
+  const forms = [
+    '  accTitle: A 5" screen',
+    '  accDescr: A 5" screen',
+    '  accDescr { A 5" screen\n  more }',
+    '  accDescr {\n  A 5" screen\n  }',
+  ];
+  for (const form of forms) {
+    test(JSON.stringify(form), async () => {
+      const before = `flowchart TD\n${form}\n  a[A] --> b[B]\n`;
+      await snapshot(before); // Mermaid reads it
+      expect(parseDoc(before).info.map((i) => i.kind)).not.toContain('string');
+      expect((await applyChecked(before, { kind: 'setTitle', id: 'a', title: 'Renamed' })).text)
+        .toBe(before.replace('a[A]', 'a[Renamed]'));
+    });
+  }
+});
+
 test('a second edit works on the first edit\'s output', async () => {
   let text = fixtures.groups;
   const steps: Op[] = [
