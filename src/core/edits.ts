@@ -217,11 +217,18 @@ function requireNode(doc: Doc, id: string) {
  * rewrote, by its two ends alone, in order. Edges alike in both are alike to Mermaid, so
  * which of them a line lands on changes nothing.
  */
-function fixLinkStyles(oldDoc: Doc, newText: string, removed: Set<number> = new Set()): string {
+function fixLinkStyles(oldDoc: Doc, newText: string, removed: Set<number> = new Set(), inPlace = false): string {
   if (!oldDoc.info.some((li) => li.kind === 'linkStyle' && li.ids!.some((x) => /^\d+$/.test(x)))) return newText;
   const newDoc = parseDoc(newText);
   type EdgeAt = Doc['edges'][number];
   const ends = (e: EdgeAt) => `${e.from.id}\u0000${e.to.id}`;
+  // An edit that rewrote one arrow and wrote every arrow back in its place (`inPlace`)
+  // keeps each index, when every arrow still has its two ends: matching by the arrows as
+  // written could take the rewritten arrow for another now written alike (bug hunt
+  // round 3, A26).
+  if (inPlace && newDoc.edges.length === oldDoc.edges.length && newDoc.edges.every((e, i) => ends(e) === ends(oldDoc.edges[i]))) {
+    return newText;
+  }
   const written = (doc: Doc) => (e: EdgeAt) => `${ends(e)}\u0000${doc.info[e.line].chains![e.chain].links[e.link].raw.trim()}`;
   const map = new Map<number, number>();
   const taken = new Set<number>();
@@ -472,7 +479,7 @@ function rewriteEdge(text: string, index: number, change: (raw: string) => strin
   });
   if (next === null) removed.add(index);
   rw.replace(edge.line, pieces);
-  return fixLinkStyles(doc, rw.finish(), removed);
+  return fixLinkStyles(doc, rw.finish(), removed, next !== null);
 }
 
 export function deleteEdge(text: string, index: number): string {

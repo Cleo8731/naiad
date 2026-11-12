@@ -189,6 +189,14 @@ describe('edits change only the lines they must', () => {
     expect(E.deleteEdge(fixtures.chains, 9)).not.toContain('linkStyle 9');
   });
 
+  test('A26: a linkStyle stays on its arrow when the edit makes that arrow alike to another (bug hunt round 3)', () => {
+    // Arrows: 0 a --o b, 1 d --o b (styled), 2 d --x b. Arrow 1 becomes d --x b, alike to arrow 2.
+    const before = 'flowchart TD\n  a & d --o b\n  d --x b\n  linkStyle 1 stroke:#f00\n';
+    expect(E.setEdgeStyle(before, 1, { arrow: 'cross' })).toBe('flowchart TD\n  a --o b\n  d --x b\n  d --x b\n  linkStyle 1 stroke:#f00\n');
+    const labelled = 'flowchart TD\n  a & d --> b\n  d -->|go| b\n  linkStyle 1 stroke:#f00\n';
+    expect(E.setEdgeLabel(labelled, 1, 'go')).toContain('linkStyle 1 stroke:#f00');
+  });
+
   test('edge label and style', () => {
     expect(E.setEdgeLabel('flowchart TD\n  A --> B\n', 0, 'go')).toBe('flowchart TD\n  A -->|go| B\n');
     expect(E.setEdgeLabel('flowchart TD\n  A -- old --> B\n', 0, '')).toBe('flowchart TD\n  A --> B\n');
