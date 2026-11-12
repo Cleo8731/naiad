@@ -18,6 +18,22 @@
 //     `linkStyle default`, and the configuration set in the file;
 //   - Mermaid's reading matches the checked edit's expectation even when two untitled
 //     groups share a title (canon() in src/semantics.ts names them alike).
+// Besides, at some steps one line of a description already in the file is changed: only
+// that line of its block may change (bug hunt round 6, A42).
+// Every check above reads the text as Naiad's scanner does (through `forMermaid`, and the
+// lines an edit may change), so a line the scanner reads otherwise than Mermaid escapes
+// them all, as A43 did. So the accessible title and description are also read as Mermaid
+// reads the text as it stands (`mermaidAcc`): Naiad's reading must match it, for every
+// chart and after every accepted edit, and no edit may change it (round 7).
+//
+// Widened for round 7 (D5.5) with the forms behind the `%%` and accessible-text bugs of
+// rounds 5 and 6, from a stream of its own (`w`), so every chart a seed made before is
+// still made, with lines added: bare `%%` lines in ten spacings, comments holding U+2028
+// or U+2029, description lines in hand spellings (`%%first`, another indent), an empty
+// `accTitle:` or `accDescr:` before each kind of line, `accDescr { }` blocks holding a
+// bare `%%`, a directive, a description block or a comment ending in `}`, `%%` inside
+// accessible text, a `%%{` left open, and a directive and an arrow on one line. Most are
+// from GLM's widened copy of round 6 (oA42, oA43).
 // An edit that is refused must be refused with an EditError (anything else is a crash).
 // A failure that matches a known finding not yet fixed (KNOWN below) is counted and
 // printed, and does not fail the run.
@@ -32,7 +48,7 @@ import { applyChecked, expectOp, type Op, type OpResult } from '../src/verify';
 import { canon, forMermaid, snapshot, type Snap, type SnapSub } from '../src/semantics';
 import { EditError } from '../src/core/edits';
 import { parseDoc, SHAPES, type Doc } from '../src/core/scan';
-import { getDescriptions, parseDescriptions } from '../src/core/descriptions';
+import { getDescriptions, parseDescriptions, type DescBlock } from '../src/core/descriptions';
 import { diff, lcs } from './line-diff';
 
 beforeAll(() => mermaid.initialize({ startOnLoad: false }));
@@ -80,7 +96,27 @@ const COMMENTS = ['%% a plain comment', '%% TODO: tidy this', '%% a --> b (comme
   '%%{init: {"flowchart": {"curve": "linear"}}}%%'];
 const DESC_LINES = ['First line.', '.', '\\.', '\\@escaped', 'Two  spaces', '- a list item', '```', 'code();', '{braces}', 'a %% b'];
 
-interface Gen { r: Rand; ids: string[]; subIds: string[]; unit: string; edgeIds: number; lines: string[]; mentioned: Set<string> }
+// The round 7 widening (D5.5); every list below is drawn from with `g.w` only.
+/** Description texts ending in spaces, and `%%` and `.` forms (GLM, round 6). */
+const W_DESC_LINES = ['trailing two spaces  ', 'trailing tab\t', 'trailing NBSP\u00a0', 'trailing backslash \\ ', '%%  ', '%%\t',
+  '%%\u00a0', '%% \\. ', 'dot and spaces .  ', '\\.  ', '@x  ', '\\@x\t', '%% .  '];
+/** A bare `%%` line in every spacing (GLM, round 6). */
+const BARE = ['%%', '%% ', '%%\t', '%%\u00a0', '\u00a0%%', '%%\u3000', '  %%', '\t%%', ' \u00a0%%', '%%\u2028'];
+/** Comments holding the line breaks Mermaid does not break a line at (A37, D33). */
+const W_COMMENTS = ['%% a\u2028b', '%% x\u2029y', '%%\u2028', '%% }', '%% a\u2028}', '%% {'];
+/** What may follow an empty `accTitle:` or `accDescr:` (GLM, round 6; A30, A41, D32). */
+const ACC_NEXT = ['', '   ', '\t', '%%', '%% ', '%%\t', '%%\u00a0', '\u00a0%%', '%% a note', '%%{init: {"theme": "base"}}%%',
+  'end', 'subgraph', 'accTitle: Two', 'accDescr: Two', '%% @zz\n%% zz text', 'end ;', 'direction LR'];
+
+interface Gen { r: Rand; w: Rand; ids: string[]; subIds: string[]; unit: string; edgeIds: number; lines: string[]; mentioned: Set<string> }
+
+/** A description line as a person or an agent may write it: no space after `%%`, or another indent. */
+function handLine(w: Rand, indent: string, text: string): string {
+  const forms = [`${indent}${w.pick(['  ', '\t', ' '])}%% ${text}`, `${w.pick(['', ' ', '\t'])}%% ${text}`];
+  // `%%{` would open a directive, `%%@x` a block, and a space would be part of the text.
+  if (!/^[\s{@]/.test(text)) forms.push(`${indent}%%${text}`);
+  return w.pick(forms);
+}
 
 function shape(g: Gen): string {
   const s = g.r.pick(SHAPES);
@@ -122,6 +158,8 @@ function statement(g: Gen): string {
 function filler(g: Gen, indent: string): void {
   if (g.r.chance(0.12)) g.lines.push('');
   if (g.r.chance(0.08)) g.lines.push(indent + g.r.pick(COMMENTS));
+  if (g.w.chance(0.05)) g.lines.push(indent + g.w.pick(BARE));
+  if (g.w.chance(0.04)) g.lines.push(indent + g.w.pick(W_COMMENTS));
   if (g.r.chance(0.04)) descBlock(g, indent);
 }
 
@@ -129,8 +167,40 @@ function descBlock(g: Gen, indent: string): void {
   const id = g.r.chance(0.8) ? g.r.pick(g.ids) : g.r.pick(['orphan', 'n3', 'group2']);
   g.lines.push(`${indent}%% @${id}`);
   const n = 1 + g.r.int(4);
-  for (let i = 0; i < n; i++) g.lines.push(`${indent}%% ${g.r.pick(DESC_LINES)}`);
+  for (let i = 0; i < n; i++) {
+    g.lines.push(`${indent}%% ${g.r.pick(DESC_LINES)}`);
+    if (g.w.chance(0.25)) g.lines.push(handLine(g.w, indent, g.w.pick([...DESC_LINES, ...W_DESC_LINES])));
+  }
   if (g.r.chance(0.05)) g.lines.push(`${indent}%%`); // a bare %%, which Naiad tolerates and warns about
+  if (g.w.chance(0.08)) g.lines.push(indent + g.w.pick(BARE));
+}
+
+/**
+ * Accessible text and directives in the forms that broke before (round 7, D5.5). Put
+ * after the `linkStyle` line is chosen, since an open `%%{` hides the arrows after it
+ * from the scanner, and the number of arrows it sees picks that line.
+ */
+function wide(g: Gen, used: string[]): void {
+  const w = g.w;
+  const u = g.unit;
+  if (w.chance(0.18)) g.lines.push(w.pick(['accTitle:', 'accDescr:']), ...w.pick(ACC_NEXT).split('\n'));
+  if (w.chance(0.15)) {
+    const id = w.pick(g.ids);
+    g.lines.push(...w.pick([
+      'accDescr {\nText\n}',
+      'accDescr{\nFirst\n%%\nLast\n}', // A38
+      '\u00a0accDescr {\n\u00a0%%\n}',
+      `accDescr {\nFirst\n%%{init: {"theme":"dark"}}%%\n%% @${id}\n%%\nLast\n}`, // A43
+      'accDescr {\nFirst\n%%{init: {\n"theme": "dark"}}%%\nLast\n}',
+      'accDescr {\nx %% y\n%% a\u2028}\nLast\n}', // D33
+      `accDescr {\nFirst\n%% @${id}\n%%\nLast\n}`, // A38, A43: a description block inside
+      `accDescr {\n%% @${id}\n%%first\n  %% second\n}`,
+      'accDescr { one line }',
+    ]).split('\n'));
+  }
+  if (w.chance(0.1)) g.lines.push(u + w.pick(['accTitle: hello %% world', 'accTitle: 50%% off', 'accDescr: hello %% world'])); // D34
+  if (w.chance(0.05) && used.length) g.lines.push(`${u}%%{init: {"theme":"dark"}}%% ${w.pick(used)} --> ${w.pick(used)}`); // oA43
+  if (w.chance(0.03)) g.lines.push(`${u}%%{ ${w.pick(['init', 'oops', 'x'])}`); // a %%{ left open (oA42)
 }
 
 function body(g: Gen, indent: string, depth: number): void {
@@ -193,7 +263,8 @@ function more(r2: Rand, g: Gen, used: string[]): void {
 
 export function genChart(seed: number): string {
   const r = new Rand(seed);
-  const g: Gen = { r, ids: r.some(NODE_IDS, 3 + r.int(6)), subIds: [], unit: r.pick(['  ', '    ', '\t']), edgeIds: 0, lines: [], mentioned: new Set() };
+  const w = new Rand(seed ^ 0x77696465);
+  const g: Gen = { r, w, ids: r.some(NODE_IDS, 3 + r.int(6)), subIds: [], unit: r.pick(['  ', '    ', '\t']), edgeIds: 0, lines: [], mentioned: new Set() };
   if (r.chance(0.12)) g.lines.push('---', 'title: Fuzz chart', '---');
   if (r.chance(0.08)) g.lines.push('%%{init: {"theme": "neutral"}}%%');
   if (r.chance(0.08)) g.lines.push('%% a comment above the header');
@@ -215,6 +286,7 @@ export function genChart(seed: number): string {
     const idx = r.some([...Array(edges).keys()], 1 + r.int(Math.min(2, edges)));
     g.lines.push(`${g.unit}linkStyle ${idx.join(',')} ${r.pick(['stroke:#f00', 'stroke-width:3px', 'interpolate basis', 'interpolate step stroke:#0a0'])}`);
   }
+  wide(g, used);
   if (r.chance(0.6)) { g.lines.push(''); descBlock(g, ''); }
   if (r.chance(0.3)) { g.lines.push(''); descBlock(g, ''); }
   if (r.chance(0.05)) g.lines.push('%% @' + g.ids[0], '%% A second block for the same id.');
@@ -274,6 +346,29 @@ function randomOp(r: Rand, snap: Snap): Op {
     );
   }
   return r.pick(choices)();
+}
+
+/** New text for one line of a description. None is empty: an empty first or last line is not part of the text. */
+const LINE_TEXTS = ['Changed line.', 'x %% y', '.', '@x', 'trailing two  ', '  indented', 'See %%{init: {}}%% here', '- item'];
+
+/**
+ * One line of a description already in the file changed, as a person does in the sidebar
+ * (bug hunt round 6, A42; round 7, D5.5). `oneLineCheck` then asks that only that line of
+ * the block changed.
+ */
+function oneLineOp(w: Rand, text: string, snap: Snap): { op: Op; block: DescBlock } | null {
+  const seen = new Set<string>();
+  const blocks = parseDescriptions(text.split('\n')).filter((b) => {
+    const first = !seen.has(b.id);
+    seen.add(b.id);
+    return first && b.text !== '' && b.id in snap.nodes;
+  });
+  if (!blocks.length) return null;
+  const block = w.pick(blocks);
+  const lines = block.text.split('\n');
+  const k = w.int(lines.length);
+  lines[k] = w.pick(LINE_TEXTS.filter((t) => t !== lines[k]));
+  return { op: { kind: 'setDescription', id: block.id, description: lines.join('\n') }, block };
 }
 
 // ------------------------------------------------------------------ what Mermaid reads beyond the snapshot
@@ -359,6 +454,24 @@ async function whole(text: string, drop?: string): Promise<Whole> {
 }
 
 /**
+ * The accessible title and description as Mermaid reads the text as it stands, without
+ * `forMermaid`; null where Mermaid cannot read it so (a bare `%%` line the scanner warns
+ * about, say). The checks in checkEdit read through the scanner, so a line the scanner
+ * reads otherwise than Mermaid escapes them: A38, A41, A43, D32 and D33 were such lines
+ * in accessible text (round 7).
+ */
+async function mermaidAcc(text: string): Promise<string | null> {
+  const api = (mermaid as unknown as { mermaidAPI: { getDiagramFromText(t: string): Promise<any> } }).mermaidAPI;
+  try {
+    const db = (await api.getDiagramFromText(text)).db;
+    return JSON.stringify([String(db.getAccTitle?.() ?? ''), String(db.getAccDescription?.() ?? '')]);
+  } catch {
+    return null;
+  }
+}
+const naiadAcc = (s: Snap): string => JSON.stringify([s.accTitle, s.accDescr]);
+
+/**
  * canon() from src/semantics.ts names an untitled group (`subGraph3`) by its title, so two
  * untitled groups with the same title share one name and only one of them is compared.
  * This form numbers them in Mermaid's order instead (`~Title#0`, `~Title#1`).
@@ -433,6 +546,16 @@ function mayChange(doc: Doc, text: string, op: Op): Set<number> {
 }
 
 interface Violation { kind: string; detail: string }
+
+/** After `oneLineOp`: the file has as many lines as before, and only one differs, inside the block. */
+function oneLineCheck(before: string, after: string, block: DescBlock): Violation[] {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  if (a.length !== b.length) return [{ kind: 'description-lines-not-kept', detail: `${a.length} lines became ${b.length}` }];
+  const changed = a.map((_, i) => i).filter((i) => a[i] !== b[i]);
+  if (changed.length === 1 && changed[0] > block.start && changed[0] < block.end) return [];
+  return [{ kind: 'description-lines-not-kept', detail: `lines changed: ${changed.join(', ')}; the block is lines ${block.start} to ${block.end - 1}` }];
+}
 
 async function checkEdit(before: string, beforeSnap: Snap, op: Op, res: OpResult): Promise<Violation[]> {
   const v: Violation[] = [];
@@ -543,6 +666,11 @@ const KNOWN: { id: string; kind: string; what: string; matches: (op: Op, before:
     what: 'a title with a line break on a node written id@{ ... } leaves a line the scanner cannot read',
     matches: (op, before) => op.kind === 'setTitle' && op.title.includes('\n') && before.includes(`${op.id}@{`),
   },
+  {
+    id: 'oA43', kind: 'edge-extra-changed:addEdge',
+    what: 'a new arrow goes above a line holding a directive and an arrow, so Mermaid numbers it before that arrow',
+    matches: (op, before) => op.kind === 'addEdge' && /^\s*%%\{.*\}%%\s*\S/m.test(before),
+  },
 ];
 
 // ------------------------------------------------------------------ the run
@@ -552,7 +680,7 @@ interface Found { count: number; seed: number; step: number; before: string; op:
 test(`fuzz: ${RUNS} random flowcharts, up to ${OPS_PER_CHART} edits each (base seed ${BASE_SEED})`, async () => {
   const found = new Map<string, Found>();
   const known = new Map<string, number>();
-  const stats = { charts: 0, invalid: 0, unreadable: 0, accepted: 0, refused: 0 };
+  const stats = { charts: 0, invalid: 0, unreadable: 0, accepted: 0, refused: 0, oneLine: 0 };
   const note = (kind: string, f: Omit<Found, 'count'>) => {
     const had = found.get(kind);
     if (had) had.count++;
@@ -565,29 +693,49 @@ test(`fuzz: ${RUNS} random flowcharts, up to ${OPS_PER_CHART} edits each (base s
     let snap: Snap;
     try { snap = await snapshot(text); } catch { stats.invalid++; continue; }
     if (parseDoc(text).problems.length) stats.unreadable++;
+    let acc = await mermaidAcc(text);
+    if (acc !== null && acc !== naiadAcc(snap)) {
+      note('acc-read-otherwise', { seed, step: -1, before: text, op: { kind: 'setDirection', dir: 'TB' }, detail: `Mermaid ${acc}, Naiad ${naiadAcc(snap)}`, diff: '' });
+    }
     const r = new Rand(seed ^ 0x5eed);
-    for (let step = 0; step < OPS_PER_CHART; step++) {
-      const op = randomOp(r, snap);
+    // The one-line description edits come from a stream of their own and change no node,
+    // arrow or group, so `r` picks the same edits as before they were added (round 7).
+    const w = new Rand(seed ^ 0x6c696e65);
+    const edit = async (op: Op, step: number, block: DescBlock | null) => {
       let res: OpResult;
       try {
         res = await applyChecked(text, op);
       } catch (e) {
-        if (e instanceof EditError) { stats.refused++; continue; }
+        if (e instanceof EditError) { stats.refused++; return; }
         note('crash', { seed, step, before: text, op, detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e), diff: '' });
-        continue;
+        return;
       }
       stats.accepted++;
-      for (const vio of await checkEdit(text, snap, op, res)) {
+      const vios = await checkEdit(text, snap, op, res);
+      if (block) { stats.oneLine++; vios.push(...oneLineCheck(text, res.text, block)); }
+      const accAfter = await mermaidAcc(res.text);
+      if (acc !== null && accAfter !== acc) vios.push({ kind: `mermaid-acc-changed:${op.kind}`, detail: `${acc} -> ${accAfter}` });
+      for (const vio of vios) {
         const k = KNOWN.find((x) => x.kind === vio.kind && x.matches(op, text));
         if (k) { known.set(k.id, (known.get(k.id) ?? 0) + 1); continue; }
         note(vio.kind, { seed, step, before: text, op, detail: vio.detail, diff: diff(text, res.text) });
       }
+      const was = text;
       text = res.text;
       snap = await snapshot(text);
+      if (accAfter !== null && accAfter !== naiadAcc(snap)) {
+        note('acc-read-otherwise', { seed, step, before: was, op, detail: `after the edit: Mermaid ${accAfter}, Naiad ${naiadAcc(snap)}`, diff: diff(was, text) });
+      }
+      acc = accAfter;
+    };
+    for (let step = 0; step < OPS_PER_CHART; step++) {
+      const one = w.chance(0.25) ? oneLineOp(w, text, snap) : null;
+      if (one) await edit(one.op, step, one.block);
+      await edit(randomOp(r, snap), step, null);
     }
   }
   const report = [...found].map(([kind, f]) => [
-    `\n### ${kind} (${f.count}x). First: chart seed ${f.seed}, edit ${f.step + 1}: ${JSON.stringify(f.op)}`,
+    `\n### ${kind} (${f.count}x). First: chart seed ${f.seed}, ${f.step < 0 ? 'as made' : `edit ${f.step + 1}: ${JSON.stringify(f.op)}`}`,
     `  ${f.detail}`,
     '  text before the edit:',
     ...f.before.split('\n').map((l) => `    | ${l}`),
