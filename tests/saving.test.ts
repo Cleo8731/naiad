@@ -320,7 +320,8 @@ describe('Undo while a Markdown flowchart block is locked (bug hunt S18: C9)', (
     expect(ui.toast()).toMatch(/Undo brings it back/);
     expect(ui.area().readOnly).toBe(true);
     ui.undo(); // as the toast says
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }));
+    // A key press reaches the page's handler from the element in focus (the page itself here).
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true, bubbles: true }));
     await sleep(300);
     expect(ui.toast()).toMatch(/can be shown but not changed here/);
     expect(disk.files.get(NOTES)).toBe(UNCLOSED);
