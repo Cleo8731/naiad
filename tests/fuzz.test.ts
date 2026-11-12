@@ -307,8 +307,10 @@ function strictCanon(s: Snap): string {
 // ------------------------------------------------------------------ the checks
 
 /** Normalises a description as typed to what reading it back must give. */
+// A line keeps the spaces at its end (bug hunt round 5, A40); a line of spaces alone is an
+// empty line.
 function typedDescription(d: string): string {
-  return d.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '');
+  return d.replace(/\r\n?/g, '\n').split('\n').map((l) => (l.trim() === '' ? '' : l)).join('\n').replace(/^\n+|\n+$/g, '');
 }
 
 const mentions = (doc: Doc, i: number, id: string) => !!doc.info[i].chains?.some((ch) => ch.groups.some((g) => g.some((r) => r.id === id)));

@@ -29,21 +29,24 @@ export interface DescBlock {
 const escapeDirectives = (s: string): string => s.replace(/%%(\\*)\{/g, '%%\\$1{');
 const unescapeDirectives = (s: string): string => s.replace(/%%\\(\\*)\{/g, '%%$1{');
 
+// One space after `%%` is dropped; the rest of the line is the text, spaces at its end
+// too (a Markdown line break; bug hunt round 5, A40). Whether a line is empty, or a
+// form with a backslash in front, is judged without the spaces at its end.
 function decodeLine(body: string): string {
   let s = body.startsWith(' ') ? body.slice(1) : body;
-  s = s.replace(/\s+$/, '');
-  if (s === '.' || s === '') return '';
-  if (s.startsWith('\\@') || /^\\\s+@\S+$/.test(s) || s === '\\.') s = s.slice(1);
+  const t = s.replace(/\s+$/, '');
+  if (t === '.' || t === '') return '';
+  if (t.startsWith('\\@') || /^\\\s+@\S+$/.test(t) || t === '\\.') s = s.slice(1);
   return unescapeDirectives(s);
 }
 
 function encodeLine(line: string): string {
-  const s = line.replace(/\s+$/, '');
-  if (s === '') return '%% .';
+  const t = line.replace(/\s+$/, '');
+  if (t === '') return '%% .';
   // A line that would read as a block's first line (`@id`, spaces in front or not) or
   // as an empty line gets a backslash in front.
-  if (/^\s*@\S+$/.test(s) || s === '.') return `%% \\${escapeDirectives(s)}`;
-  return `%% ${escapeDirectives(s)}`;
+  if (/^\s*@\S+$/.test(t) || t === '.') return `%% \\${escapeDirectives(line)}`;
+  return `%% ${escapeDirectives(line)}`;
 }
 
 export function parseDescriptions(lines: string[]): DescBlock[] {
@@ -89,7 +92,9 @@ function blockLines(id: string, desc: string, indent: string): string[] {
 /** Sets, replaces or (for an empty description) removes a node's description block. */
 export function setDescription(text: string, id: string, description: string): string {
   const lines = text.split('\n');
-  const desc = description.replace(/\r\n?/g, '\n').replace(/^\n+|\s+$/g, '');
+  // Empty lines at the end go; the last line keeps the spaces at its end (A40).
+  const lf = description.replace(/\r\n?/g, '\n');
+  const desc = lf.trim() === '' ? '' : lf.replace(/^\n+/, '').replace(/(?:\n\s*)+$/, '');
   const block = parseDescriptions(lines).find((b) => b.id === id);
 
   if (block) {

@@ -133,6 +133,19 @@ describe('description blocks', () => {
     expect(out).toBe(`${fixtures.noTrailingNewline}\n\n%% @one\n%% Hi.`);
   });
 
+  // One space after "%%" is dropped and the rest of the line is the text: spaces at its
+  // end too, a Markdown line break (bug hunt round 5, A40).
+  test('A40: spaces at the end of a description line are kept, written and read', () => {
+    const file = 'flowchart TD\na\n\n%% @a\n%% First  \n%% Second\n%% .\n%% Last\t \n';
+    expect(getDescriptions(file).get('a')).toBe('First  \nSecond\n\nLast\t ');
+    expect(setDescription(file, 'a', 'First  \nSecond changed\n\nLast\t ')).toBe(file.replace('Second', 'Second changed'));
+    for (const desc of ['Line  \nnext', 'end  ', '.  \n@x  ', 'a\n   \nb']) {
+      expect(getDescriptions(setDescription(sample, 'train', desc)).get('train'), JSON.stringify(desc)).toBe(desc.replace(/^ +$/m, ''));
+    }
+    // A line of spaces alone is an empty line, and empty lines at the end are dropped.
+    expect(setDescription(sample, 'train', 'x\n  \n')).toBe(setDescription(sample, 'train', 'x'));
+  });
+
   test('tolerates a hand-typed bare %% as an empty line', () => {
     expect(getDescriptions('flowchart TD\n A\n%% @A\n%% one\n%%\n%% two\n').get('A')).toBe('one\n\ntwo');
   });
