@@ -226,6 +226,10 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + 'static) -
         .filter(|d| !d.as_os_str().is_empty())
         .ok_or("The path has no folder.")?;
     let name = path.file_name().ok_or("The path names no file.")?.to_os_string();
+    // Windows refuses a folder path past 260 characters unless it is written in its long
+    // form (`\\?\C:\...`), which `canonicalize` gives; the watcher passes the path on as
+    // it is (bug hunt E3).
+    let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(event) = res {
             if event.paths.iter().any(|q| names_file(q, &name)) {
@@ -235,7 +239,7 @@ pub(crate) fn watch_folder(path: &Path, on_change: impl Fn() + Send + 'static) -
     })
     .map_err(|e| e.to_string())?;
     watcher
-        .watch(dir, RecursiveMode::NonRecursive)
+        .watch(&dir, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
     Ok(watcher)
 }
@@ -555,6 +559,20 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(300));
         fs::rename(&flow, &renamed).unwrap();
         assert!(heard(&calls, || fs::write(&renamed, "flowchart TD\n    b\n").unwrap()) > 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt E3: a file in a folder whose path is past 260 characters is watched.
+    #[test]
+    fn a_file_in_a_folder_past_260_characters_is_watched() {
+        let dir = folder("deep");
+        let deep =(0..6).fold(dir.clone(), |d, k| d.join(format!("{k}{}", "x".repeat(49))));
+        fs::create_dir_all(&deep).unwrap();
+        assert!(deep.as_os_str().len() > 260, "{}", deep.as_os_str().len());
+        let flow = deep.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        let (_watcher, calls) = watching(&flow);
+        assert!(heard(&calls, || fs::write(&flow, "flowchart TD\n    b\n").unwrap()) > 0);
         fs::remove_dir_all(&dir).unwrap();
     }
 

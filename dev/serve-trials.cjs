@@ -24,12 +24,14 @@ const m = address.match(/^http:\/\/127\.0\.0\.1:(\d+)\/([0-9a-f]{32})\/$/);
 if (!m) { console.log('naiad serve did not print an address'); process.exit(1); }
 const port = Number(m[1]);
 const secret = m[2];
-/** Stops the server (found through its record) and deletes the copy. */
+/** The ports of the servers started here. */
+const ports = [port];
+/** Stops the servers (found through their records) and deletes the copies. */
 function cleanUp() {
   const records = path.join(os.tmpdir(), 'naiad-serve');
   for (const name of fs.existsSync(records) ? fs.readdirSync(records) : []) {
     const lines = fs.readFileSync(path.join(records, name), 'utf8').split('\n');
-    if (lines[1] === String(port)) {
+    if (ports.map(String).includes(lines[1])) {
       try { process.kill(Number(lines[0])); } catch {}
       fs.rmSync(path.join(records, name), { force: true });
     }
@@ -301,6 +303,43 @@ const at = (rest) => `/${secret}/${rest}`;
     !fs.existsSync(hlFile) && !fs.existsSync(naiad) && after < 40, `${after.toFixed(1)} s`);
   check('and the record of the view is removed', !fs.existsSync(view), 'still there');
   check('the file ends as it began', sha() === before, 'changed');
+
+  // ---- A file in a folder whose path is past 260 characters (bug hunt E3)
+  const deep = [0, 1, 2, 3, 4, 5].reduce((d, k) => path.join(d, `${k}${'x'.repeat(49)}`), dir);
+  fs.mkdirSync(deep, { recursive: true });
+  const far = path.join(deep, 'flow.mmd');
+  fs.copyFileSync(file, far);
+  let farAddress = '';
+  got = '';
+  try {
+    farAddress = execFileSync(cli, ['serve', far], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch (e) {
+    got = String(e.stderr ?? e).trim();
+  }
+  const fm = farAddress.match(/^http:\/\/127\.0\.0\.1:(\d+)\/([0-9a-f]{32})\/$/);
+  check(`a file in a folder past 260 characters is served (${path.dirname(far).length} characters; bug hunt E3)`, !!fm, JSON.stringify(got.slice(0, 60)));
+  if (fm) {
+    const [farPort, farAt] = [Number(fm[1]), `/${fm[2]}/`];
+    ports.push(farPort);
+    got = await new Promise((resolve) => {
+      http.get({ host: '127.0.0.1', port: farPort, path: farAt + 'api/file', headers: { 'Sec-Fetch-Site': 'same-origin' } }, (res) => {
+        let d = '';
+        res.on('data', (c) => { d += c; });
+        res.on('end', () => { try { resolve(JSON.parse(d).text); } catch { resolve(null); } });
+      }).on('error', () => resolve(null));
+    });
+    check('and it is read', got === fs.readFileSync(far, 'utf8'), typeof got);
+    got = await new Promise((resolve) => {
+      let d = '';
+      const req = http.get({ host: '127.0.0.1', port: farPort, path: farAt + 'api/watch' }, (res) => {
+        res.on('data', (c) => { d += c; });
+        setTimeout(() => { fs.appendFileSync(far, '%% changed\n'); }, 500);
+        setTimeout(() => { req.destroy(); resolve(d); }, 2500);
+      });
+      req.on('error', () => resolve(d));
+    });
+    check('and its stream says when the file changed', got.includes('data: changed'), JSON.stringify(got.slice(0, 80)));
+  }
 
   cleanUp();
   console.log(`${count} trials, ${failed} failed`);
