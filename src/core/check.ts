@@ -46,22 +46,44 @@ const NO_STATEMENT = new Set<LineKind>(['comment', 'directive', 'frontmatter', '
  * statement anywhere else. So a comment starts at the first "%%" whose text before it
  * is a whole line the scanner can read (a statement, the header, a group's first or
  * last line, a style...); before a "%%" inside a title stands a text still open (bug
- * hunt D2). Front matter, a directive and a quoted text over several lines hold none.
+ * hunt D2): a quote still open (a link or tooltip of `click`, a group's title), or a
+ * group's `[` title not yet closed (bug hunt round 2, D11). Front matter, a directive,
+ * a quoted text over several lines and the lines of a title in brackets that runs over
+ * several lines (D11) hold none.
  */
 function commentsAfter(lines: string[]): Map<number, number> {
   const info = parseDoc(lines.join('\n')).info;
   const found = new Map<number, number>();
+  let open = 0; // brackets an unreadable line above left open: the lines below are its title
   lines.forEach((l, i) => {
+    if (open > 0) {
+      open = Math.max(0, open + brackets(l));
+      return;
+    }
     if (NO_STATEMENT.has(info[i].kind)) return;
+    if (info[i].kind === 'opaque') open = Math.max(0, brackets(l));
     for (let at = l.indexOf('%%'); at >= 0; at = l.indexOf('%%', at + 1)) {
       const before = l.slice(0, at).trim();
-      if (before && (/^end\s*;?$/.test(before) || parseDoc(before).info[0].kind !== 'opaque')) {
-        found.set(i, at);
-        return;
-      }
+      if (!before || quotes(before) % 2 === 1) continue;
+      const kind = /^end\s*;?$/.test(before) ? 'end' : parseDoc(before).info[0].kind;
+      if (kind === 'opaque' || (kind === 'subgraph' && brackets(before) > 0)) continue;
+      found.set(i, at);
+      return;
     }
   });
   return found;
+}
+
+const quotes = (text: string): number => text.match(/"/g)?.length ?? 0;
+
+/** Brackets opened and not closed in the text, quoted parts set aside (negative: more closed). */
+function brackets(text: string): number {
+  let n = 0;
+  for (const c of text.replace(/"[^"]*"/g, '')) {
+    if (c === '[' || c === '(' || c === '{') n++;
+    else if (c === ']' || c === ')' || c === '}') n--;
+  }
+  return n;
 }
 
 /** The text as Mermaid is given it: every comment line emptied, so that the line

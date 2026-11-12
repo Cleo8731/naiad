@@ -56,6 +56,34 @@ describe('a "%%" that Mermaid reads as text is no comment (bug hunt D2)', () => 
     expect(fixed.refused).toBeNull();
     expect(fixed.raw).toBe('flowchart TD\n  A["50%% off"] --> B\n%% .\n');
   });
+
+  // Also valid in Mermaid 12.3.0; the checker called them broken (bug hunt round 2, D11).
+  const more = [
+    'A --> B\n  click A "https://example.com/a%%b" "50%% off"', 'A --> B\n  click A call cb() "tip%%"',
+    'A --> B\n  click A href "u%%" _blank',
+    'subgraph "Title only %% x"\n    A --> B\n  end', 'subgraph "a%%"\n    A --> B\n  end',
+    'subgraph S ["Sales %% growth"]\n    A --> B\n  end', 'subgraph s [a %% b]\n    A --> B\n  end',
+    'subgraph s[a%%b]\n    A --> B\n  end',
+  ];
+  for (const text of more) {
+    test(`D11: ${text.split('\n').find((l) => l.includes('%%'))!.trim()}`, async () => {
+      const chart = `flowchart TD\n  ${text}\n`;
+      await mermaid.parse(chart); // Mermaid reads it
+      expect(await check(chart)).toEqual([]);
+    });
+  }
+
+  test('D11: in a title in brackets over two lines: only the lines Naiad does not edit are named', async () => {
+    const chart = 'flowchart TD\n  A[first\nsecond %% third]\n  A --> B\n';
+    await mermaid.parse(chart);
+    expect(brief(await check(chart))).toEqual(['2 unreadable-line', '3 unreadable-line']);
+  });
+
+  test('a comment after a statement is still named, after a title in brackets over two lines too', async () => {
+    expect(brief(await check('flowchart TD\n  subgraph "x" %% c\n    A\n  end\n'))).toEqual(['2 comment-after-statement']);
+    expect(brief(await check('flowchart TD\n  click A "u" %% c\n  A\n'))).toEqual(['2 comment-after-statement']);
+    expect(brief(await check('flowchart TD\n  A[first\nsecond]\n  A --> B %% c\n'))).toEqual(['2 unreadable-line', '3 unreadable-line', '4 comment-after-statement']);
+  });
 });
 
 describe('what Mermaid rejects, on the line of the file', () => {

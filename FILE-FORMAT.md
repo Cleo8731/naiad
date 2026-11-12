@@ -99,7 +99,9 @@ Rules:
 A comment must be on a line of its own. Mermaid 12 rejects a comment after a statement
 on the same line (`a --> b %% note` is a syntax error). A `%%` inside a title or a
 label is part of its text, quoted or not (`A["50%% off"]`, `a -->|50%% off| b`): in the
-middle of a line Mermaid reads `%%` as text.
+middle of a line Mermaid reads `%%` as text. So is one in a group's title
+(`subgraph s ["Sales %% growth"]`), in a `click` line's link or tooltip, and on the
+lines of a title in brackets written over several lines.
 
 ## A flowchart inside a Markdown file
 
