@@ -279,6 +279,32 @@ describe('a copy of the shown block written beside it (bug hunt round 2: B8)', (
     expect(again(before, '# Original\n\n' + added + '\n' + chart + '\nAfter\n', 0)).toBe(1);
   });
 
+  // Round 6: the same backup, told apart by the headings only when every heading above
+  // the block is compared: a nearest heading repeated under both (B26), a heading
+  // underlined with `===` or `---` (B27), and the original's heading renamed at once (B28).
+  test('B26 to B28: the old block kept as a backup under headings that differ above the nearest, underlined, or renamed: never the backup', () => {
+    const before = '# Original\n\n## Diagram\n\n' + chart + '\nAfter\n';
+    expect(again(before, '# Backup\n\n## Diagram\n\n' + chart + '\nAfter\n\n# Original\n\n## Diagram\n\n' + changed + '\nChanged end\n', 0)).toBe(-1);
+    const setext = 'Original\n========\n\n' + chart + '\nAfter\n';
+    expect(again(setext, 'Backup\n======\n\n' + chart + '\nAfter\n\nOriginal\n========\n\n' + changed + '\nChanged end\n', 0)).toBe(-1);
+    expect(again(setext, 'Backup\n------\n\n' + chart + '\nAfter\n\nOriginal\n------\n\n' + changed + '\nChanged end\n', 0)).toBe(-1);
+    const one = '# Original\n\n' + chart + '\nAfter\n';
+    expect(again(one, '# Backup\n\n' + chart + '\nAfter\n\n# Renamed original\n\n' + changed + '\nChanged end\n', 0)).toBe(-1);
+    // The headings read as Markdown reads them: a `---` under a list item or a quote, or
+    // after a blank line, underlines nothing; a heading inside a code block is no heading.
+    const notUnder = (above: string) => above + '\n---\n\n' + chart + '\nAfter\n';
+    for (const above of ['- item', '> quote', 'text\n']) {
+      expect(findBlocks(notUnder(above))[0].heading).toBe('');
+    }
+    expect(findBlocks('Text\n---\n\n' + chart)[0].heading).toBe('Text');
+    expect(findBlocks('    code\n---\n\n' + chart)[0].heading).toBe('');
+    expect(findBlocks('# Top\n\n## Sub\n\n# Next\n\n' + chart)[0].headings).toBe(findBlocks('# Next\n\n' + chart)[0].headings);
+    // A copy above under its own heading, or a block added right above the shown one,
+    // still leaves the shown block under its headings: found.
+    expect(again(before, '# Backup\n\n## Diagram\n\n' + chart + '\n' + before, 0)).toBe(1);
+    expect(again(setext, 'Backup\n======\n\n' + chart + '\n' + setext, 0)).toBe(1);
+  });
+
   test('a block added right after a shown block that opens the file: still the shown block', () => {
     const first = chart + '\nThe end.\n';
     const added = '```mermaid\nflowchart LR\n  c\n```\n';

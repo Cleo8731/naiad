@@ -25,6 +25,11 @@ export interface Block {
   flowchart: boolean;
   /** The nearest heading above the block, or '' (used to tell several blocks apart). */
   heading: string;
+  /**
+   * Every heading the block stands under, one per level, as one text: two blocks whose
+   * nearest headings read alike may stand under different headings above them.
+   */
+  headings: string;
   /** Why the block can be shown but not changed, or null when it can be changed. */
   locked: string | null;
 }
@@ -289,6 +294,14 @@ export function findBlocks(file: string): Block[] {
     known: -1, base: new Map(), itemText: new Map(),
   };
   let heading = '';
+  // The heading at each level, 1 to 6: a heading clears the levels below it.
+  const levels: string[] = [];
+  const under = (level: number, text: string) => {
+    heading = text;
+    levels.length = level - 1;
+    levels[level - 1] = text;
+  };
+  const headings = () => Array.from(levels, (t, k) => (t === undefined ? '' : `${k + 1} ${t}`)).filter(Boolean).join('\n');
   let i = 0;
   // YAML front matter at the top of the file ("---" to "---" or "..."): its lines are
   // data, so a fence written inside it opens no block.
@@ -301,8 +314,12 @@ export function findBlocks(file: string): Block[] {
     // A backtick fence's first line cannot hold another backtick (that is inline code).
     const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(r, i, columns(m[1])) : null;
     if (!m || base === null) {
-      const h = /^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
-      if (h) heading = h[1];
+      const h = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(lines[i]);
+      if (h) under(h[1].length, h[2]);
+      else {
+        const s = setextHeading(r, i);
+        if (s !== null) under(lines[i].trim()[0] === '=' ? 1 : 2, s);
+      }
       i++;
       continue;
     }
@@ -327,14 +344,34 @@ export function findBlocks(file: string): Block[] {
     }
     opener.fill(open, open + 1, end);
     if (info.trim().split(/\s+/)[0].toLowerCase() === 'mermaid') {
-      blocks.push(readBlock(file, lines, open, close, end, indent, heading));
+      blocks.push(readBlock(file, lines, open, close, end, indent, heading, headings()));
     }
     i = end;
   }
   return blocks;
 }
 
-function readBlock(file: string, lines: string[], open: number, close: number, end: number, indent: string, heading: string): Block {
+/**
+ * The text of the heading that line i underlines (a `===` or `---` line right under
+ * paragraph text), or null. Text standing in a list item, a quote, HTML or a table is
+ * not taken for one: under it, a `---` is a thematic break, and a `===` more text.
+ */
+function setextHeading(r: Reading, i: number): string | null {
+  if (!/^ {0,3}(=+|-+)[ \t]*$/.test(r.lines[i])) return null;
+  const text: string[] = [];
+  let k = i - 1;
+  for (; k >= 0 && r.opener[k] < 0 && r.lines[k].trim() !== ''; k--) {
+    const line = r.lines[k];
+    if (/^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4){2,}[ \t]*$)/.test(line)) break; // a heading or a break above: the text starts below it
+    if (LIST_ITEM.test(line) || /^[ \t]*[>|<]/.test(line) || FENCE.test(line)) return null;
+    text.unshift(line.trim());
+  }
+  // Text whose first line is indented four columns or more is a code sample.
+  if (!text.length || columns(/^[ \t]*/.exec(r.lines[k + 1])![0]) >= 4) return null;
+  return text.join(' ');
+}
+
+function readBlock(file: string, lines: string[], open: number, close: number, end: number, indent: string, heading: string, headings: string): Block {
   const content = lines.slice(open + 1, close < 0 ? end : close);
   let even = true;
   let plainBlank = 0;
@@ -349,7 +386,7 @@ function readBlock(file: string, lines: string[], open: number, close: number, e
   const text = inner.length ? inner.join('\n') + '\n' : '';
   const block: Block = {
     open, close, end, indent, blankIndented: indentedBlank > 0 && plainBlank === 0, text,
-    flowchart: isFlowchartText(text), heading, locked: null,
+    flowchart: isFlowchartText(text), heading, headings, locked: null,
   };
   if (close < 0) block.locked = 'the block has no closing fence line.';
   else if (!even || replaceBlock(file, block, text) !== file) block.locked = 'its lines are not indented evenly.';
@@ -398,12 +435,13 @@ export function findAgain(beforeFile: string, before: Block[], afterFile: string
         const mine = around(was, n);
         return beats(rival, mine) && rival[0] > mine[0];
       });
-    // Nor when the block holding the text stands under another heading than the shown
-    // block did, and another block under that one: the shown block may have been changed
-    // in place, the text around it too, and its old text kept elsewhere with the old text
-    // below (round 5, B25). Lines alike above alone do not decide this: they may be lines
+    // Nor when the block holding the text stands under other headings than the shown
+    // block did: the shown block may have been changed in place, the text around it too,
+    // and its old text kept elsewhere with the old text below (round 5, B25), its
+    // heading renamed at once (round 6, B28). Every heading above it is compared, not the
+    // nearest only (B26). Lines alike above alone do not decide this: they may be lines
     // any two blocks have between them.
-    const moved = (n: number) => after[n].heading !== shown.heading && after.some((b, i) => i !== n && b.heading === shown.heading);
+    const moved = (n: number) => after[n].headings !== shown.headings;
     if (found.length === 1 && !rivalled(found[0]) && !moved(found[0])) return found[0];
   }
   // The shown block itself changed: it is still the one at its place only when no block

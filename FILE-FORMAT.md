@@ -249,9 +249,10 @@ More text.
   heading say), whatever its text, even a copy of a third block's, and the shown
   block's text is now elsewhere: the shown block may have been changed in place and
   its old text kept as a copy. So too when the block holding the shown text now stands
-  under another heading than the shown block did, and another block stands under that
-  heading, whatever the lines below each say: the text below may have been changed
-  with the block, and the old text below kept with the copy.
+  under other headings than the shown block did (any heading above it, not only the
+  nearest, renamed, added or taken away; a heading underlined with `===` or `---`
+  counts), whatever the lines below each say: the shown block may have been changed in
+  place, with the text below it and its heading, and the old text kept with the copy.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
   several lines, is never changed: Mermaid reads it as part of that. (A double quote in
