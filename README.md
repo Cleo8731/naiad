@@ -51,7 +51,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Add a node | **+ Node**, or double-click empty space |
 | Rename | Double-click a node, or press Enter / F2 |
 | Connect two nodes | Point at a node and drag the dot beside it to another node, or Shift-click the second node |
-| Change an arrow | Click it: label, line, head |
+| Change an arrow | Click it: label, line, head, colour |
 | See where a node's arrows go | Rest the pointer on the node: its arrows and the nodes at their other ends stay, and the rest fades |
 | Move an arrow's start or end | Point at the arrow and drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |
 | Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |

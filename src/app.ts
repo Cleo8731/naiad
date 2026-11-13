@@ -208,6 +208,7 @@ export class App {
       setEdgeLabel: async (index, label) => (await this.edit({ kind: 'setEdgeLabel', index, label })) !== null,
       setEdgeStroke: (index, stroke) => { void this.edit({ kind: 'setEdgeStyle', index, stroke }); },
       setEdgeArrow: (index, arrow) => { void this.edit({ kind: 'setEdgeStyle', index, arrow }); },
+      setEdgeColour: (index, s) => { void this.edit({ kind: 'setEdgeColour', index, stroke: s ? s.stroke : null }); },
       deleteEdge: (index) => { void this.edit({ kind: 'deleteEdge', index }); },
       renameGroup: async (id, title) => (await this.edit({ kind: 'renameSubgraph', id, title })) !== null,
       setGroupDirection: (id, dir) => { void this.edit({ kind: 'setSubgraphDirection', id, dir: dir || null }); },
@@ -862,7 +863,9 @@ export class App {
     if (ref) {
       try { label = parseLink(this.doc.info[ref.line].chains![ref.chain].links[ref.link].raw).label; } catch { /* keep Mermaid's text */ }
     }
-    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), fromId: e.start, toId: e.end, ends, label, stroke: e.stroke as never, arrow };
+    // Its own colour: the last `stroke` in its own style, which is the one drawn.
+    const colour = e.style.filter((x) => x.slice(0, x.indexOf(':')).trim() === 'stroke').pop()?.split(':')[1].trim() ?? '';
+    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), fromId: e.start, toId: e.end, ends, label, stroke: e.stroke as never, arrow, colour };
   }
 
   private paint(): void {

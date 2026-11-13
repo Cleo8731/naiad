@@ -75,7 +75,8 @@ export async function snapshot(text: string, asIs = false): Promise<Snap> {
   for (const e of db.getEdges()) {
     snap.edges.push({
       start: e.start, end: e.end, text: normText(e.text), type: e.type ?? '', stroke: e.stroke ?? '',
-      length: e.length ?? 1, style: [...(e.style ?? [])].sort(),
+      // Trimmed, as a node's are: a space around a CSS property draws nothing.
+      length: e.length ?? 1, style: [...(e.style ?? [])].map((s: string) => s.trim()).sort(),
       markdown: e.labelType === 'markdown', interpolate: e.interpolate ?? '', classes: [...(e.classes ?? [])].sort(),
       animate: !!e.animate, animation: e.animation ?? '', id: e.isUserDefinedId ? e.id : '',
     });

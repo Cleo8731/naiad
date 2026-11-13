@@ -13,6 +13,8 @@ export interface NodeView {
 export interface EdgeView {
   kind: 'edge'; index: number; from: string; to: string; label: string;
   stroke: LinkParts['stroke']; arrow: ArrowKind;
+  /** The arrow's own colour (`stroke` in its `linkStyle` line), as written; '' for none. */
+  colour: string;
   fromId: string; toId: string; ends: { id: string; title: string }[];
 }
 export interface SubView { kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number }
@@ -35,6 +37,7 @@ export interface SidebarActions {
   setEdgeEnd(index: number, end: 'start' | 'end', id: string): void;
   setEdgeStroke(index: number, stroke: LinkParts['stroke']): void;
   setEdgeArrow(index: number, arrow: ArrowKind): void;
+  setEdgeColour(index: number, swatch: Swatch | null): void;
   deleteEdge(index: number): void;
   renameGroup(id: string, title: string): Promise<boolean>;
   setGroupDirection(id: string, dir: string): void;
@@ -298,7 +301,8 @@ export class Sidebar {
     return sel;
   }
 
-  private swatches(read: (v: View) => string, commit: (s: Swatch | null) => void): HTMLElement {
+  /** A node or group is matched by its swatch's fill; an arrow, by its line, the swatch's border colour. */
+  private swatches(read: (v: View) => string, commit: (s: Swatch | null) => void, by: 'fill' | 'stroke' = 'fill'): HTMLElement {
     const none = h('button', { class: 'swatch none', title: 'No colour', 'aria-label': 'No colour', click: () => commit(null) });
     const buttons = SWATCHES.map((s) => {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => commit(s) });
@@ -307,9 +311,9 @@ export class Sidebar {
       return b;
     });
     this.sync.push((v) => {
-      const fill = read(v).toLowerCase();
-      none.classList.toggle('on', fill === '');
-      buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i].fill === fill));
+      const value = read(v).toLowerCase();
+      none.classList.toggle('on', value === '');
+      buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i][by] === value));
     });
     return h('div', { class: 'swatches' }, none, ...buttons);
   }
@@ -446,7 +450,8 @@ export class Sidebar {
       head,
       ends,
       label,
-      h('div', { class: 'props' }, this.row('From', from), this.row('To', to), this.row('Line', stroke), this.row('Head', arrow)),
+      h('div', { class: 'props' }, this.row('From', from), this.row('To', to), this.row('Line', stroke), this.row('Head', arrow),
+        this.row('Colour', this.swatches((v) => (v as EdgeView).colour, (s) => a.setEdgeColour(index, s), 'stroke'))),
       h('div', { class: 'side-foot' }, h('button', { class: 'danger', click: () => a.deleteEdge(index) }, 'Delete arrow')),
     ];
   }

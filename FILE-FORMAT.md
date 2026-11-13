@@ -141,6 +141,21 @@ description.
   arrow. A new end is a node or a group with an id (`subgraph id [Title]`); a group
   written with only a title gets its id from Mermaid, which numbers such groups in
   order, so it is never made an end.
+- An arrow's colour, picked in the sidebar, is the `stroke` of a `linkStyle` line
+  (`linkStyle 3 stroke:#e03131`, where 3 is the arrow's place among the arrows as they
+  are written, counted from 0). Mermaid takes the last `linkStyle` line naming an arrow,
+  whole, so only that line changes: its `stroke` is replaced, or added, and its other
+  properties stay as written. When that line names other arrows too
+  (`linkStyle 1,3 stroke-width:3px`), this arrow's number is taken out of it and the
+  arrow gets a line of its own just under it, with the same properties and the colour.
+  An arrow with no such line gets one under the last `linkStyle` line, or after the
+  last line of the flowchart when that `linkStyle` line stands above the arrow (Mermaid
+  wants an arrow written before any line that styles it). Taking the colour off removes
+  the `stroke`; a line left with nothing else (or only `fill:none`) goes, and so does
+  the arrow's number on the earlier lines naming it, which would otherwise take over.
+  `linkStyle default` lines and lines that set only the curve (`interpolate`) are left
+  alone; a line that sets the curve and a style at once, or one with a property Naiad
+  cannot read, is changed in the Syntax pane.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
   the ending of the line above it. A byte-order mark is kept. Whether the file ends with
@@ -314,7 +329,8 @@ but must be edited as text:
   `-->|label|` or `-- label -->`; chains (`a --> b --> c`) and `&` lists
   (`a & b --> c`).
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
-- Styling: `style id fill:#...,stroke:#...,color:#...`.
+- Styling: `style id fill:#...,stroke:#...,color:#...`; an arrow's colour as
+  `linkStyle 3 stroke:#...` (the arrow's place among the arrows, counted from 0).
 - Inside a quoted title, a double quote is written `#quot;`.
 
 An accessible title or description (`accTitle: text`, `accDescr: text`, `accDescr {`

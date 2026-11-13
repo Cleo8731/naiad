@@ -626,6 +626,72 @@ export function setStyle(text: string, id: string, changes: Record<string, strin
   return rw.finish();
 }
 
+const isStroke = (piece: string): boolean => piece.slice(0, piece.indexOf(':')).trim() === 'stroke';
+
+/**
+ * Sets (or, with null, clears) an arrow's colour (the user, 2026-11-13, Q109): the `stroke`
+ * of its own `linkStyle` line. Mermaid takes the last line naming an arrow as a whole, so
+ * only that line is changed; when it names other arrows too, this one gets a line of its
+ * own. Cleared, a line left with nothing (or only `fill:none`, Mermaid's own for an
+ * arrow) goes, and so does this arrow's index on every earlier line, which would
+ * otherwise take over. `linkStyle default` is left alone. The properties other than
+ * `stroke` stay exactly as written.
+ */
+export function setEdgeColour(text: string, index: number, stroke: string | null): string {
+  const doc = load(text);
+  const edge = doc.edges[index];
+  if (!edge) throw new EditError('That arrow is not in the file any more.');
+  if (stroke !== null && !/^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/.test(stroke)) throw new EditError(`"${stroke}" is not a colour the chart can write.`);
+  const n = String(index);
+  const rw = new Rewriter(doc);
+  // The lines that give this arrow a style, in order. A line that only sets the curve
+  // (`interpolate`) gives none.
+  const mine: { line: number; head: string; ids: string[]; sep: string; pieces: string[] }[] = [];
+  doc.info.forEach((li, i) => {
+    if (li.kind !== 'linkStyle' || !li.ids!.includes(n)) return;
+    const m = /^(\s*linkStyle\s+)(\S+)(\s+)(.*?)\s*;?\s*$/.exec(doc.lines[i]);
+    if (!m) throw new EditError(`Line ${i + 1}: cannot read this linkStyle line; change it in the Syntax pane.`);
+    if (/^interpolate\b/.test(m[4])) {
+      if (/^interpolate\s+\S+\s*$/.test(m[4])) return;
+      throw new EditError(`Line ${i + 1}: this linkStyle line also sets the arrow's curve; change its colour in the Syntax pane.`);
+    }
+    const pieces = m[4].split(',');
+    if (m[4].includes('(') || pieces.some((p) => !p.includes(':'))) throw new EditError(`Line ${i + 1}: this linkStyle line is too involved for the chart to edit; change it in the Syntax pane.`);
+    mine.push({ line: i, head: m[1], ids: m[2].split(','), sep: m[3], pieces });
+  });
+  const last = mine[mine.length - 1];
+  const others = (l: typeof last) => l.ids.filter((x) => x !== n);
+  const write = (l: typeof last, ids: string[], pieces: string[]) => `${l.head}${ids.join(',')}${l.sep}${pieces.join(',').trimStart()}`;
+  const ownLine = (l: typeof last, pieces: string[]) => rw.insertAfter(l.line, [{ text: write(l, [n], pieces), ids: [] }], doc.info[l.line].parent);
+  if (stroke !== null) {
+    if (!last) {
+      // After the last linkStyle line when the arrow is written above it (Mermaid wants an
+      // arrow before any line that styles it), else after everything.
+      let at = -1;
+      doc.info.forEach((li, i) => { if (li.kind === 'linkStyle') at = i; });
+      if (at >= edge.line) rw.insertAfter(at, [{ text: `${doc.info[at].indent}linkStyle ${n} stroke:${stroke}`, ids: [] }], doc.info[at].parent);
+      else rw.insertAfter(lastStructuralLine(doc), [{ text: `${topIndent(doc)}linkStyle ${n} stroke:${stroke}`, ids: [] }], -1);
+      return rw.finish();
+    }
+    const at = last.pieces.findIndex(isStroke);
+    const pieces = at < 0 ? [...last.pieces, `stroke:${stroke}`]
+      : last.pieces.flatMap((p, j) => (j === at ? [`stroke:${stroke}`] : isStroke(p) ? [] : [p]));
+    if (!others(last).length) rw.setLine(last.line, write(last, last.ids, pieces));
+    else { rw.setLine(last.line, write(last, others(last), last.pieces)); ownLine(last, pieces); }
+    return rw.finish();
+  }
+  if (!last || !last.pieces.some(isStroke)) return text;
+  const rest = last.pieces.filter((p) => !isStroke(p));
+  if (rest.every((p) => p.replace(/\s/g, '') === 'fill:none')) {
+    for (const l of mine) {
+      if (others(l).length) rw.setLine(l.line, write(l, others(l), l.pieces));
+      else rw.remove(l.line);
+    }
+  } else if (!others(last).length) rw.setLine(last.line, write(last, last.ids, rest));
+  else { rw.setLine(last.line, write(last, others(last), last.pieces)); ownLine(last, rest); }
+  return rw.finish();
+}
+
 export function setDirection(text: string, dir: string): string {
   const doc = load(text);
   const line = doc.lines[doc.header];

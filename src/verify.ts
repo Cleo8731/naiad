@@ -19,6 +19,7 @@ export type Op =
   | { kind: 'setEdgeLabel'; index: number; label: string }
   | { kind: 'setEdgeStyle'; index: number; stroke?: E.LinkParts['stroke']; arrow?: E.ArrowKind }
   | { kind: 'setStyle'; id: string; changes: Record<string, string | null> }
+  | { kind: 'setEdgeColour'; index: number; stroke: string | null }
   | { kind: 'setDirection'; dir: string }
   | { kind: 'moveNode'; id: string; target: string | null }
   | { kind: 'groupNode'; id: string; title: string }
@@ -45,6 +46,7 @@ export function runOp(text: string, op: Op): OpResult {
     case 'setEdgeLabel': return { text: E.setEdgeLabel(text, op.index, op.label) };
     case 'setEdgeStyle': return { text: E.setEdgeStyle(text, op.index, { stroke: op.stroke, arrow: op.arrow }) };
     case 'setStyle': return { text: E.setStyle(text, op.id, op.changes) };
+    case 'setEdgeColour': return { text: E.setEdgeColour(text, op.index, op.stroke) };
     case 'setDirection': return { text: E.setDirection(text, op.dir) };
     case 'moveNode': return { text: E.moveNode(text, op.id, op.target) };
     case 'groupNode': {
@@ -123,6 +125,19 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
       target.styles = styleAfter(target.styles, op.changes);
       break;
     }
+    case 'setEdgeColour': {
+      // Mermaid gives a styled arrow `fill:none` when its line sets no fill; a line left
+      // with only that is taken out, so the arrow has no style of its own.
+      const e = s.edges[op.index];
+      const isStroke = (x: string) => x.slice(0, x.indexOf(':')).trim() === 'stroke';
+      let style = e.style.filter((x) => !isStroke(x));
+      if (op.stroke !== null) {
+        style.push(`stroke:${op.stroke}`);
+        if (!style.some((x) => x.startsWith('fill'))) style.push('fill:none');
+      } else if (e.style.some(isStroke) && style.every((x) => x.replace(/\s/g, '') === 'fill:none')) style = [];
+      e.style = style.sort();
+      break;
+    }
     case 'setDirection': s.direction = dirOf(op.dir); break;
     case 'moveNode':
       outOfGroups(op.id);
@@ -156,7 +171,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
   return s;
 }
 
-const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle', 'setEdgeEnd']);
+const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle', 'setEdgeEnd', 'setEdgeColour']);
 
 /**
  * Runs an edit with the check. Throws E.EditError (with a message for the user) when

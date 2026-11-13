@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The sidebar on its own, in jsdom: what it keeps while the file changes under it.
 import { describe, expect, it, vi } from 'vitest';
-import { Sidebar, type EdgeView, type NodeView, type SidebarActions } from '../src/sidebar';
+import { Sidebar, SWATCHES, type EdgeView, type NodeView, type SidebarActions } from '../src/sidebar';
 
 function sidebar() {
   document.body.innerHTML = '<aside></aside>';
@@ -70,7 +70,7 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
       replace(...nodes);
     };
   }
-  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow' };
+  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow', colour: '' };
 
   function typing() {
     const s = sidebar();
@@ -98,5 +98,24 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
     const { actions, box } = typing();
     box.blur();
     expect(actions.setEdgeLabel).toHaveBeenCalledWith(1, 'TYPED LABEL');
+  });
+});
+
+describe('an arrow\'s Colour row (the user, 2026-11-13, Q109)', () => {
+  const ARROW: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 3, from: 'A', to: 'B', label: '', stroke: 'normal', arrow: 'arrow', colour: '#e03131' };
+  it('shows the swatch whose border is the arrow\'s colour, and writes the one clicked', () => {
+    const { root, actions, side } = sidebar();
+    side.show(ARROW);
+    const row = [...root.querySelectorAll('.row')].find((r) => r.textContent?.startsWith('Colour'))!;
+    const on = () => [...row.querySelectorAll<HTMLButtonElement>('.swatch.on')].map((b) => b.title);
+    expect(on()).toEqual(['Red']);
+    side.show({ ...ARROW, colour: '' });
+    expect(on()).toEqual(['No colour']);
+    side.show({ ...ARROW, colour: '#123456' }); // typed in the Syntax pane: no swatch is it
+    expect(on()).toEqual([]);
+    row.querySelector<HTMLButtonElement>('[title="Blue"]')!.click();
+    expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, SWATCHES[0]);
+    row.querySelector<HTMLButtonElement>('[title="No colour"]')!.click();
+    expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, null);
   });
 });

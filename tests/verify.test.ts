@@ -43,6 +43,7 @@ async function opsFor(text: string): Promise<Op[]> {
       { kind: 'setEdgeLabel', index, label: '' }, { kind: 'setEdgeStyle', index, stroke: 'dotted' }, { kind: 'setEdgeStyle', index, stroke: 'thick' },
       { kind: 'setEdgeStyle', index, stroke: 'normal' }, { kind: 'setEdgeStyle', index, arrow: 'none' }, { kind: 'setEdgeStyle', index, arrow: 'both' },
       { kind: 'setEdgeStyle', index, arrow: 'circle' }, { kind: 'setEdgeStyle', index, arrow: 'cross' }, { kind: 'setEdgeStyle', index, arrow: 'arrow' },
+      { kind: 'setEdgeColour', index, stroke: '#e03131' }, { kind: 'setEdgeColour', index, stroke: null },
     );
   });
   for (const id of subs) {

@@ -279,6 +279,33 @@ describe('edits change only the lines they must', () => {
     expect(changed(sample, E.setStyle(sample, 'fix', { fill: '#fee' }))).toEqual({ removed: [], added: ['    style fix fill:#fee'] });
   });
 
+  test('an arrow\'s colour (Q109): its own linkStyle line, the other properties as written', () => {
+    const two = 'flowchart TD\n  a --> b\n  b --> c\n';
+    expect(E.setEdgeColour(two, 1, '#e03131')).toBe(`${two}  linkStyle 1 stroke:#e03131\n`);
+    expect(E.setEdgeColour(two, 1, null)).toBe(two);
+    const own = `${two}  linkStyle 1 stroke:#f00, stroke-width:3px\n`;
+    expect(E.setEdgeColour(own, 1, '#e03131')).toBe(`${two}  linkStyle 1 stroke:#e03131, stroke-width:3px\n`);
+    expect(E.setEdgeColour(own, 1, null)).toBe(`${two}  linkStyle 1 stroke-width:3px\n`);
+    expect(E.setEdgeColour(`${two}  linkStyle 1 stroke-width:3px\n`, 1, '#e03131')).toBe(`${two}  linkStyle 1 stroke-width:3px,stroke:#e03131\n`);
+    // A line for both arrows: this one gets a line of its own; the other keeps its line.
+    const shared = `${two}  linkStyle 0,1 stroke:#0a0,stroke-width:3px\n`;
+    expect(E.setEdgeColour(shared, 0, '#e03131')).toBe(`${two}  linkStyle 1 stroke:#0a0,stroke-width:3px\n  linkStyle 0 stroke:#e03131,stroke-width:3px\n`);
+    expect(E.setEdgeColour(shared, 0, null)).toBe(`${two}  linkStyle 1 stroke:#0a0,stroke-width:3px\n  linkStyle 0 stroke-width:3px\n`);
+    // Cleared to nothing: the line goes, and so does the arrow on an earlier line, which
+    // Mermaid would otherwise use instead.
+    expect(E.setEdgeColour(`${two}  linkStyle 0,1 stroke:#00f\n  linkStyle 1 stroke:#f00,fill:none\n`, 1, null)).toBe(`${two}  linkStyle 0 stroke:#00f\n`);
+    // Mermaid wants the arrow written before a line styling it.
+    expect(E.setEdgeColour('flowchart TD\n  a --> b\n  linkStyle 0 stroke:#f00\n  b --> c\n', 1, '#e03131'))
+      .toBe('flowchart TD\n  a --> b\n  linkStyle 0 stroke:#f00\n  b --> c\n  linkStyle 1 stroke:#e03131\n');
+    // The default line, and a line setting only the curve, are left alone.
+    expect(E.setEdgeColour(`${two}  linkStyle default stroke:#999\n  linkStyle 1 interpolate step\n`, 1, '#e03131'))
+      .toBe(`${two}  linkStyle default stroke:#999\n  linkStyle 1 interpolate step\n  linkStyle 1 stroke:#e03131\n`);
+    expect(() => E.setEdgeColour(`${two}  linkStyle 1 interpolate basis stroke:#f00\n`, 1, null)).toThrow(E.EditError);
+    expect(() => E.setEdgeColour(`${two}  linkStyle 1 stroke:rgb(1,2,3)\n`, 1, '#e03131')).toThrow(E.EditError);
+    expect(() => E.setEdgeColour(two, 1, 'red;x')).toThrow(E.EditError);
+    expect(() => E.setEdgeColour(two, 5, '#e03131')).toThrow(E.EditError);
+  });
+
   test('refuses to touch a file with a line it cannot read', () => {
     expect(() => E.setTitle('flowchart TD\n  A --> B %% note\n', 'A', 'x')).toThrow(E.EditError);
   });
