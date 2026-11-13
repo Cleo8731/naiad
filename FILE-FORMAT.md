@@ -153,7 +153,10 @@ More text.
   Fenced blocks in other languages, and `mermaid` blocks that are not flowcharts (their
   first line is not `flowchart` or `graph`), are left alone. A flowchart block inside a
   quote (`>`) is not found, nor is a fence inside YAML front matter at the top of the
-  file (from a first line of `---` to the next `---` or `...`).
+  file (from a first line of `---` to the next `---` or `...`), nor one inside HTML:
+  from a line that opens a block of HTML, such as `<div>`, `<details>` or `<!--`, to
+  its end (a blank line; for a comment, the line holding `-->`), Markdown shows the
+  lines as HTML, so a fence or a heading there is none.
 - A file with several flowchart blocks shows one at a time; a list in the toolbar
   switches between them.
 - A flowchart block may be indented, for example inside a list. As in Markdown, its
@@ -283,7 +286,8 @@ More text.
   stands under other headings than the shown block did (any heading above it, not only
   the nearest, renamed, added or taken away; a heading underlined with `===` or `---`
   counts, each read as Markdown reads it: `# Original#` is "Original#", `#` alone is an
-  empty heading, and a heading inside a list item is the item's, which does not count),
+  empty heading, a heading inside a list item is the item's, which does not count, and
+  one inside HTML is none),
   whatever the lines below each say: the shown block may have been changed in
   place, with the text below it and its heading, and the old text kept with the copy.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes

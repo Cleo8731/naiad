@@ -54,8 +54,9 @@ type Role = 'item' | 'lazy' | 'other';
 
 /**
  * What `findBlocks` knows of a file's lines as it reads them. `opener[k]` is the opening
- * line of the fenced block line k stands in, or -1: a line inside a fenced block is
- * text, never a list item, so the block's opening line stands for it. `role`, `base` and
+ * line of the fenced block line k stands in, or of the HTML block (its opening line
+ * too), or -1: a line inside a fenced block or HTML is text, never a list item, so the
+ * block's opening line stands for it. `role`, `base` and
  * `itemText` keep what `lineRole`, `fenceBase` and `paragraphItemText` found, and every
  * line up to `known` has its role. Each answer depends only on the line and the lines
  * above it, which are final once `findBlocks` has read past them, so none is worked out
@@ -268,6 +269,67 @@ function paragraphAbove(r: Reading, k: number): 1 | 0 | -1 {
   return -1;
 }
 
+const OPEN_TAG = /<[A-Za-z][A-Za-z0-9-]*(?:\s+[a-zA-Z_:][a-zA-Z0-9:._-]*(?:\s*=\s*(?:[^"'=<>`\x00-\x20]+|'[^']*'|"[^"]*"))?)*\s*\/?>/.source;
+const CLOSE_TAG = /<\/[A-Za-z][A-Za-z0-9-]*\s*>/.source;
+
+/**
+ * CommonMark's seven kinds of HTML block, by the start of the line that opens each (its
+ * indent taken off): 1 `<script`, `<pre`, `<style` or `<textarea`; 2 a comment, `<!--`;
+ * 3 `<?`; 4 `<!` and a letter; 5 `<![CDATA[`; 6 a block-level tag such as `<div>`,
+ * `<details>` or `<p>`, opening or closing; 7 any other whole tag alone on its line.
+ * The patterns are the reference reader's (`commonmark`).
+ */
+const HTML_START = [
+  /^<(?:script|pre|textarea|style)(?:\s|>|$)/i,
+  /^<!--/,
+  /^<[?]/,
+  /^<![A-Za-z]/,
+  /^<!\[CDATA\[/,
+  /^<[/]?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[123456]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|search|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|[/]?[>]|$)/i,
+  new RegExp(`^(?:${OPEN_TAG}|${CLOSE_TAG})\\s*$`, 'i'),
+];
+
+/** Where kinds 1 to 5 end: on the line holding this, the opening line included. Kinds 6 and 7 end at a blank line. */
+const HTML_END = [/<\/(?:script|pre|textarea|style)>/i, /-->/, /\?>/, />/, /\]\]>/];
+
+/**
+ * The line past the HTML block that line i opens, or i when it opens none. Markdown
+ * shows the lines of an HTML block as HTML, so a fence or a heading written in them is
+ * none (the CommonMark comparison, T5.16, R1: a heading inside `<div>` or `<!--` took
+ * the place of the file's own, and a backup under another heading read as standing
+ * under the shown block's). Its lines, the first included, are marked as a fenced
+ * block's are. It opens where a fence may (`fenceBase`); a whole tag alone on its line
+ * (kind 7) cannot interrupt paragraph text, so right under it, it is more of the text
+ * (unsure counts as HTML: a block in it is then not found, the safe side). In a list
+ * item, it ends with the item, as a fenced block does.
+ */
+function htmlBlock(r: Reading, i: number): number {
+  const line = r.lines[i];
+  const lead = /^[ \t]*/.exec(line)![0];
+  if (line[lead.length] !== '<') return i;
+  const rest = line.slice(lead.length);
+  const kind = HTML_START.findIndex((re) => re.test(rest)) + 1;
+  if (kind === 0 || (kind === 7 && paragraphAbove(r, i) === 1)) return i;
+  const w = columns(lead);
+  const base = fenceBase(r, i, w);
+  if (base === null) return i;
+  const item = itemText(r, i, w, base);
+  let end = r.lines.length;
+  for (let j = i; j < r.lines.length; j++) {
+    const blank = indentOf(r, j) < 0;
+    if (j > i && item > 0 && !blank && indentOf(r, j) < item) {
+      end = j;
+      break;
+    }
+    if (kind <= 5 ? HTML_END[kind - 1].test(j === i ? rest : r.lines[j]) : j > i && blank) {
+      end = kind <= 5 ? j + 1 : j;
+      break;
+    }
+  }
+  r.opener.fill(i, i, end);
+  return end;
+}
+
 /** True when the first line that is not empty, a comment or frontmatter starts a flowchart. */
 export function isFlowchartText(text: string): boolean {
   const lines = text.split('\n');
@@ -314,6 +376,11 @@ export function findBlocks(file: string): Block[] {
     // A backtick fence's first line cannot hold another backtick (that is inline code).
     const base = m && !(m[2][0] === '`' && m[3].includes('`')) ? fenceBase(r, i, columns(m[1])) : null;
     if (!m || base === null) {
+      const html = htmlBlock(r, i);
+      if (html > i) {
+        i = html;
+        continue;
+      }
       const h = ATX_HEADING.exec(lines[i]);
       if (h) {
         if (!inItem(r, i)) under(h[1].length, atxText(h[2]));
@@ -384,8 +451,10 @@ const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4
 
 /**
  * The text of the heading that line i underlines (a `===` or `---` line right under
- * paragraph text), or null. Text standing in a list item, a quote, HTML or a table is
- * not taken for one: under it, a `---` is a thematic break, and a `===` more text. A
+ * paragraph text), or null. Text standing in a list item, a quote or a table is not
+ * taken for one: under it, a `---` is a thematic break, and a `===` more text. Lines of
+ * HTML are marked (`htmlBlock`), so the text starts below them; a line starting with
+ * `<` that opens no HTML is text (R1). A
  * line shaped like a list item that cannot start one under paragraph text (a number
  * other than 1, or nothing after the marker) is more of the text when paragraph text
  * stands above it (bug hunt round 7, B31: `2. continuation`).
@@ -400,7 +469,7 @@ function setextHeading(r: Reading, i: number): string | null {
     if (HEADING_OR_BREAK.test(line)) break; // a heading or a break above: the text starts below it
     const item = LIST_ITEM.exec(line);
     if (item && (mayInterrupt(line, item) || !paragraph(k - 1))) return null;
-    if (/^[ \t]*[>|<]/.test(line) || FENCE.test(line)) return null;
+    if (/^[ \t]*[>|]/.test(line) || FENCE.test(line)) return null;
     text.unshift(line.trim());
   }
   // Text whose first line is indented four columns or more is a code sample.

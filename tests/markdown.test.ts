@@ -452,6 +452,41 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const closed = findBlocks('1. step\n   ```mermaid\n   flowchart TD\n     ```\nafter\n');
     expect(closed.map((b) => [b.text, b.close, b.locked])).toEqual([['flowchart TD\n', 3, null]]);
   });
+
+  test('R1: a fence or a heading inside HTML is none (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const opens = (md: string) => findBlocks(md).map((b) => b.open);
+    // HTML runs to a blank line, or for a comment to the line holding `-->`.
+    expect(opens('<details>\n' + chart + '</details>\n')).toEqual([]);
+    expect(opens('<div align="center">\n' + chart)).toEqual([]);
+    expect(opens('<!--\n' + chart + '-->\n')).toEqual([]);
+    expect(opens('<!-- note\n\n' + chart + '-->\n')).toEqual([]);
+    expect(opens('<span>\n' + chart)).toEqual([]);
+    expect(opens('<details>\n</details>\n\n' + chart)).toEqual([3]);
+    expect(opens('<!-- a note -->\n' + chart)).toEqual([1]);
+    expect(opens('<!--\nnote\n-->\n' + chart)).toEqual([3]);
+    // A whole tag alone on its line cannot interrupt text: it is more of the text.
+    expect(opens('Some text\n<span>\n' + chart)).toEqual([2]);
+    // The HTML took the opening fence, so the closing one opens a plain block.
+    expect(opens('<div>\n```mermaid\nflowchart TD\n\n```\n\n' + chart)).toEqual([]);
+    // Inside a list item, the HTML ends with the item.
+    expect(opens('- item\n  <div>\n  ' + chart.trimEnd().split('\n').join('\n  ') + '\n')).toEqual([]);
+    expect(opens('- item\n  <div>\nafter\n\n' + chart)).toEqual([4]);
+    // Headings inside HTML are none; a line starting with `<` that opens no HTML is text.
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('## Real\n\n<!--\n# Old\n-->')).toBe('2 Real');
+    expect(headings('## Real\n\n<div>\n# Shown as text\n</div>')).toBe('2 Real');
+    expect(headings('# Top\n\n<!-- # not a heading -->\n## Real')).toBe('1 Top\n2 Real');
+    expect(headings('<span>a</span>\n===')).toBe('1 <span>a</span>');
+    expect(headings('Text\n<span>\n---')).toBe('2 Text <span>');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `${head}\n\n<div>\n## Notes\n</div>\n\n${intro}\n${body}\n${end}\n`;
+    const after = part('## Backup', chart) + '\n' + part('## Original', changed, 'changed intro', 'changed end');
+    expect(findBlocks(after).map((b) => b.headings)).toEqual(['2 Backup', '2 Original']);
+    expect(again(part('## Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {
