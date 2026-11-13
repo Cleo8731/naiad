@@ -108,6 +108,17 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .canvas svg { display: block; background: transparent !important; }
 .canvas [data-node], .canvas [data-edge], .canvas [data-sub] { cursor: pointer; }
 .canvas .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
+/* Rounder corners (the user, 2026-11-13): a square node's 6 px and a group's 12 px; a
+   rounded node's (14 px) and an arrow's bends are set in `chart.ts`. Drawing only. */
+.canvas .node rect.label-container:not([rx]), .canvas .node rect.label-container[rx="0"] { rx: 6px; ry: 6px; }
+.canvas .cluster > rect { rx: 12px; ry: 12px; }
+.canvas .node :is(polygon, path) { stroke-linejoin: round; }
+/* The item under the pointer: a softer kind of the selection's outline (the user,
+   2026-11-13). Before the selection's rules, so a selected item keeps its own. */
+.canvas .node.hov .label-container, .canvas .node.hov .label-container path,
+.canvas .node.hov > :is(rect, polygon, circle, ellipse, path) { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 2px !important; }
+.canvas .cluster.hov > rect { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 1.5px !important; }
+.canvas path.hov { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 2.5px !important; }
 .canvas .node.sel .label-container, .canvas .node.sel .label-container path,
 .canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
 .canvas .cluster.sel > rect { stroke: var(--accent) !important; stroke-width: 2px !important; }

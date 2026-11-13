@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { Chart, edgePanSpeed, panStep, pathEnds, type ChartEvents } from '../src/chart';
+import { Chart, edgePanSpeed, panStep, pathEnds, roundBends, type ChartEvents } from '../src/chart';
 
 const rect = { left: 100, right: 500, top: 200, bottom: 500 };
 describe('edge pan speed', () => {
@@ -140,6 +140,77 @@ describe('drag interactions', () => {
     expect(canvas.style.transform).toBe(view);
     expect(outside.defaultPrevented).toBe(false);
   });
+  // Hover (the user, 2026-11-13): the item under the pointer shows its handles, lit softly.
+  test('the item under the pointer shows its handles; they stay a moment after it leaves', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const a = stage.querySelector('[data-node="A"]')!;
+    const connects = stage.querySelectorAll<HTMLButtonElement>('.connect-handle');
+    a.dispatchEvent(pointer('pointerover', 120, 220));
+    expect(connects[0].hidden).toBe(true); // nothing is selected
+    expect(connects[1].hidden).toBe(false);
+    expect(connects[1].style.left).toBe('36px');
+    expect(a.classList.contains('hov')).toBe(true);
+    stage.dispatchEvent(pointer('pointerover', 300, 400)); // empty space: the light goes at once
+    expect(a.classList.contains('hov')).toBe(false);
+    expect(connects[1].hidden).toBe(false);
+    connects[1].dispatchEvent(pointer('pointerover', 140, 220)); // the handle, reached in time
+    vi.advanceTimersByTime(1000);
+    expect(connects[1].hidden).toBe(false);
+    expect(a.classList.contains('hov')).toBe(true);
+    target = stage.querySelector('[data-node="B"]');
+    connects[1].dispatchEvent(pointer('pointerdown', 140, 220));
+    connects[1].dispatchEvent(pointer('pointerup', 170, 260));
+    expect(events.onConnect).toHaveBeenCalledWith('A', 'B');
+    stage.dispatchEvent(pointer('pointerover', 300, 400));
+    vi.advanceTimersByTime(399);
+    expect(connects[1].hidden).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(connects[1].hidden).toBe(true);
+    chart.setHighlighting(true); // while highlighting, the item is lit but shows no handles
+    a.dispatchEvent(pointer('pointerover', 120, 220));
+    expect(a.classList.contains('hov')).toBe(true);
+    expect(connects[1].hidden).toBe(true);
+    vi.useRealTimers();
+  });
+  test('the selected arrow keeps its end handles; an arrow under the pointer is dragged without a click', () => {
+    chart.select({ kind: 'edge', index: 0 });
+    const ends = stage.querySelectorAll<HTMLButtonElement>('.end-handle'); // the selection's two, then the pointer's
+    stage.querySelector('[data-node="A"]')!.dispatchEvent(pointer('pointerover', 120, 220));
+    expect([...ends].map((b) => b.hidden)).toEqual([false, false, true, true]);
+    expect(stage.querySelectorAll<HTMLButtonElement>('.connect-handle')[1].hidden).toBe(false);
+    chart.select(null);
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('data-edge', '0');
+    stage.querySelector('svg')!.append(hit);
+    hit.dispatchEvent(pointer('pointerover', 150, 260));
+    expect([...ends].map((b) => b.hidden)).toEqual([true, true, false, false]);
+    expect(ends[2].style.left).toBe('11px');
+    expect(stage.querySelector('[data-edge-line="0"]')!.classList.contains('hov')).toBe(true);
+    target = stage.querySelector('[data-node="B"]');
+    ends[2].dispatchEvent(pointer('pointerdown', 120, 240));
+    ends[2].dispatchEvent(pointer('pointerup', 160, 260));
+    expect(events.onSelect).toHaveBeenCalledWith({ kind: 'edge', index: 0 });
+    expect(events.onMoveEnd).toHaveBeenCalledWith(0, 'start', 'B');
+    const order = (f: unknown) => (f as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    expect(order(events.onSelect)).toBeLessThan(order(events.onMoveEnd)); // selected first (Q100)
+  });
+});
+
+describe('rounder bends (the user, 2026-11-13)', () => {
+  test('each bend gets the radius asked for', () => {
+    expect(roundBends('M0,0L95,0Q100,0 100,5L100,95Q100,100 105,100L200,100', 14))
+      .toBe('M0,0L86,0Q100,0 100,14L100,86Q100,100 114,100L200,100');
+  });
+  test('a bend takes no more than half of either run beside it', () => {
+    expect(roundBends('M0,0L5,0Q10,0 10,5L10,15Q10,20 15,20L40,20', 14))
+      .toBe('M0,0L5,0Q10,0 10,5L10,10Q10,20 20,20L40,20');
+  });
+  test.each([
+    ['a smooth curve', 'M10,20C20,20,30,40,50,60'],
+    ['a straight arrow', 'M0,0L10,10'],
+    ['relative commands', 'M0,0l95,0q5,0 5,5l0,90'],
+    ['no path', ''],
+  ])('%s is left as it is', (_, d) => expect(roundBends(d, 14)).toBe(d));
 });
 
 // Mermaid writes an arrow's path with absolute commands only (M, L, C), each ending at a

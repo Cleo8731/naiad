@@ -20,6 +20,10 @@ export interface ChartEvents {
   onRename(target: Target): void;
 }
 
+/** Rounder corners (the user, 2026-11-13): a rounded node's corners and an arrow's bends, in px. */
+const ROUNDED_NODE_RADIUS = 14;
+const BEND_RADIUS = 14;
+
 export function configureMermaid(dark: boolean): void {
   const font = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
   mermaid.initialize({
@@ -28,15 +32,17 @@ export function configureMermaid(dark: boolean): void {
     suppressErrorRendering: true,
     theme: 'base',
     look: 'classic',
+    // `radius` rounds the corners of a rounded node, `id(Title)`; a square node's corners
+    // and a group's are rounded less, in `style.css`, so the two shapes stay apart.
     themeVariables: dark
       ? {
-        darkMode: true, fontFamily: font, fontSize: '14px', background: '#16181c',
+        darkMode: true, radius: ROUNDED_NODE_RADIUS, fontFamily: font, fontSize: '14px', background: '#16181c',
         primaryColor: '#262a31', primaryTextColor: '#e8eaed', primaryBorderColor: '#5b6472',
         lineColor: '#8a93a1', textColor: '#e8eaed', clusterBkg: '#1c1f25', clusterBorder: '#3a414c',
         edgeLabelBackground: '#16181c', titleColor: '#aeb6c2',
       }
       : {
-        fontFamily: font, fontSize: '14px', background: '#f6f7f9',
+        radius: ROUNDED_NODE_RADIUS, fontFamily: font, fontSize: '14px', background: '#f6f7f9',
         primaryColor: '#ffffff', primaryTextColor: '#1c2026', primaryBorderColor: '#9aa3b0',
         lineColor: '#6b7482', textColor: '#1c2026', clusterBkg: '#eef0f4', clusterBorder: '#c9ced6',
         edgeLabelBackground: '#f6f7f9', titleColor: '#4a5362',
@@ -86,16 +92,69 @@ export function pathEnds(path: { getTotalLength(): number; getPointAtLength(dist
   } catch { return null; }
 }
 
+/**
+ * Redraws the bends of an arrow drawn with Mermaid's "rounded" curve (straight runs, each
+ * bend a quadratic curve 5 px across, its control point the corner) with a larger
+ * radius, never more than half of either run beside the bend. The ends stay where they
+ * are, so the arrowheads do too. Any other path is returned as it is.
+ */
+export function roundBends(d: string, radius: number): string {
+  const parts = d.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g);
+  if (!parts) return d;
+  const corners: Point[] = [];
+  let first: Point | null = null;
+  let last: Point | null = null;
+  for (const part of parts) {
+    const n = part.slice(1).trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    if (!n.every(Number.isFinite)) return d;
+    if (part[0] === 'M' && n.length === 2 && !first) first = last = { x: n[0], y: n[1] };
+    else if (part[0] === 'L' && n.length === 2 && first) last = { x: n[0], y: n[1] };
+    else if (part[0] === 'Q' && n.length === 4 && first) { corners.push({ x: n[0], y: n[1] }); last = { x: n[2], y: n[3] }; }
+    else return d;
+  }
+  if (!first || !last || !corners.length) return d;
+  const at = (p: Point) => `${String(Math.round(p.x * 1000) / 1000)},${String(Math.round(p.y * 1000) / 1000)}`;
+  const points = [first, ...corners, last];
+  let out = `M${at(first)}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [a, b, c] = [points[i - 1], points[i], points[i + 1]];
+    const into = Math.hypot(b.x - a.x, b.y - a.y);
+    const away = Math.hypot(c.x - b.x, c.y - b.y);
+    if (!into || !away) { out += `L${at(b)}`; continue; }
+    const r = Math.min(radius, into / 2, away / 2);
+    const from = { x: b.x + ((a.x - b.x) * r) / into, y: b.y + ((a.y - b.y) * r) / into };
+    const to = { x: b.x + ((c.x - b.x) * r) / away, y: b.y + ((c.y - b.y) * r) / away };
+    out += `L${at(from)}Q${at(b)} ${at(to)}`;
+  }
+  return `${out}L${at(last)}`;
+}
+
+/** A connect handle and two end handles, shown for one item at a time: its owner. */
+type Handles = { connect: HTMLButtonElement; ends: Record<End, HTMLButtonElement>; owner: Target | null };
+
 type Drag = {
-  pointerId: number; button: HTMLButtonElement; origin: Point; pointer: Point; fixed: Point;
+  pointerId: number; set: Handles; button: HTMLButtonElement; origin: Point; pointer: Point; fixed: Point;
   line: SVGLineElement; kind: 'connect' | 'end'; id: string; index?: number; end?: End;
 };
+
+/** How long an item's handles stay after the pointer leaves it, so the pointer can reach them, in ms. */
+const HOVER_GRACE = 400;
+
+const sameTarget = (a: Target | null, b: Target | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 export class Chart {
   private canvas: HTMLDivElement;
   private overlay: SVGSVGElement;
-  private handle: HTMLButtonElement;
-  private endHandles: Record<End, HTMLButtonElement>;
+  /**
+   * Two sets of handles: one for the selected item, one for the item under the pointer
+   * (the user, 2026-11-13), so a drag can start without a click first, and the selected
+   * arrow keeps its end handles while the pointer crosses a node on its way to them.
+   */
+  private sets: { sel: Handles; hover: Handles };
+  /** The item under the pointer: its handles show, and it is lit softly (`.hov`). */
+  private hovered: Target | null = null;
+  private lit: Target | null = null;
+  private hoverTimer: ReturnType<typeof setTimeout> | null = null;
   private explicitSubs = new Set<string>();
   private drag: Drag | null = null;
   private frame: number | null = null;
@@ -129,21 +188,29 @@ export class Chart {
     this.canvas.className = 'canvas';
     this.overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.overlay.setAttribute('class', 'overlay');
-    this.handle = document.createElement('button');
-    this.handle.className = 'connect-handle';
-    this.handle.title = 'Drag to another node to connect';
-    this.handle.setAttribute('aria-label', 'Connect to another node');
-    this.handle.hidden = true;
-    this.endHandles = Object.fromEntries((['start', 'end'] as const).map((end) => {
-      const button = document.createElement('button');
-      button.className = 'end-handle';
-      button.title = `Move the arrow's ${end}`;
-      button.setAttribute('aria-label', button.title);
-      button.hidden = true;
-      return [end, button];
-    })) as Record<End, HTMLButtonElement>;
-    stage.append(this.canvas, this.overlay, this.handle, this.endHandles.start, this.endHandles.end);
+    const handles = (): Handles => {
+      const connect = document.createElement('button');
+      connect.className = 'connect-handle';
+      connect.title = 'Drag to another node to connect';
+      connect.setAttribute('aria-label', 'Connect to another node');
+      connect.hidden = true;
+      const ends = Object.fromEntries((['start', 'end'] as const).map((end) => {
+        const button = document.createElement('button');
+        button.className = 'end-handle';
+        button.title = `Move the arrow's ${end}`;
+        button.setAttribute('aria-label', button.title);
+        button.hidden = true;
+        return [end, button];
+      })) as Record<End, HTMLButtonElement>;
+      return { connect, ends, owner: null };
+    };
+    this.sets = { sel: handles(), hover: handles() };
+    stage.append(this.canvas, this.overlay, ...this.buttons());
     this.bind();
+  }
+
+  private buttons(set?: Handles): HTMLButtonElement[] {
+    return (set ? [set] : [this.sets.sel, this.sets.hover]).flatMap((s) => [s.connect, s.ends.start, s.ends.end]);
   }
 
   /** Call when another file is opened, so the next drawing is fitted to the window. */
@@ -174,8 +241,9 @@ export class Chart {
     this.cancelDrag();
     this.canvas.innerHTML = '';
     this.snap = null;
-    this.handle.hidden = true;
-    this.endHandles.start.hidden = this.endHandles.end.hidden = true;
+    this.stopLeaving();
+    this.hovered = this.lit = null;
+    for (const button of this.buttons()) button.hidden = true;
   }
 
   /** Release observers and active drag work when the chart is discarded. */
@@ -198,6 +266,8 @@ export class Chart {
       if (subId in snap.subs) g.dataset.sub = subId;
     });
     svg.querySelectorAll<SVGPathElement>('path[data-edge="true"]').forEach((p) => {
+      const d = p.getAttribute('d');
+      if (d) p.setAttribute('d', roundBends(d, BEND_RADIUS));
       const i = snap.edgeIds.indexOf(p.dataset.id ?? '');
       if (i < 0) return;
       p.dataset.edgeLine = String(i);
@@ -231,7 +301,7 @@ export class Chart {
   select(target: Target | null): void {
     // The app paints (and so selects again) for reasons of its own, such as a save; only
     // a different item ends a drag.
-    if (JSON.stringify(target) !== JSON.stringify(this.selected)) this.cancelDrag();
+    if (!sameTarget(target, this.selected)) this.cancelDrag();
     this.selected = target;
     this.paintSelection();
   }
@@ -240,14 +310,46 @@ export class Chart {
     this.canvas.querySelectorAll('.sel').forEach((e) => e.classList.remove('sel'));
     const el = this.selected ? this.elementOf(this.selected) : null;
     el?.classList.add('sel');
-    this.placeHandle();
+    this.light(this.lit);
+    this.placeHandles();
+  }
+
+  /** Lights the item under the pointer softly, as a lighter kind of selection. */
+  private light(t: Target | null): void {
+    this.lit = t;
+    this.canvas.querySelectorAll('.hov').forEach((e) => e.classList.remove('hov'));
+    if (t) this.elementOf(t)?.classList.add('hov');
+  }
+
+  private hover(t: Target): void {
+    this.stopLeaving();
+    this.light(t);
+    if (sameTarget(t, this.hovered)) return;
+    this.hovered = t;
+    this.placeHandles();
+  }
+
+  /** The pointer left every item: the light goes at once, the handles after the grace. */
+  private leaveSoon(): void {
+    this.light(null);
+    if (this.hoverTimer !== null || !this.hovered) return;
+    this.hoverTimer = setTimeout(() => {
+      this.hoverTimer = null;
+      this.hovered = null;
+      this.placeHandles();
+    }, HOVER_GRACE);
+  }
+
+  private stopLeaving(): void {
+    if (this.hoverTimer !== null) clearTimeout(this.hoverTimer);
+    this.hoverTimer = null;
   }
 
   setHighlighting(on: boolean): void {
     if (on) this.cancelDrag();
     this.highlighting = on;
     this.stage.classList.toggle('highlighting', on);
-    this.placeHandle();
+    this.placeHandles();
   }
 
   /** Draws the highlights (D2.4): the items named in the highlights file. */
@@ -268,9 +370,9 @@ export class Chart {
     return t.kind === 'node' || this.explicitSubs.has(t.id);
   }
 
-  private pathPoints(): { start: Point; end: Point } | null {
-    if (this.selected?.kind !== 'edge') return null;
-    const path = this.elementOf(this.selected) as SVGPathElement | null;
+  private pathPoints(t: Target | null): { start: Point; end: Point } | null {
+    if (t?.kind !== 'edge') return null;
+    const path = this.elementOf(t) as SVGPathElement | null;
     const points = path?.getAttribute('d') ? pathEnds(path) : null;
     const matrix = path?.getScreenCTM();
     if (!points || !matrix) return null;
@@ -278,23 +380,28 @@ export class Chart {
     return { start: convert(points.start), end: convert(points.end) };
   }
 
-  private placeHandle(): void {
-    const selected = this.selected;
-    const el = selected && selected.kind !== 'edge' && !this.highlighting && this.allowed(selected) ? this.elementOf(selected) : null;
-    this.handle.hidden = !el;
+  private placeHandles(): void {
     const s = this.stage.getBoundingClientRect();
-    if (el) {
-      const r = el.getBoundingClientRect();
-      this.handle.style.left = `${r.right - s.left + 6}px`;
-      this.handle.style.top = `${r.top - s.top + r.height / 2 - 11}px`;
-    }
-    const points = !this.highlighting ? this.pathPoints() : null;
-    for (const end of ['start', 'end'] as const) {
-      const button = this.endHandles[end];
-      button.hidden = !points;
-      if (points) {
-        button.style.left = `${points[end].x - s.left - 9}px`;
-        button.style.top = `${points[end].y - s.top - 9}px`;
+    const owners = { sel: this.selected, hover: sameTarget(this.hovered, this.selected) ? null : this.hovered };
+    for (const key of ['sel', 'hover'] as const) {
+      const set = this.sets[key];
+      if (this.drag?.set !== set) set.owner = owners[key]; // the set being dragged keeps its item
+      const owner = this.highlighting ? null : set.owner;
+      const el = owner && owner.kind !== 'edge' && this.allowed(owner) ? this.elementOf(owner) : null;
+      set.connect.hidden = !el;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        set.connect.style.left = `${r.right - s.left + 6}px`;
+        set.connect.style.top = `${r.top - s.top + r.height / 2 - 11}px`;
+      }
+      const points = this.pathPoints(owner);
+      for (const end of ['start', 'end'] as const) {
+        const button = set.ends[end];
+        button.hidden = !points;
+        if (points) {
+          button.style.left = `${points[end].x - s.left - 9}px`;
+          button.style.top = `${points[end].y - s.top - 9}px`;
+        }
       }
     }
   }
@@ -327,14 +434,14 @@ export class Chart {
     this.canvas.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
   }
 
-  private beginDrag(e: PointerEvent, button: HTMLButtonElement, fixedClient: Point, kind: Drag['kind'], id: string, index?: number, end?: End): void {
+  private beginDrag(e: PointerEvent, set: Handles, button: HTMLButtonElement, fixedClient: Point, kind: Drag['kind'], id: string, index?: number, end?: End): void {
     if (e.button !== 0 || this.drag) return;
     e.preventDefault();
     e.stopPropagation();
     const s = this.stage.getBoundingClientRect();
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     this.overlay.append(line);
-    this.drag = { pointerId: e.pointerId, button, origin: { x: e.clientX, y: e.clientY }, pointer: { x: e.clientX, y: e.clientY },
+    this.drag = { pointerId: e.pointerId, set, button, origin: { x: e.clientX, y: e.clientY }, pointer: { x: e.clientX, y: e.clientY },
       fixed: { x: (fixedClient.x - s.left - this.view.x) / this.view.k, y: (fixedClient.y - s.top - this.view.y) / this.view.k }, line, kind, id, index, end };
     button.setPointerCapture(e.pointerId);
     document.addEventListener('wheel', this.onOutsideWheel, { passive: false });
@@ -383,7 +490,7 @@ export class Chart {
   private apply(): void {
     const { x, y, k } = this.view;
     this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
-    this.placeHandle();
+    this.placeHandles();
     this.refreshDrag();
   }
 
@@ -424,8 +531,9 @@ export class Chart {
 
     // Drag anywhere to pan; a press that does not move is a click.
     let pan: { x: number; y: number; vx: number; vy: number; id: number } | null = null;
+    const isHandle = (t: EventTarget | null) => this.buttons().includes(t as HTMLButtonElement);
     stage.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || (e.target === this.handle || e.target === this.endHandles.start || e.target === this.endHandles.end)) return;
+      if (e.button !== 0 || isHandle(e.target)) return;
       pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y, id: e.pointerId };
       this.moved = false;
     });
@@ -446,7 +554,7 @@ export class Chart {
     stage.addEventListener('click', (e) => {
       // A link written with Mermaid's `click` must not navigate the app away.
       if ((e.target as Element).closest('a')) e.preventDefault();
-      if (this.moved || (e.target === this.handle || e.target === this.endHandles.start || e.target === this.endHandles.end)) { this.moved = false; return; }
+      if (this.moved || isHandle(e.target)) { this.moved = false; return; }
       const t = this.targetAt(e.target as Element);
       if (this.highlighting && t) { this.events.onHighlight(t); return; }
       if (e.shiftKey && t && t.kind !== 'edge' && this.allowed(t) && this.selected && this.selected.kind !== 'edge' && this.allowed(this.selected)) {
@@ -462,24 +570,43 @@ export class Chart {
       else if (this.snap) this.events.onAddNode();
     });
 
-    // Both kinds of handle use pointer capture, the same preview, and the same edge scrolling.
-    this.handle.addEventListener('pointerdown', (e) => {
-      const selected = this.selected;
-      if (!selected || selected.kind === 'edge' || !this.allowed(selected)) return;
-      const r = this.elementOf(selected)?.getBoundingClientRect();
-      if (r) this.beginDrag(e, this.handle, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, 'connect', selected.id);
+    // The item under the pointer shows its handles and is lit softly (the user, 2026-11-13).
+    // Over a handle, the item keeps them; over empty space, they stay for HOVER_GRACE, so
+    // the pointer can cross the gap to the connect handle. Not for touch, not mid-drag.
+    stage.addEventListener('pointerover', (e) => {
+      if (e.pointerType === 'touch' || this.drag || stage.classList.contains('panning')) return;
+      if (isHandle(e.target)) {
+        this.stopLeaving();
+        this.light(this.buttons(this.sets.hover).includes(e.target as HTMLButtonElement) ? this.sets.hover.owner : null);
+        return;
+      }
+      const t = this.targetAt(e.target as Element);
+      if (t) this.hover(t);
+      else this.leaveSoon();
     });
-    for (const end of ['start', 'end'] as const) {
-      const button = this.endHandles[end];
-      button.addEventListener('pointerdown', (e) => {
-        const selected = this.selected;
-        const points = this.pathPoints();
-        if (selected?.kind !== 'edge' || !points) return;
-        const edge = this.snap?.edges[selected.index];
-        if (edge) this.beginDrag(e, button, points[end === 'start' ? 'end' : 'start'], 'end', edge[end], selected.index, end);
+    stage.addEventListener('pointerleave', () => { if (!this.drag) this.leaveSoon(); });
+
+    // Both kinds of handle, in both sets, use pointer capture, the same preview, and the
+    // same edge scrolling.
+    for (const set of [this.sets.sel, this.sets.hover]) {
+      set.connect.addEventListener('pointerdown', (e) => {
+        const owner = set.owner;
+        if (!owner || owner.kind === 'edge' || !this.allowed(owner)) return;
+        const r = this.elementOf(owner)?.getBoundingClientRect();
+        if (r) this.beginDrag(e, set, set.connect, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, 'connect', owner.id);
       });
+      for (const end of ['start', 'end'] as const) {
+        const button = set.ends[end];
+        button.addEventListener('pointerdown', (e) => {
+          const owner = set.owner;
+          const points = this.pathPoints(owner);
+          if (owner?.kind !== 'edge' || !points) return;
+          const edge = this.snap?.edges[owner.index];
+          if (edge) this.beginDrag(e, set, button, points[end === 'start' ? 'end' : 'start'], 'end', edge[end], owner.index, end);
+        });
+      }
     }
-    for (const button of [this.handle, this.endHandles.start, this.endHandles.end]) {
+    for (const button of this.buttons()) {
       button.addEventListener('pointermove', (e) => {
         if (!this.drag || this.drag.pointerId !== e.pointerId) return;
         this.drag.pointer = { x: e.clientX, y: e.clientY };
@@ -493,7 +620,13 @@ export class Chart {
         this.cancelDrag();
         if (!target) return;
         if (d.kind === 'connect') this.events.onConnect(d.id, target.id);
-        else if (target.id !== d.id && d.index !== undefined && d.end) this.events.onMoveEnd(d.index, d.end, target.id);
+        else if (target.id !== d.id && d.index !== undefined && d.end) {
+          // An arrow not selected is selected first, so the app keeps it selected when it is
+          // written out of a group and renumbered (Q100), as for a selected one.
+          const edge: Target = { kind: 'edge', index: d.index };
+          if (!sameTarget(edge, this.selected)) this.events.onSelect(edge);
+          this.events.onMoveEnd(d.index, d.end, target.id);
+        }
       };
       button.addEventListener('pointerup', finish);
       button.addEventListener('pointercancel', finish);
