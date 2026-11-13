@@ -26,7 +26,7 @@ function load(text: string): Doc {
   const doc = parseDoc(text);
   if (doc.problems.length) {
     const p = doc.problems[0];
-    throw new EditError(`Line ${p.line + 1}: ${p.message} Change it in the text pane; the chart cannot edit this file safely until then.`);
+    throw new EditError(`Line ${p.line + 1}: ${p.message} Change it in the Syntax pane; the chart cannot edit this file safely until then.`);
   }
   return doc;
 }
@@ -283,7 +283,7 @@ export function setTitle(text: string, id: string, title: string): string {
   } else if (ref.attrs) {
     const raw = line.slice(ref.attrs.start, ref.attrs.end);
     if (!/label:\s*"[^"]*"/.test(raw)) {
-      throw new EditError('This node is written in the @{ … } form without a quoted label; change its title in the text pane.');
+      throw new EditError('This node is written in the @{ … } form without a quoted label; change its title in the Syntax pane.');
     }
     const safe = title.trim().replace(/"/g, '#quot;');
     next = line.slice(0, ref.attrs.start) + raw.replace(/label:\s*"[^"]*"/, () => `label: "${safe}"`) + line.slice(ref.attrs.end);
@@ -301,7 +301,7 @@ export function setShape(text: string, id: string, type: string): string {
   const doc = load(text);
   const refs = requireNode(doc, id);
   if (refs.some((r) => r.ref.attrs)) {
-    throw new EditError('This node is written in the @{ … } form; change its shape in the text pane.');
+    throw new EditError('This node is written in the @{ … } form; change its shape in the Syntax pane.');
   }
   const shaped = refs.filter((r) => r.ref.shape);
   const target = shaped.length ? shaped[shaped.length - 1] : refs[0];
@@ -434,7 +434,7 @@ export function buildLink(p: Omit<LinkParts, 'form'>): string {
 export function addEdge(text: string, from: string, to: string): string {
   const doc = load(text);
   for (const id of [from, to]) {
-    if (!ID_OK.test(id)) throw new EditError(`The id "${id}" has characters the chart cannot write safely; add the arrow in the text pane.`);
+    if (!ID_OK.test(id)) throw new EditError(`The id "${id}" has characters the chart cannot write safely; add the arrow in the Syntax pane.`);
   }
   const rw = new Rewriter(doc);
   rw.insertAfter(topInsertLine(doc), [{ text: `${topIndent(doc)}${from} --> ${to}`, ids: [from, to] }], -1);
@@ -584,16 +584,16 @@ export function setEdgeStyle(text: string, index: number, change: { stroke?: Lin
 /** Sets (or, with null, clears) style properties such as fill and stroke on a node or group. */
 export function setStyle(text: string, id: string, changes: Record<string, string | null>): string {
   const doc = load(text);
-  if (!ID_OK.test(id)) throw new EditError(`The id "${id}" has characters the chart cannot write safely; style it in the text pane.`);
+  if (!ID_OK.test(id)) throw new EditError(`The id "${id}" has characters the chart cannot write safely; style it in the Syntax pane.`);
   const rw = new Rewriter(doc);
   const mine: { line: number; head: string; props: [string, string][] }[] = [];
   doc.info.forEach((li, i) => {
     if (li.kind !== 'style' || li.ids!.length !== 1 || li.ids![0] !== id) return;
     const m = /^(\s*style\s+\S+\s+)(.*?)\s*;?\s*$/.exec(doc.lines[i])!;
-    if (m[2].includes('(')) throw new EditError(`Line ${i + 1}: this style line is too involved for the chart to edit; change it in the text pane.`);
+    if (m[2].includes('(')) throw new EditError(`Line ${i + 1}: this style line is too involved for the chart to edit; change it in the Syntax pane.`);
     const props = m[2].split(',').map((p) => {
       const c = p.indexOf(':');
-      if (c < 0) throw new EditError(`Line ${i + 1}: cannot read this style line; change it in the text pane.`);
+      if (c < 0) throw new EditError(`Line ${i + 1}: cannot read this style line; change it in the Syntax pane.`);
       return [p.slice(0, c).trim(), p.slice(c + 1).trim()] as [string, string];
     });
     mine.push({ line: i, head: m[1], props });

@@ -167,13 +167,13 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
   try {
     before = await snapshot(text);
   } catch {
-    throw new E.EditError('The file has a syntax error right now. Fix it in the text pane first.');
+    throw new E.EditError('The file has a syntax error right now. Fix it in the Syntax pane first.');
   }
   if (EDGE_OPS.has(op.kind)) {
     const mine = parseDoc(text).edges.map((e) => `${e.from.id}>${e.to.id}`).join('|');
     const theirs = before.edges.map((e) => `${e.start}>${e.end}`).join('|');
     if (mine !== theirs) {
-      throw new E.EditError('The editor reads the arrows in this file differently from Mermaid, so it will not rewrite them. Change this arrow in the text pane.');
+      throw new E.EditError('The editor reads the arrows in this file differently from Mermaid, so it will not rewrite them. Change this arrow in the Syntax pane.');
     }
   }
   // Moving an arrow's end (T1.8): the new end is a node, or a group whose id is written
@@ -209,29 +209,29 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
   // Mermaid reads a file the same with or without its last line break, so `snapshot`
   // cannot see it go or come (bug hunt round 6, oA42).
   if (text.endsWith('\n') !== res.text.endsWith('\n')) {
-    throw new E.EditError('That change would have changed the file\'s last line break, so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have changed the file\'s last line break, so it was not made. Make it in the Syntax pane instead.');
   }
   if (directives(text) !== directives(res.text)) {
-    throw new E.EditError('That change would have changed the chart\'s settings (a %%{ }%% directive), so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have changed the chart\'s settings (a %%{ }%% directive), so it was not made. Make it in the Syntax pane instead.');
   }
   // The front matter holds the chart's title and settings, which `snapshot` does not
   // compare: no edit changes it (bug hunt round 4, A35).
   if (frontMatter(text) !== frontMatter(res.text)) {
-    throw new E.EditError('That change would have changed the front matter (the settings between the "---" lines at the top), so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have changed the front matter (the settings between the "---" lines at the top), so it was not made. Make it in the Syntax pane instead.');
   }
   let after: Snap;
   try {
     after = await snapshot(res.text);
   } catch {
-    throw new E.EditError('That change would have broken the file, so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have broken the file, so it was not made. Make it in the Syntax pane instead.');
   }
   const expected = expectOp(before, op, res);
   if (canon(expected) !== canon(after) || (op.kind === 'setEdgeEnd' &&
       (JSON.stringify(expected.edges) !== JSON.stringify(after.edges) || JSON.stringify(expected.subs) !== JSON.stringify(after.subs)))) {
-    throw new E.EditError('That change would have altered other parts of the chart, so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have altered other parts of the chart, so it was not made. Make it in the Syntax pane instead.');
   }
   if (descriptionsOf(text, op) !== descriptionsOf(res.text, op)) {
-    throw new E.EditError('That change would have altered a description, so it was not made. Make it in the text pane instead.');
+    throw new E.EditError('That change would have altered a description, so it was not made. Make it in the Syntax pane instead.');
   }
   return res;
 }

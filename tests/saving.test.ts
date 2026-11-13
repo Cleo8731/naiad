@@ -816,7 +816,7 @@ describe('a description being written is saved when the person leaves it (bug hu
     const { ui } = await refusedOnBlur();
     select(ui, { kind: 'node', id: 'clean' });
     await sleep(500);
-    expect(ui.toast()).toMatch(/^The file has a syntax error right now\. Fix it in the text pane first\. /);
+    expect(ui.toast()).toMatch(/^The file has a syntax error right now\. Fix it in the Syntax pane first\. /);
     expect(ui.toast()).toMatch(/The title you were typing for “Collect data” was not saved: “Collect everything”/);
   });
 

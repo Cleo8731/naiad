@@ -143,11 +143,11 @@ export class App {
         <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
         <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
-        <button data-act="text" title="Show or hide the flowchart's text" aria-pressed="true">Text</button>
+        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="true">Syntax</button>
       </header>
       <main>
         <section class="textpane">
-          <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The flowchart's text"></textarea>
+          <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The flowchart's Mermaid syntax"></textarea>
           <div class="notices"></div>
         </section>
         <section class="stage" tabindex="-1">
@@ -164,7 +164,7 @@ export class App {
     this.el = {
       name: q('.name'), status: q('.status'), area: q('textarea'), notices: q('.notices'), stage: q('.stage'),
       empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
-      redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="text"]'), pane: q('.textpane'),
+      redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'),
     };
@@ -947,7 +947,7 @@ export class App {
       if (act === 'undo') void this.history(true);
       if (act === 'redo') void this.history(false);
       if (act === 'fit') this.chart.fit();
-      if (act === 'text') this.toggleText();
+      if (act === 'syntax') this.toggleText();
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.clearHighlights();
     });
