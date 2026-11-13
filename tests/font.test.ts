@@ -47,7 +47,7 @@ test('the chart is drawn only once the font has loaded, so labels are measured i
   Object.defineProperty(document, 'fonts', { configurable: true, value: { load } });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const render = vi.spyOn(mermaid, 'render').mockRejectedValue(Error('stop here'));
-  const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn() };
+  const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
   const chart = new Chart(document.createElement('div'), events);
   const drawing = chart.draw('flowchart TD\n  A --> B\n', undefined as never);
   for (let i = 0; i < 5; i++) await Promise.resolve();

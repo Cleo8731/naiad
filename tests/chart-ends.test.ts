@@ -52,7 +52,7 @@ describe('drag interactions', () => {
     Object.assign(HTMLElement.prototype, { setPointerCapture() {}, hasPointerCapture: () => false, releasePointerCapture() {} });
     stage = document.createElement('div'); document.body.append(stage);
     stage.getBoundingClientRect = () => ({ ...rect, width: 400, height: 300, x: 100, y: 200, toJSON() {} });
-    events = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn() };
+    events = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
     chart = new Chart(stage, events);
     const canvas = stage.querySelector('.canvas')!;
     canvas.innerHTML = '<svg><g data-node="A"></g><g data-node="B"></g><g data-sub="subGraph0"></g><path data-edge-line="0" d="M10,20C20,20,30,40,50,60"></path></svg>';
@@ -227,6 +227,51 @@ describe('drag interactions', () => {
     expect(events.onMoveEnd).toHaveBeenCalledWith(0, 'start', 'B');
     const order = (f: unknown) => (f as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     expect(order(events.onSelect)).toBeLessThan(order(events.onMoveEnd)); // selected first (Q100)
+  });
+  // View mode (D4.3, T1.11): reading only.
+  test('View mode: no handles, no dot grid, a drag ended, and the chart\'s edits blocked', () => {
+    const connects = stage.querySelectorAll<HTMLButtonElement>('.connect-handle');
+    const ends = stage.querySelectorAll<HTMLButtonElement>('.end-handle');
+    const a = stage.querySelector('[data-node="A"]')!;
+    const b = stage.querySelector('[data-node="B"]')!;
+    chart.select({ kind: 'node', id: 'A' });
+    connects[0].dispatchEvent(pointer('pointerdown', 125, 220)); // a drag under way
+    expect(stage.querySelector('line')).not.toBeNull();
+    chart.setViewing(true);
+    expect(stage.querySelector('line')).toBeNull();
+    expect(frames.size).toBe(0);
+    expect(stage.classList.contains('viewing')).toBe(true); // `.stage.viewing` takes the dot grid off
+    expect(connects[0].hidden).toBe(true);
+    a.dispatchEvent(pointer('pointerover', 120, 220)); // lit under the pointer, but no handles
+    expect(a.classList.contains('hov')).toBe(true);
+    expect(connects[1].hidden).toBe(true);
+    chart.select({ kind: 'edge', index: 0 });
+    expect([...ends].map((e) => e.hidden)).toEqual([true, true, true, true]);
+
+    chart.select({ kind: 'node', id: 'A' });
+    connects[0].dispatchEvent(pointer('pointerdown', 125, 220)); // a hidden handle starts nothing
+    expect(stage.querySelector('line')).toBeNull();
+    b.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })); // would connect A to B
+    expect(events.onConnect).not.toHaveBeenCalled();
+    expect(events.onBlocked).toHaveBeenCalledTimes(1);
+    a.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); // would rename A
+    stage.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); // would add a node
+    expect(events.onRename).not.toHaveBeenCalled();
+    expect(events.onAddNode).not.toHaveBeenCalled();
+    expect(events.onBlocked).toHaveBeenCalledTimes(3);
+    b.dispatchEvent(new MouseEvent('click', { bubbles: true })); // a plain click still selects
+    expect(events.onSelect).toHaveBeenLastCalledWith({ kind: 'node', id: 'B' });
+    chart.setHighlighting(true); // and Highlight still highlights
+    a.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(events.onHighlight).toHaveBeenCalledWith({ kind: 'node', id: 'A' });
+    chart.setHighlighting(false);
+
+    chart.setViewing(false);
+    expect(stage.classList.contains('viewing')).toBe(false);
+    chart.select({ kind: 'node', id: 'A' });
+    expect(connects[0].hidden).toBe(false);
+    a.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(events.onRename).toHaveBeenCalledWith({ kind: 'node', id: 'A' });
   });
 });
 

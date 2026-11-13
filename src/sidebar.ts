@@ -1,5 +1,6 @@
 // The sidebar: opens when a node, arrow or group is clicked. For a node it shows the
-// title with the full description underneath; both can be edited there.
+// title with the full description underneath; both can be edited there, except in View
+// mode, where the panel shows them as text.
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -101,6 +102,8 @@ export class Sidebar {
   private draftOf: (() => Draft | null) | null = null;
   private resume: ((text: string) => void) | null = null;
   private boxes: (() => Typed | null)[] = [];
+  /** View mode (D4.3, T1.11): the panel shows the item as text, with nothing that changes it. */
+  private viewing = false;
 
   constructor(private root: HTMLElement, private actions: SidebarActions) {
     root.addEventListener('click', (e) => {
@@ -183,6 +186,16 @@ export class Sidebar {
    */
   renumber(from: number, to: number): void {
     if (this.key === `edge:${from}`) this.key = `edge:${to}`;
+  }
+
+  /**
+   * View mode on or off: the next `show` builds the panel again, as text or with its
+   * fields. The app writes what was typed in the panel before it switches to View.
+   */
+  setViewing(on: boolean): void {
+    if (on === this.viewing) return;
+    this.viewing = on;
+    this.key = '';
   }
 
   show(view: View | null): void {
@@ -323,6 +336,7 @@ export class Sidebar {
   }
 
   private build(view: View): HTMLElement[] {
+    if (this.viewing) return this.buildRead(view);
     if (view.kind === 'node') return this.buildNode(view);
     if (view.kind === 'edge') return this.buildEdge(view);
     return this.buildSub(view);
@@ -479,5 +493,50 @@ export class Sidebar {
         h('button', { click: () => a.addNodeIn(id) }, 'Add node inside'),
         h('button', { class: 'danger', title: 'Removes the frame; the nodes stay', click: () => a.ungroup(id) }, 'Ungroup')),
     ];
+  }
+
+  /**
+   * The panel in View mode: a node's title and description, an arrow's ends and label, a
+   * group's title and size, as text that follows the file. No field or button changes the
+   * flowchart; links in a description still open.
+   */
+  private buildRead(view: View): HTMLElement[] {
+    const title = h('h2', { class: 'read-title' });
+    if (view.kind === 'node') {
+      const body = h('div', { class: 'desc-body' });
+      let shown: string | null = null;
+      this.sync.push((v) => {
+        const n = v as NodeView;
+        title.textContent = n.title || n.id;
+        if (n.description === shown) return; // a selection being read stays
+        shown = n.description;
+        if (shown.trim()) body.innerHTML = renderMarkdown(shown);
+        else body.replaceChildren(h('p', { class: 'empty' }, 'No description.'));
+      });
+      return [
+        this.header('Node', view.id),
+        title,
+        h('div', { class: 'desc' }, h('div', { class: 'desc-head' }, h('span', {}, 'Description')), body),
+      ];
+    }
+    if (view.kind === 'edge') {
+      const head = this.header('Arrow', `#${view.index}`);
+      const ends = h('div', { class: 'ends' });
+      this.sync.push((v) => {
+        const e = v as EdgeView;
+        head.querySelector('code')!.textContent = `#${e.index}`;
+        ends.replaceChildren(h('span', {}, e.from), h('span', { class: 'arrow' }, '→'), h('span', {}, e.to));
+        title.textContent = e.label;
+        title.hidden = !e.label;
+      });
+      return [head, ends, title];
+    }
+    const count = h('p', { class: 'hint' });
+    this.sync.push((v) => {
+      const g = v as SubView;
+      title.textContent = g.title || g.id;
+      count.textContent = g.count === 1 ? '1 item inside.' : `${g.count} items inside.`;
+    });
+    return [this.header('Group', view.id), title, count];
   }
 }

@@ -42,7 +42,7 @@ describe('trace on hover', () => {
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [] });
     stage = document.createElement('div');
     document.body.append(stage);
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
     chart = new Chart(stage, events);
     stage.querySelector('.canvas')!.innerHTML = '<svg><g class="node" data-node="A"></g><g class="node" data-node="B"></g><g class="node" data-node="C"></g>'
       + '<path data-edge-line="0"></path><path class="edge-hit" data-edge="0"></path><path data-edge-line="1"></path><path class="edge-hit" data-edge="1"></path>'

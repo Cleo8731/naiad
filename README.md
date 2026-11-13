@@ -60,6 +60,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Zoom / pan | Mouse wheel / drag empty space |
 | Point at nodes, arrows or groups with an agent | **Highlight** (key H), then click them; **Clear** takes every highlight off |
 | Show or hide the flowchart's Mermaid syntax | **Syntax** (hidden when Naiad starts, unless you left it open) |
+| Read without changing anything | **View**: no dots to drag, no dot grid, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Press **View** again to edit. Naiad opens in the mode you left it in |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
 view that way, at up to 1,200 px a second, until the chart's edge on that side comes
@@ -141,7 +142,8 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
-- Whether the Syntax pane is shown, and its width, in the window's own storage.
+- Whether the Syntax pane is shown, its width, and whether **View** is on, in the
+  window's own storage.
 - Naiad makes no network requests of its own. An image in a description that points to
   a web address is loaded from there when the description is shown, and a link in a
   description opens in your browser.

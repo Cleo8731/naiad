@@ -18,6 +18,8 @@ export interface ChartEvents {
   onMoveEnd(index: number, end: 'start' | 'end', id: string): void;
   onAddNode(): void;
   onRename(target: Target): void;
+  /** An edit tried on the chart in View mode (a double-click, a Shift-click that would connect). */
+  onBlocked(): void;
 }
 
 /** Rounder corners (the user, 2026-11-13): a rounded node's corners and an arrow's bends, in px. */
@@ -226,6 +228,8 @@ export class Chart {
   private highlighted: Target[] = [];
   /** While the Highlight switch is on, a click highlights instead of selecting. */
   private highlighting = false;
+  /** View mode (D4.3, T1.11): no handles, no dot grid, and the chart's edits turned off. */
+  private viewing = false;
   private snap: Snap | null = null;
   private fitted = false;
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
@@ -447,6 +451,14 @@ export class Chart {
     this.placeHandles();
   }
 
+  /** View mode: a drag under way ends, the handles go, and so does the dot grid (`.stage.viewing`). */
+  setViewing(on: boolean): void {
+    if (on) this.cancelDrag();
+    this.viewing = on;
+    this.stage.classList.toggle('viewing', on);
+    this.placeHandles();
+  }
+
   /** Draws the highlights (D2.4): the items named in the highlights file. */
   setHighlights(targets: Target[]): void {
     this.highlighted = targets;
@@ -481,7 +493,7 @@ export class Chart {
     for (const key of ['sel', 'hover'] as const) {
       const set = this.sets[key];
       if (this.drag?.set !== set) set.owner = owners[key]; // the set being dragged keeps its item
-      const owner = this.highlighting ? null : set.owner;
+      const owner = this.highlighting || this.viewing ? null : set.owner;
       const el = owner && owner.kind !== 'edge' && this.allowed(owner) ? this.elementOf(owner) : null;
       set.connect.hidden = !el;
       if (el) {
@@ -530,7 +542,7 @@ export class Chart {
   }
 
   private beginDrag(e: PointerEvent, set: Handles, button: HTMLButtonElement, fixedClient: Point, kind: Drag['kind'], id: string, index?: number, end?: End): void {
-    if (e.button !== 0 || this.drag) return;
+    if (e.button !== 0 || this.drag || this.viewing) return;
     e.preventDefault();
     e.stopPropagation();
     this.trace(null);
@@ -654,13 +666,15 @@ export class Chart {
       const t = this.targetAt(e.target as Element);
       if (this.highlighting && t) { this.events.onHighlight(t); return; }
       if (e.shiftKey && t && t.kind !== 'edge' && this.allowed(t) && this.selected && this.selected.kind !== 'edge' && this.allowed(this.selected)) {
-        this.events.onConnect(this.selected.id, t.id);
+        if (this.viewing) this.events.onBlocked();
+        else this.events.onConnect(this.selected.id, t.id);
         return;
       }
       this.events.onSelect(t);
     });
     stage.addEventListener('dblclick', (e) => {
       if (this.highlighting) return; // two quick clicks there are two highlight clicks
+      if (this.viewing) { this.events.onBlocked(); return; } // a new node or a rename
       const t = this.targetAt(e.target as Element);
       if (t) this.events.onRename(t);
       else if (this.snap) this.events.onAddNode();

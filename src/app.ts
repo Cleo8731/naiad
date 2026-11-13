@@ -111,6 +111,12 @@ export class App {
   private hlVersion = 0;
   /** The Highlight switch. */
   private hlOn = false;
+  /**
+   * View mode (D4.3, T1.11): reading only. No handles, no dot grid, and no way to change
+   * the flowchart outside the Syntax pane, which is read-only too. Kept by the app across
+   * starts, never in the file (Q114).
+   */
+  private viewing = false;
 
   private chart!: Chart;
   private sidebar!: Sidebar;
@@ -118,7 +124,7 @@ export class App {
     name: HTMLElement; status: HTMLElement; area: HTMLTextAreaElement; notices: HTMLElement; stage: HTMLElement;
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    highlight: HTMLButtonElement; clear: HTMLButtonElement;
+    highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement;
   };
 
   constructor(private root: HTMLElement, private backend: Backend) {}
@@ -146,6 +152,7 @@ export class App {
         <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
         <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">Syntax</button>
+        <button data-act="view" title="View mode: read the chart without changing it (press again to edit)" aria-pressed="false">View</button>
       </header>
       <main>
         <section class="textpane" hidden>
@@ -168,7 +175,7 @@ export class App {
       empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
-      clear: q('[data-act="clear"]'),
+      clear: q('[data-act="clear"]'), view: q('[data-act="view"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
@@ -188,6 +195,7 @@ export class App {
       onMoveEnd: (index, end, id) => { void this.moveEdgeEnd(index, end, id); },
       onAddNode: () => { void this.addNode(null); },
       onRename: (t) => { this.select(t); this.sidebar.focusTitle(); },
+      onBlocked: () => this.viewBlocked(),
     });
     this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
       close: () => this.select(null),
@@ -220,6 +228,8 @@ export class App {
     this.bind();
     // The Syntax pane starts hidden, and opens at start only if the person left it open.
     if (remember('syntaxpane') === 'shown') this.toggleText(true);
+    // Naiad opens in the mode it was last left in (Q114).
+    if (remember('mode') === 'view') this.showViewing(true);
     // A notice's details wrap to another height when the window's width changes.
     window.addEventListener('resize', () => this.padUnderNotices());
     const width = Number(remember('textpane-width'));
@@ -444,6 +454,63 @@ export class App {
     this.hlOn = on;
     this.chart.setHighlighting(on);
     this.el.highlight.setAttribute('aria-pressed', String(on));
+  }
+
+  /**
+   * The View button (Q115). Going to View, a description or a title typed in the sidebar
+   * and not yet in the file is written first, as turning to another item does (C36, Q90);
+   * one that cannot be written keeps Naiad in Edit mode, with the text still in its box.
+   */
+  private async setViewing(on: boolean): Promise<void> {
+    if (on && !this.viewing) {
+      this.refusal = null;
+      const why = () => (this.refusal ? `${this.refusal} ` : '');
+      if (!(await this.writeDraft())) {
+        this.toast(`${why()}The description you were writing was not saved, so Naiad stays in Edit mode.`);
+        return;
+      }
+      const lost = await this.writeTyped();
+      if (lost) {
+        this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
+        return;
+      }
+      await this.sidebar.settle(); // a description Done is writing is in the file first
+    }
+    this.showViewing(on);
+  }
+
+  private showViewing(on: boolean): void {
+    this.viewing = on;
+    this.chart.setViewing(on);
+    this.sidebar.setViewing(on);
+    this.el.view.setAttribute('aria-pressed', String(on));
+    // The toolbar keeps the file's name, Open, New, Highlight, Fit, Syntax and View.
+    for (const control of [this.el.add, this.el.undo, this.el.redo, this.el.dir]) control.hidden = on;
+    this.el.area.readOnly = on;
+    if (!on) this.endViewNotice();
+    remember('mode', on ? 'view' : 'edit');
+    this.paint();
+  }
+
+  /** Whether the notice for an edit tried in View mode shows (`viewBlocked`). */
+  private viewNotice = false;
+  private viewNoticeTimer: number | undefined;
+
+  /**
+   * An edit tried in View mode (a double-click on the chart, the Delete key, typing in
+   * the Syntax pane): nothing changes, and a notice says why for as long as a toast
+   * shows (D4.3).
+   */
+  private viewBlocked(): void {
+    this.viewNotice = true;
+    window.clearTimeout(this.viewNoticeTimer);
+    this.viewNoticeTimer = window.setTimeout(() => { this.viewNotice = false; this.paintNotices(); }, 6500);
+    this.paintNotices();
+  }
+
+  private endViewNotice(): void {
+    window.clearTimeout(this.viewNoticeTimer);
+    this.viewNotice = false;
   }
 
   private async pickAndOpen(): Promise<void> {
@@ -696,6 +763,8 @@ export class App {
   private refusal: string | null = null;
 
   private async edit(op: Op): Promise<OpResult | null> {
+    // In View mode no edit starts; one started before the switch is finished (`setViewing`).
+    if (this.viewing) { this.viewBlocked(); return null; }
     await this.takeTyping();
     let result: OpResult | null = null;
     // Checked and put in as one job, so a reload can never land between the two.
@@ -751,6 +820,7 @@ export class App {
   }
 
   private async addNode(parent: string | null): Promise<void> {
+    if (this.viewing) { this.viewBlocked(); return; }
     const sel = this.selection;
     const into = parent ?? (sel?.kind === 'sub' ? sel.id : null);
     if (!(await this.writeDraft())) return; // the new node takes the panel (C36)
@@ -764,6 +834,7 @@ export class App {
    * would take back a change made on disk asks first, since it saves over that change (C3).
    */
   private async history(back: boolean): Promise<void> {
+    if (this.viewing) { this.viewBlocked(); return; } // Undo and Redo save, so they are edits too
     await this.takeTyping();
     await this.queue(async () => {
       await this.takeTypingNow(); // typed while this job waited (C25)
@@ -811,6 +882,7 @@ export class App {
   private deleteSelection(): void {
     const s = this.selection;
     if (!s) return;
+    if (this.viewing) { this.viewBlocked(); return; }
     if (s.kind === 'node') void this.edit({ kind: 'deleteNode', id: s.id });
     else if (s.kind === 'edge') void this.edit({ kind: 'deleteEdge', index: s.index });
     else void this.edit({ kind: 'ungroup', id: s.id });
@@ -935,6 +1007,9 @@ export class App {
       items.push(div);
     };
     const showSyntax = () => (this.el.pane.hidden ? [button('Show syntax', () => this.toggleText(true))] : []);
+    if (this.viewNotice && this.viewing) {
+      notice('info', 'View mode: switch to Edit to change the chart', [button('Edit', () => { void this.setViewing(false); })]);
+    }
     if (this.error) {
       const details = button(this.noticeDetails ? 'Hide details' : 'Details', () => { this.noticeDetails = !this.noticeDetails; this.paintNotices(); });
       // A file that was broken when it was opened has no last good version: the chart is empty.
@@ -949,7 +1024,8 @@ export class App {
     }
     if (this.doc.warnings.length) {
       const lines = this.doc.warnings.map((w) => String(w.line + 1)).join(', ');
-      notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, [button('Change to "%% ."', () => {
+      // Its button changes the file, so View mode leaves it out.
+      notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, this.viewing ? [] : [button('Change to "%% ."', () => {
         void this.queue(async () => { await this.takeTypingNow(); await this.apply(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); });
       })]);
     }
@@ -993,6 +1069,7 @@ export class App {
       if (act === 'syntax') this.toggleText();
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.clearHighlights();
+      if (act === 'view') void this.setViewing(!this.viewing);
     });
     this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
 
@@ -1001,6 +1078,14 @@ export class App {
       this.textTimer = window.setTimeout(() => { this.textTimer = undefined; void this.queue(() => this.takeTypingNow()); }, 220);
     });
     this.el.area.addEventListener('keydown', (e) => {
+      if (this.viewing) {
+        // The pane is read-only: a key that would change its text shows why it does not.
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
+        const typing = !mod && !e.altKey && (e.key.length === 1 || key === 'enter' || key === 'backspace' || key === 'delete');
+        if (typing || (mod && ['v', 'x', 'z', 'y'].includes(key))) this.viewBlocked();
+        return; // Tab moves on, as in any read-only box
+      }
       if (e.key !== 'Tab') return;
       e.preventDefault();
       this.el.area.setRangeText('    ', this.el.area.selectionStart, this.el.area.selectionEnd, 'end');
@@ -1034,7 +1119,11 @@ export class App {
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.deleteSelection(); }
       else if (key === 'escape') { if (this.hlOn) this.setHighlighting(false); else this.select(null); }
       else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled) this.setHighlighting(!this.hlOn);
-      else if ((key === 'enter' || key === 'f2') && this.selection) { e.preventDefault(); this.sidebar.focusTitle(); }
+      else if ((key === 'enter' || key === 'f2') && this.selection) {
+        e.preventDefault();
+        if (this.viewing) this.viewBlocked(); // it puts the cursor in the title, to type a new one
+        else this.sidebar.focusTitle();
+      }
     });
 
     window.addEventListener('beforeunload', (e) => {

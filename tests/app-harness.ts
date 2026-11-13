@@ -18,7 +18,7 @@ export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
     constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; }
-    resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} fit() {}
+    resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
     async draw() { if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay); }
   },
 });
