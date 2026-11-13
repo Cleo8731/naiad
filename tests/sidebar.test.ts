@@ -6,8 +6,9 @@ import { Sidebar, type EdgeView, type NodeView, type SidebarActions } from '../s
 function sidebar() {
   document.body.innerHTML = '<aside></aside>';
   const root = document.querySelector('aside')!;
+  // Each action written, as in the app: a box's write waits for its answer.
   const actions = new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
-    get: (all, name: string) => (all[name] ??= vi.fn()),
+    get: (all, name: string) => (all[name] ??= vi.fn(() => Promise.resolve(true))),
   });
   return { root, actions, side: new Sidebar(root, actions as unknown as SidebarActions) };
 }
