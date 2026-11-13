@@ -530,7 +530,7 @@ function setextHeading(r: Reading, i: number): string | null {
     const w = indentOf(r, k);
     if (col >= 0) {
       if (w >= col) {
-        const now = w - col >= 4 ? open : opensText(line.trimStart(), open);
+        const now: boolean | null = w - col >= 4 ? open : opensText(line.trimStart(), open);
         if (now === null) return null;
         open = now;
         continue;
@@ -558,7 +558,7 @@ function setextHeading(r: Reading, i: number): string | null {
       // A list item begins. Its text, past the marker, is open unless it is empty, a
       // code sample (five spaces or more past the marker), a heading or a break.
       const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
-      const now = emptyItem(item) || gap > 4 ? false : opensText(line.slice(item[0].length), false);
+      const now: boolean | null = emptyItem(item) || gap > 4 ? false : opensText(line.slice(item[0].length), false);
       if (now === null) return null;
       col = textColumn(item);
       open = now;
