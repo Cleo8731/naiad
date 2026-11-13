@@ -298,7 +298,9 @@ More text.
   while under its text it is more of it, a `===` or `--` line with no text above it
   is text, so `==` over `===` is a heading, text right under a quote whose last line
   is blank, a heading, a thematic break or a fence line is no more of the quote, so it
-  may be a heading, a heading inside a list item is the item's,
+  may be a heading, so is text under a list item, indented less than the item's text,
+  once no text is open in the item (it is empty, or ends in a heading or a code
+  sample) or another item began, a heading inside a list item is the item's,
   which does not count, and one inside HTML is none),
   whatever the lines below each say: the shown block may have been changed in
   place, with the text below it and its heading, and the old text kept with the copy.

@@ -687,6 +687,37 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again(part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R10: a list item above a heading\'s text ends where Markdown ends it (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    // A heading, a thematic break or a code sample in the item leaves no text open in
+    // it, so a line under it indented less than the item's text is the file's own.
+    expect(headings('  + Flow\n    ## Flow\ntext\n ==')).toBe('1 text');
+    expect(headings('  1) Flow\n     #### Notes\n  text\n==')).toBe('1 text');
+    expect(headings('- # h\nTitle\n===')).toBe('1 Title');
+    expect(headings('-     code\nTitle\n===')).toBe('1 Title');
+    expect(headings('- a\n    ---\nTitle\n===')).toBe('1 Title');
+    expect(headings('- a\n  ===\nTitle\n---')).toBe('2 Title');
+    expect(headings('- # h\n      code\nTitle\n===')).toBe('1 Title');
+    // A marker less indented than the item's text starts another item, which may hold nothing.
+    expect(headings('  1) item\n  +\nx\n  --')).toBe('2 x');
+    expect(headings(' - item like\n 1.\nPlan\n  - ')).toBe('2 Plan');
+    expect(headings('- a\n-\nTitle\n===')).toBe('1 Title');
+    // Text open in the item takes the lines under it, however indented.
+    expect(headings('- a\n  b\nTitle\n===')).toBe('');
+    expect(headings('- a\n- b\nTitle\n===')).toBe('');
+    expect(headings('- a\n      code\nTitle\n===')).toBe('');
+    expect(headings('- a\n  - b\nTitle\n===')).toBe('');
+    expect(headings('- # h\n  - b\nTitle\n===')).toBe('');
+    expect(headings('- a\n\n  - # b\n  text\n  ===')).toBe('');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `- # h\n${head}\n===\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

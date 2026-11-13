@@ -488,8 +488,9 @@ const ENDS_PARAGRAPH = /^(#{1,6}([ \t]|$)|([-*_])([ \t]*\3){2,}[ \t]*$)/;
  * or a thematic break, are read from the top, as Markdown reads them: a line indented
  * four columns or more is more of the text under text, else a code sample, and the
  * text starts below it (the CommonMark comparison, T5.16, R5). A `===` or `--` line
- * with no text above it is text itself (R7); so is the text under a list item with
- * nothing on its line, when indented less than the item's text (R6). Text standing in a list
+ * with no text above it is text itself (R7). A list item above the text ends where
+ * Markdown ends it: at a line indented less than its text, unless text open in the item
+ * goes on in that line (R6, R10). Text standing in a list
  * item, a quote or a table is not taken for one: under it, a `---` is a thematic
  * break, and a `===` more text (in a table, a row). A line starting with `|` is text
  * unless a table starts. Lines of HTML are marked (`htmlBlock`), so the text starts
@@ -515,14 +516,36 @@ function setextHeading(r: Reading, i: number): string | null {
     }
     s = k;
   }
-  // Down from there: the paragraph open on line i, if any, starts on line `start`.
+  // Down from there: the paragraph open on line i, if any, starts on line `start`. A
+  // list item begun in these lines holds the lines under it indented to its text
+  // (column `col`) and, while text is open in it (`open`), the text lines under it
+  // however indented; any other line ended it, and is the file's own (R6, R10). The
+  // file's own lines up to the text's first (`own`) must stand in no item begun above.
   let start = -1;
-  const ended = new Set<number>(); // items with nothing on their line, ended by the line under them
+  let col = -1;
+  let open = false;
+  const own: number[] = [];
   for (let k = s; k < i; k++) {
     const line = r.lines[k];
-    const ws = lead(k);
-    if (columns(ws) >= 4) continue; // more text, or a code sample: the text starts below it
-    if (start >= 0 && /^(=+|-+)[ \t]*$/.test(line.slice(ws.length))) {
+    const w = indentOf(r, k);
+    if (col >= 0) {
+      if (w >= col) {
+        const now = w - col >= 4 ? open : opensText(line.trimStart(), open);
+        if (now === null) return null;
+        open = now;
+        continue;
+      }
+      if (open && (w >= 4 || !listItem(line))) {
+        if (FENCE.test(line)) return null;
+        continue; // more of the item's text
+      }
+      col = -1; // the item ended: by a line of the file's own, or by another item
+    }
+    if (w >= 4) { // more text, or a code sample: the text starts below it
+      if (start < 0) own.push(k);
+      continue;
+    }
+    if (start >= 0 && /^(=+|-+)[ \t]*$/.test(line.trimStart())) {
       // An underline: the text above is a heading, and the next starts below it. Under
       // link reference definitions alone, it is text (R7).
       const above = r.lines.slice(start, k).map((l) => l.trim());
@@ -532,19 +555,24 @@ function setextHeading(r: Reading, i: number): string | null {
     const item = listItem(line);
     if (item) {
       if (start >= 0 && !mayInterrupt(line, item)) continue; // more of the text
-      // An item with nothing on its line holds no text under it indented less than its
-      // own text: that line ended it, and any list it stands in (R6).
-      if (start < 0 && emptyItem(item) && k + 1 < i && indentOf(r, k + 1) < textColumn(item)) {
-        ended.add(k);
-        continue;
-      }
-      return null; // a list item: the lines under it may stand in it
+      // A list item begins. Its text, past the marker, is open unless it is empty, a
+      // code sample (five spaces or more past the marker), a heading or a break.
+      const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
+      const now = emptyItem(item) || gap > 4 ? false : opensText(line.slice(item[0].length), false);
+      if (now === null) return null;
+      col = textColumn(item);
+      open = now;
+      start = -1;
+      continue;
     }
     if (FENCE.test(line)) return null;
-    if (start < 0) start = k;
+    if (start < 0) {
+      start = k;
+      own.push(k);
+    }
   }
   if (start < 0) return null;
-  for (let k = s; k <= start; k++) if (!ended.has(k) && inItem(r, k)) return null;
+  for (const k of own) if (inItem(r, k)) return null;
   if (inItem(r, i)) return null;
   const text = r.lines.slice(start, i).map((l) => l.trim());
   const heading = text.slice(definitionLines(text));
@@ -553,6 +581,20 @@ function setextHeading(r: Reading, i: number): string | null {
   // with `|` alone made no table, and the heading under it was not read).
   for (let j = 0; j + 1 < heading.length; j++) if (DELIMITER_ROW.test(heading[j + 1]) && cells(heading[j + 1]) === cells(heading[j])) return null;
   return heading.length ? heading.join(' ') : null;
+}
+
+/**
+ * Whether text is open in a list item after a line in it whose text, its indent taken
+ * off, is `t`, when text was open before it (`open`): an underline or a heading or a
+ * thematic break closes it, other text opens it. Null when unsure: a quote that may
+ * hold text, a fence, a list item in the item, or a `-` that may start one.
+ */
+function opensText(t: string, open: boolean): boolean | null {
+  if (/^(=+|-+)[ \t]*$/.test(t)) return open ? false : /^-[ \t]*$/.test(t) ? null : !/^-{3}/.test(t);
+  if (ENDS_PARAGRAPH.test(t)) return false;
+  if (t[0] === '>') return quoteCloses(t) ? false : null;
+  if (FENCE.test(t) || listItem(t)) return null;
+  return true;
 }
 
 /**
