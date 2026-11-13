@@ -350,12 +350,15 @@ impl Server {
         pages.is_empty().then(|| self.active.lock().map(|a| a.elapsed()).unwrap_or(Duration::ZERO))
     }
 
-    /// A page says it is closing: what the highlights hold now is kept to compare.
+    /// A page says it is closing: what the highlights hold now is kept to compare. The
+    /// read and the store are one step (`left` held), so that of two goodbyes at once the
+    /// later read is the one kept (bug hunt round 7, F26).
     fn bye(&self) {
+        let mut was = self.left.lock().unwrap_or_else(|e| e.into_inner());
         let left = super::highlights::read(Path::new(&self.file)).ok().map(|t| t.unwrap_or_default().into_bytes());
-        if let Ok(mut was) = self.left.lock() {
-            *was = left;
-        }
+        between("goodbye read");
+        *was = left;
+        drop(was);
         self.said_bye.store(true, Ordering::SeqCst);
     }
 
@@ -370,7 +373,7 @@ impl Server {
         let pages = self.pages.lock().unwrap_or_else(|e| e.into_inner());
         let idle = self.idle(&pages);
         let gone = idle.is_some_and(|d| d >= PING) && self.said_bye.load(Ordering::SeqCst);
-        between();
+        between("look");
         if gone {
             let left = self.left.lock().map(|l| l.clone()).unwrap_or(None);
             super::highlights::stop_showing(left.as_deref());
@@ -394,15 +397,16 @@ fn time_is_up(idle: Option<Duration>) -> bool {
 
 #[cfg(test)]
 thread_local! {
-    /// Run between the pinger's look and its deed, by a test of that moment.
-    static BETWEEN: std::cell::RefCell<Option<Box<dyn Fn()>>> = const { std::cell::RefCell::new(None) };
+    /// Run at a moment a test stops at, by its name: between the pinger's look and its
+    /// deed ("look"), and between a goodbye's read and its store ("goodbye read").
+    static BETWEEN: std::cell::RefCell<Option<Box<dyn Fn(&str)>>> = const { std::cell::RefCell::new(None) };
 }
 
-fn between() {
+fn between(_at: &str) {
     #[cfg(test)]
     BETWEEN.with(|run| {
         if let Some(run) = &*run.borrow() {
-            run();
+            run(_at);
         }
     });
 }
@@ -993,9 +997,11 @@ mod tests {
         };
         // It comes between the pinger's look and its deed, and may finish meanwhile.
         BETWEEN.with(|run| {
-            *run.borrow_mut() = Some(Box::new(move || {
-                go.send(()).unwrap();
-                let _ = finished.recv_timeout(Duration::from_millis(500));
+            *run.borrow_mut() = Some(Box::new(move |at: &str| {
+                if at == "look" {
+                    go.send(()).unwrap();
+                    let _ = finished.recv_timeout(Duration::from_millis(500));
+                }
             }))
         });
         server.after_ping(|| {});
@@ -1004,6 +1010,43 @@ mod tests {
         assert!(shown().is_some(), "the open page counts as a view");
         assert_eq!(read, super::super::highlights::read(&flow).unwrap(), "the page shows what the file holds");
         super::super::highlights::show(None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 7, F26: a goodbye read the highlights, then stored them in `left`
+    /// under a lock of its own, so a second goodbye between the two had its newer text
+    /// replaced by the older, and an agent that then wrote the older text back lost it in
+    /// the cleanup. A goodbye's read and its store are one step.
+    #[test]
+    fn of_two_goodbyes_at_once_the_later_read_is_compared() {
+        use super::super::highlights::{file_of, write, SHOWING};
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let (dir, flow, server) = after_goodbye("f26");
+        let server = Arc::new(server);
+        let file = file_of(&flow).unwrap();
+        // Once the first goodbye has read "a", a page writes "b" and the second page says
+        // goodbye: it waits for the first, or, if nothing makes it wait, ends first.
+        let once = std::cell::RefCell::new(Some((server.clone(), flow.clone())));
+        let second = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let into = second.clone();
+        BETWEEN.with(|run| {
+            *run.borrow_mut() = Some(Box::new(move |at: &str| {
+                let Some((server, flow)) = (at == "goodbye read").then(|| once.borrow_mut().take()).flatten() else { return };
+                write(&flow, "b\n", None).unwrap();
+                let (done, ended) = std::sync::mpsc::channel();
+                *into.borrow_mut() = Some(std::thread::spawn(move || {
+                    server.bye();
+                    let _ = done.send(());
+                }));
+                let _ = ended.recv_timeout(Duration::from_millis(500));
+            }))
+        });
+        server.bye();
+        BETWEEN.with(|run| *run.borrow_mut() = None);
+        second.borrow_mut().take().expect("the second goodbye ran").join().unwrap();
+        fs::write(&file, "a\n").unwrap(); // an agent writes the older text back
+        server.after_ping(|| {});
+        assert_eq!(fs::read_to_string(&file).ok().as_deref(), Some("a\n"), "written after the last goodbye's read: kept");
         fs::remove_dir_all(&dir).unwrap();
     }
 }
