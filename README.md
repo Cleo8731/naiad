@@ -53,7 +53,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Connect two nodes | Drag from the dot on a selected node to another node, or Shift-click the second node |
 | Change an arrow | Click it: label, line, head |
 | Move an arrow's start or end | Click the arrow, then drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |
-| Group nodes | Select a node, then **Group** in the sidebar |
+| Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |
 | Delete | Select, then Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Zoom / pan | Mouse wheel / drag empty space |
