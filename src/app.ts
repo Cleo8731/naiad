@@ -249,6 +249,7 @@ export class App {
         }
       }
       await this.flushSave();
+      if (await this.sidebar.settle()) continue; // a Done pressed meanwhile: written, then saved (round 7, oC57)
       if (!letGoDraft && this.sidebar.draft()) continue;
       if (!letGoBox && this.sidebar.typed()) continue;
       if (!this.typingWaits() || more++ >= 5) break;
@@ -1059,7 +1060,7 @@ export class App {
     window.addEventListener('beforeunload', (e) => {
       // A change not yet on disk: the browser asks before the page goes. (The desktop
       // app's window asks in canClose, before the page is unloaded.)
-      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null || this.sidebar.typed() !== null);
+      const waiting = this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null || this.sidebar.typed() !== null || this.sidebar.writing());
       void this.flushSave();
       if (waiting && this.backend.kind !== 'desktop') {
         e.preventDefault();

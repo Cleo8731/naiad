@@ -224,7 +224,9 @@ More text.
   it go, it goes back into its box. Edit pressed again while Done writes it shows the
   text being written, and if the write fails the text stays in the box, with whatever
   was typed into it meanwhile, unless Done was pressed again since: the newer text
-  stands, and the older never comes back over it. Cancel (Esc) drops it. A title, an
+  stands, and the older never comes back over it. Cancel (Esc) drops it. Closing waits
+  for a description Done is writing, and the browser asks before the page goes while
+  one is written. A title, an
   arrow's label or a group's title typed in the sidebar and not yet entered is written
   the same way before Naiad closes or shows another flowchart or file, with what is
   typed while it is written; if it cannot be written, Naiad asks, and unless the person

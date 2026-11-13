@@ -1078,6 +1078,55 @@ describe('a description being written is saved when the person leaves it (bug hu
     }
   });
 
+  // Bug hunt round 7, oC57: Done pressed while the close saved was not waited for: the
+  // panel no longer counted the description as being written.
+  it('oC57: a description Done pressed while the close saves the file is written before the close ends', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    edit();
+    box()!.value = 'D1 the description being written.';
+    box()!.dispatchEvent(new Event('input'));
+    let release!: () => void;
+    let started!: () => void;
+    const reading = new Promise<void>((r) => (started = r));
+    disk.afterRead = () => {
+      disk.afterRead = null;
+      started();
+      return new Promise<void>((r) => (release = r));
+    };
+    const closing = disk.closeGuard!();
+    await reading;
+    box()!.value = 'D2 the newer text, Done pressed during the close.';
+    box()!.dispatchEvent(new Event('input'));
+    done();
+    release();
+    expect(await closing).toBe(true);
+    expect(disk.asked).toEqual([]);
+    expect(disk.files.get(FILE)).toContain('%% D2 the newer text, Done pressed during the close.');
+  });
+
+  it('oC57: the browser asks before the page goes while a Done is written', async () => {
+    const { disk, ui } = await start();
+    select(ui, { kind: 'node', id: 'collect' });
+    await sleep(50);
+    edit();
+    box()!.value = DRAFT;
+    box()!.dispatchEvent(new Event('input'));
+    timing.delay = 300;
+    try {
+      done();
+      await sleep(30);
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(true);
+      await sleep(1000);
+      expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    } finally {
+      timing.delay = 0;
+    }
+  });
+
   // Bug hunt round 6, oC53: the close's later saves, for typing in the text pane (C43),
   // looked at the text pane only: a description typed meanwhile was neither written nor
   // asked about.

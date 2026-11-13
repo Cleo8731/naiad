@@ -136,6 +136,31 @@ export class Sidebar {
     return null;
   }
 
+  /** Done's writes of a description under way. */
+  private writes = new Set<Promise<unknown>>();
+
+  private track(write: Promise<unknown>): void {
+    this.writes.add(write);
+    const end = () => { this.writes.delete(write); };
+    write.then(end, end);
+  }
+
+  /** Whether a description Done wrote is still being written. */
+  writing(): boolean {
+    return this.writes.size > 0;
+  }
+
+  /**
+   * Waits for the descriptions Done is writing; true when there were any. The app waits
+   * before the file is left, so a Done pressed as it is left is in the file first (bug
+   * hunt round 7, oC57).
+   */
+  async settle(): Promise<boolean> {
+    if (!this.writes.size) return false;
+    await Promise.allSettled([...this.writes]);
+    return true;
+  }
+
   /**
    * Opens the description of node `id` for writing again with `text`, when the panel
    * shows that node: a description that could not be written goes back into its box
@@ -343,7 +368,7 @@ export class Sidebar {
       if (save && area.value !== started) {
         const text = area.value;
         pending = latest = text;
-        void Promise.resolve(a.setDescription(id, text)).finally(() => { if (pending === text) pending = null; });
+        this.track(Promise.resolve(a.setDescription(id, text)).finally(() => { if (pending === text) pending = null; }));
       }
       paint();
     };
