@@ -38,7 +38,7 @@ The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
 
 No installer is published yet. To use Naiad now, make the installer yourself
 ([Building from source](#building-from-source)) and run
-`src-tauri/target/release/bundle/nsis/Naiad_0.3.0_x64-setup.exe` (2.7 MB). It installs
+`src-tauri/target/release/bundle/nsis/Naiad_0.3.0_x64-setup.exe` (2.8 MB). It installs
 Naiad for your Windows user in `%LOCALAPPDATA%\Naiad`, registers it for `.mmd` and
 `.mermaid` files, so a double-click on a `.mmd` file opens it, and adds the `naiad`
 command to your PATH. Then open a file with **Open**, or start one with **New**.
@@ -181,4 +181,5 @@ Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 
 ## Licence
 
-[MIT](LICENSE).
+[MIT](LICENSE). The bundled Nunito font is under the
+[SIL Open Font License 1.1](src/fonts/OFL.txt).

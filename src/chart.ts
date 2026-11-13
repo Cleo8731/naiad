@@ -24,8 +24,19 @@ export interface ChartEvents {
 const ROUNDED_NODE_RADIUS = 14;
 const BEND_RADIUS = 14;
 
+/** Nunito (the user, 2026-11-13), bundled in `src/fonts/` and declared in `style.css`. */
+export const CHART_FONT = 'Nunito, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
+
+/**
+ * Mermaid sizes each box by measuring its label as it draws, so the font must have
+ * loaded first, or the boxes fit the fallback font. Once loaded, this returns at once.
+ */
+async function fontLoaded(): Promise<void> {
+  if (!('fonts' in document)) return; // jsdom
+  try { await document.fonts.load('14px Nunito'); } catch { /* drawn in the fallback font */ }
+}
+
 export function configureMermaid(dark: boolean): void {
-  const font = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -36,13 +47,13 @@ export function configureMermaid(dark: boolean): void {
     // and a group's are rounded less, in `style.css`, so the two shapes stay apart.
     themeVariables: dark
       ? {
-        darkMode: true, radius: ROUNDED_NODE_RADIUS, fontFamily: font, fontSize: '14px', background: '#16181c',
+        darkMode: true, radius: ROUNDED_NODE_RADIUS, fontFamily: CHART_FONT, fontSize: '14px', background: '#16181c',
         primaryColor: '#262a31', primaryTextColor: '#e8eaed', primaryBorderColor: '#5b6472',
         lineColor: '#8a93a1', textColor: '#e8eaed', clusterBkg: '#1c1f25', clusterBorder: '#3a414c',
         edgeLabelBackground: '#16181c', titleColor: '#aeb6c2',
       }
       : {
-        radius: ROUNDED_NODE_RADIUS, fontFamily: font, fontSize: '14px', background: '#f6f7f9',
+        radius: ROUNDED_NODE_RADIUS, fontFamily: CHART_FONT, fontSize: '14px', background: '#f6f7f9',
         primaryColor: '#ffffff', primaryTextColor: '#1c2026', primaryBorderColor: '#9aa3b0',
         lineColor: '#6b7482', textColor: '#1c2026', clusterBkg: '#eef0f4', clusterBorder: '#c9ced6',
         edgeLabelBackground: '#f6f7f9', titleColor: '#4a5362',
@@ -219,6 +230,7 @@ export class Chart {
   async draw(text: string, snap: Snap): Promise<void> {
     this.cancelDrag();
     const id = `chart${++drawCount}`;
+    await fontLoaded();
     const { svg } = await mermaid.render(id, forMermaid(text));
     this.cancelDrag();
     this.canvas.innerHTML = svg;

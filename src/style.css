@@ -1,3 +1,10 @@
+/* Nunito (the user, 2026-11-13), for the chart and the window; the Syntax pane keeps its
+   code font. Its Latin part, every weight from 200 to 1000 in one file; licence:
+   `fonts/OFL.txt`. Other letters fall back to the next font in --ui. */
+@font-face {
+  font-family: Nunito; font-style: normal; font-weight: 200 1000; font-display: block;
+  src: url('./fonts/nunito-latin.woff2') format('woff2');
+}
 :root {
   color-scheme: light dark;
   --bg: #f4f5f7;
@@ -13,7 +20,7 @@
   --warn-text: #6b4a00;
   --dot: #d5d9e0;
   --hl: #f59f00;
-  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ui: Nunito, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) {
