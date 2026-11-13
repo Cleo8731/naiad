@@ -588,11 +588,15 @@ function setextHeading(r: Reading, i: number): string | null {
   for (const k of own) if (inItem(r, k)) return null;
   if (inItem(r, i)) return null;
   const text = r.lines.slice(start, i).map((l) => l.trim());
-  const heading = text.slice(definitionLines(text));
+  const defs = definitionLines(text);
+  const heading = text.slice(defs);
   // A table (GitHub's: a header row over a delimiter row of as many cells) runs on to
   // the underline, which is then a row of it or a thematic break (R3: a line starting
-  // with `|` alone made no table, and the heading under it was not read).
-  for (let j = 0; j + 1 < heading.length; j++) if (DELIMITER_ROW.test(heading[j + 1]) && cells(heading[j + 1]) === cells(heading[j])) return null;
+  // with `|` alone made no table, and the heading under it was not read). A delimiter
+  // row indented four columns or more is text (R12).
+  for (let j = 0; j + 1 < heading.length; j++) {
+    if (indentOf(r, start + defs + j + 1) < 4 && DELIMITER_ROW.test(heading[j + 1]) && cells(heading[j + 1]) === cells(heading[j])) return null;
+  }
   return heading.length ? heading.join(' ') : null;
 }
 

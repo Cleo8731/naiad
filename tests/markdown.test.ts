@@ -736,6 +736,22 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     expect(headings('1) item\n   -\n  Notes\n   ===\n' + block(''))).toEqual(['1 Notes']);
     expect(headings('1) item\n       -\n  Notes\n   ===\n' + block(''))).toEqual(['']);
   });
+
+  test('R12: a line indented four columns or more under text is no table\'s delimiter row (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('Flow\n    --\n---')).toBe('2 Flow --');
+    expect(headings('Intro\n    -\n==')).toBe('1 Intro -');
+    expect(headings('| a |\n    |---|\n===')).toBe('1 | a | |---|');
+    // Three columns in at most, it is one: no heading.
+    expect(headings('# Top\n\n| a |\n   |---|\n===')).toBe('1 Top');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `${head}\n    --\n---\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

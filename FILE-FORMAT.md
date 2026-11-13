@@ -296,9 +296,9 @@ More text.
   counts, each read as Markdown reads it: `# Original#` is "Original#", `#` alone is an
   empty heading, `[ref]: /url` over `---` is a link reference definition, not a
   heading, `| a | b |` over `---` is a heading unless a table (a header row over a row
-  like `|---|---|`, as many cells in each) starts above the `---`, a line indented four
-  spaces or more right above a heading's text is a code sample, not its first line,
-  while under its text it is more of it, a `===` or `--` line with no text above it
+  like `|---|---|`, as many cells in each, indented three spaces at most) starts above
+  the `---`, a line indented four spaces or more right above a heading's text is a code
+  sample, not its first line, while under its text it is more of it, a `===` or `--` line with no text above it
   is text, so `==` over `===` is a heading, text right under a quote whose last line
   is blank, a heading, a thematic break or a fence line is no more of the quote, so it
   may be a heading, so is text under a list item, indented less than the item's text,
