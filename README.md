@@ -58,7 +58,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Zoom / pan | Mouse wheel / drag empty space |
 | Point at nodes, arrows or groups with an agent | **Highlight** (key H), then click them; **Clear** takes every highlight off |
-| Show or hide the flowchart's Mermaid syntax | **Syntax** |
+| Show or hide the flowchart's Mermaid syntax | **Syntax** (hidden when Naiad starts, unless you left it open) |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
 view that way, at up to 1,200 px a second, until the chart's edge on that side comes

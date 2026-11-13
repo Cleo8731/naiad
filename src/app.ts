@@ -143,12 +143,11 @@ export class App {
         <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
         <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
-        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="true">Syntax</button>
+        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">Syntax</button>
       </header>
       <main>
-        <section class="textpane">
+        <section class="textpane" hidden>
           <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The flowchart's Mermaid syntax"></textarea>
-          <div class="notices"></div>
         </section>
         <section class="stage" tabindex="-1">
           <div class="empty" hidden>
@@ -158,6 +157,7 @@ export class App {
           </div>
         </section>
         <aside class="sidebar" hidden></aside>
+        <div class="notices"></div>
       </main>
       <div class="toast" role="status" hidden></div>`;
     const q = <T extends HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
@@ -215,7 +215,10 @@ export class App {
     });
 
     this.bind();
-    if (remember('textpane') === 'hidden') this.toggleText(false);
+    // The Syntax pane starts hidden, and opens at start only if the person left it open.
+    if (remember('syntaxpane') === 'shown') this.toggleText(true);
+    // A notice's details wrap to another height when the window's width changes.
+    window.addEventListener('resize', () => this.padUnderNotices());
     const width = Number(remember('textpane-width'));
     if (width >= 220) this.el.pane.style.width = `${width}px`;
 
@@ -892,33 +895,67 @@ export class App {
     if (this.snap) this.el.dir.value = this.snap.direction === 'TB' ? 'TD' : this.snap.direction;
   }
 
+  /** Whether the syntax error's notice shows Mermaid's own message (its Details button). */
+  private noticeDetails = false;
+
+  /**
+   * The notices: thin bars laid over the top of the window, under the toolbar, so they
+   * show whether the Syntax pane is open or not (the user, 2026-11-12, Q103). Each is one
+   * line, its whole text on hover; Mermaid's message for a syntax error opens below it.
+   */
   private paintNotices(): void {
     const items: HTMLElement[] = [];
-    const notice = (cls: string, text: string, action?: { label: string; run: () => void }) => {
+    const button = (label: string, run: () => void) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', run);
+      return b;
+    };
+    const notice = (cls: string, text: string, actions: HTMLButtonElement[], detail?: string) => {
       const div = document.createElement('div');
       div.className = `notice ${cls}`;
-      div.append(text);
-      if (action) {
-        const b = document.createElement('button');
-        b.textContent = action.label;
-        b.addEventListener('click', action.run);
-        div.append(' ', b);
+      const line = document.createElement('div');
+      line.className = 'notice-line';
+      const span = document.createElement('span');
+      span.className = 'notice-text';
+      span.textContent = text;
+      span.title = text;
+      line.append(span, ...actions);
+      div.append(line);
+      if (detail !== undefined) {
+        const pre = document.createElement('pre');
+        pre.textContent = detail;
+        div.append(pre);
       }
       items.push(div);
     };
-    if (this.error) notice('bad', `Mermaid cannot read this text, so the chart shows the last good version.\n${this.error}`);
-    else if (this.doc.problems.length) {
-      const p = this.doc.problems[0];
-      notice('warn', `Line ${String(p.line + 1)}: ${p.message} The chart can show this file but will not edit it; change it here.`);
+    const showSyntax = () => (this.el.pane.hidden ? [button('Show syntax', () => this.toggleText(true))] : []);
+    if (this.error) {
+      const details = button(this.noticeDetails ? 'Hide details' : 'Details', () => { this.noticeDetails = !this.noticeDetails; this.paintNotices(); });
+      // A file that was broken when it was opened has no last good version: the chart is empty.
+      const what = this.snap ? 'the chart shows the last good version' : 'the chart cannot be drawn';
+      notice('bad', `Mermaid cannot read this text, so ${what}.`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
+    } else {
+      this.noticeDetails = false;
+      if (this.doc.problems.length) {
+        const p = this.doc.problems[0];
+        notice('warn', `Line ${String(p.line + 1)}: ${p.message} The chart can show this file but will not edit it; change it in the Syntax pane.`, showSyntax());
+      }
     }
     if (this.doc.warnings.length) {
       const lines = this.doc.warnings.map((w) => String(w.line + 1)).join(', ');
-      notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, {
-        label: 'Change to "%% ."',
-        run: () => { void this.queue(async () => { await this.takeTypingNow(); await this.apply(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); }); },
-      });
+      notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, [button('Change to "%% ."', () => {
+        void this.queue(async () => { await this.takeTypingNow(); await this.apply(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); });
+      })]);
     }
     this.el.notices.replaceChildren(...items);
+    this.padUnderNotices();
+  }
+
+  /** The bars cover the top of the Syntax pane, so its text starts below them and line 1 stays readable. */
+  private padUnderNotices(): void {
+    const covered = this.el.notices.childElementCount ? this.el.notices.offsetHeight + 8 : 0;
+    this.el.area.style.paddingTop = covered ? `${String(12 + covered)}px` : '';
   }
 
   private toastTimer: number | undefined;
@@ -933,7 +970,8 @@ export class App {
     const visible = show ?? this.el.pane.hidden;
     this.el.pane.hidden = !visible;
     this.el.textToggle.setAttribute('aria-pressed', String(visible));
-    remember('textpane', visible ? 'shown' : 'hidden');
+    remember('syntaxpane', visible ? 'shown' : 'hidden');
+    this.paintNotices(); // a notice's Show syntax button is there only while the pane is hidden
   }
 
   // ------------------------------------------------------------------ input

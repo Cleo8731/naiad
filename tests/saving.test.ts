@@ -1154,3 +1154,61 @@ it('keeps selection on the second arrow when a move makes identical arrows', asy
   expect(await ui.until((text) => text.includes('a --> x\n  a --> x'))).toBe(true);
   expect(document.querySelector('.sidebar code.id')!.textContent).toBe('#1');
 });
+
+describe('the Syntax pane', () => {
+  const pane = () => document.querySelector<HTMLElement>('.textpane')!;
+  const button = () => document.querySelector<HTMLButtonElement>('[data-act="syntax"]')!;
+
+  it('starts hidden, and opens at start only if the person left it open', async () => {
+    localStorage.clear();
+    await start();
+    expect(pane().hidden).toBe(true);
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+    button().click();
+    expect(pane().hidden).toBe(false);
+    stopApps();
+    await start();
+    expect(pane().hidden).toBe(false);
+    expect(button().getAttribute('aria-pressed')).toBe('true');
+    button().click();
+    stopApps();
+    await start();
+    expect(pane().hidden).toBe(true);
+    localStorage.clear();
+  });
+
+  it('a notice shows over the window while the pane is hidden, with Details and Show syntax', async () => {
+    localStorage.clear();
+    const { disk } = await start();
+    disk.outside(FILE, BROKEN);
+    const bad = () => document.querySelector<HTMLElement>('.notice.bad');
+    for (let t0 = Date.now(); !bad() && Date.now() - t0 < 3000;) await sleep(5);
+    expect(pane().hidden).toBe(true);
+    expect(bad()!.querySelector('.notice-text')!.textContent).toBe('Mermaid cannot read this text, so the chart shows the last good version.');
+    expect(bad()!.parentElement!.matches('main > .notices')).toBe(true);
+    expect(bad()!.closest('[hidden]')).toBeNull();
+    const press = (label: string) => [...bad()!.querySelectorAll('button')].find((b) => b.textContent === label)!.click();
+    expect(bad()!.querySelector('pre')).toBeNull();
+    press('Details');
+    expect(bad()!.querySelector('pre')!.textContent).toMatch(/Parse error/);
+    press('Hide details');
+    expect(bad()!.querySelector('pre')).toBeNull();
+    press('Show syntax');
+    expect(pane().hidden).toBe(false);
+    expect([...bad()!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Details']);
+    // The bar covers the top of the pane, so the pane's text starts below it while it shows.
+    const area = pane().querySelector('textarea')!;
+    expect(area.style.paddingTop).not.toBe('');
+    disk.outside(FILE, BASE);
+    for (let t0 = Date.now(); bad() && Date.now() - t0 < 3000;) await sleep(5);
+    expect(bad()).toBeNull();
+    expect(area.style.paddingTop).toBe('');
+    localStorage.clear();
+  });
+
+  it('a file broken when it is opened: the notice says the chart cannot be drawn', async () => {
+    localStorage.clear();
+    await start(BROKEN);
+    expect(document.querySelector('.notice.bad .notice-text')!.textContent).toBe('Mermaid cannot read this text, so the chart cannot be drawn.');
+  });
+});
