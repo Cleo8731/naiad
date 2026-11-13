@@ -718,6 +718,18 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R11: a line like a list item that cannot start one under text is more of the text (the CommonMark comparison, T5.16)', () => {
+    const at = (md: string) => findBlocks(md).map((b) => `${b.open}-${b.end}`).join(',');
+    const block = (indent: string) => [`${indent}~~~mermaid`, `${indent}flowchart TD`, `${indent}~~~`].join('\n') + '\n';
+    // Under text, `    -` and `1.` are more of it, so a `2.` under them is too, and a
+    // fence four columns in is more text, in no list item.
+    expect(at(' text\n    -\n 2. Setup\n' + block('    '))).toBe('');
+    expect(at('text\n1.\n 2. Setup\n' + block('    '))).toBe('');
+    // A bullet with text after it starts an item; a fence three columns in at most is one.
+    expect(at('text\n    -\n- a\n' + block('  '))).toBe('3-6');
+    expect(at('text\n2.\n3. b\n' + block('   '))).toBe('3-6');
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

@@ -235,8 +235,9 @@ function roleOf(r: Reading, k: number): Role {
 /**
  * The column where the text of the list item starts, when the paragraph that line k
  * holds began on that item's own line; Infinity when it stands in a quote (a line
- * without `>` never goes on with it as a list item); null when unsure. The answer is
- * kept for every line of the paragraph walked through.
+ * without `>` never goes on with it as a list item); 0 when it began on a line of its
+ * own indented less than two columns, which no item holds (R11); null when unsure. The
+ * answer is kept for every line of the paragraph walked through.
  */
 function paragraphItemText(r: Reading, k: number): number | null {
   const walked: number[] = [];
@@ -251,6 +252,10 @@ function paragraphItemText(r: Reading, k: number): number | null {
     }
     const para = paragraphAbove(r, k);
     const item = listItem(line);
+    if (item && para === 1 && lineRole(r, k) === 'lazy') { // no item: more of the paragraph (R11)
+      k--;
+      continue;
+    }
     if (item) {
       const rest = line.slice(item[0].length);
       // Maybe more of the paragraph above, or no paragraph at all: unsure.
@@ -272,7 +277,7 @@ function paragraphItemText(r: Reading, k: number): number | null {
       break;
     }
     if (para !== 1) { // began on a line of its own, or unsure
-      text = null;
+      text = para === 0 && indentOf(r, k) < 2 ? 0 : null;
       break;
     }
     k--;
@@ -285,6 +290,12 @@ function paragraphItemText(r: Reading, k: number): number | null {
 function paragraphAbove(r: Reading, k: number): 1 | 0 | -1 {
   if (k === 0 || r.opener[k - 1] >= 0) return 0; // nothing above, or a line of a fenced block
   const line = r.lines[k - 1];
+  // A line like a list item that is more of the paragraph above it is paragraph text
+  // (R11: `    -` under text). The roles above are worked out first, top down.
+  if (listItem(line)) {
+    know(r, k - 1);
+    if (lineRole(r, k - 1) === 'lazy') return 1;
+  }
   let above = line;
   for (;;) { // take off the quote and list markers the text above stands in
     const m = /^[ \t]*>[ \t]?/.exec(above) ?? listItem(above);

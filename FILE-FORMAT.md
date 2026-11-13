@@ -168,7 +168,9 @@ More text.
   The fence stands in the item only if every line between them does: a line indented
   less than the item's text ends the item, unless it goes on with a paragraph above
   it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
-  text after it starts a new item. An item with nothing after its marker on its line
+  text after it starts a new item; any other line that looks like an item (one with
+  nothing after its marker, or a number other than 1) is more of the text, and a fence
+  under it stands in no item. An item with nothing after its marker on its line
   has its text one column past the marker, and holds nothing when a blank line follows
   it. A line starting with `=` right under an item's text never ends the item: it is
   more of the text, or underlines a heading in the item. Where Naiad cannot tell
