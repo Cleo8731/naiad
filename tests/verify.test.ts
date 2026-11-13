@@ -35,7 +35,9 @@ async function opsFor(text: string): Promise<Op[]> {
     );
     for (const target of subs) ops.push({ kind: 'moveNode', id, target });
   }
+  const targets = [...nodes, ...parseDoc(text).subs.filter((s) => s.explicitId).map((s) => s.id)];
   snap.edges.forEach((_, index) => {
+    for (const id of targets) for (const end of ['start', 'end'] as const) ops.push({ kind: 'setEdgeEnd', index, end, id });
     ops.push(
       { kind: 'deleteEdge', index }, { kind: 'setEdgeLabel', index, label: 'label' }, { kind: 'setEdgeLabel', index, label: 'a "b" (c) | d' },
       { kind: 'setEdgeLabel', index, label: '' }, { kind: 'setEdgeStyle', index, stroke: 'dotted' }, { kind: 'setEdgeStyle', index, stroke: 'thick' },
@@ -75,7 +77,7 @@ describe.each(Object.keys(fixtures))('every edit on fixture "%s"', (name) => {
     expect(refused, `${refused.length} of ${ops.length} refused`).toEqual([]);
     // Each fixture runs hundreds of edits through Mermaid: 0.5 to 4.5 s alone, and past
     // Vitest's 5 s when the other test files run beside it.
-  }, 30_000);
+  }, 90_000);
 });
 
 describe('an arrow keeps its own settings through an edit (bug hunt S11, S13, S14)', () => {

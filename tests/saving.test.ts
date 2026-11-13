@@ -1092,3 +1092,65 @@ describe('a description being written is saved when the person leaves it (bug hu
     }
   });
 });
+
+describe('arrow end menus', () => {
+  const chooseEdge = (ui: Awaited<ReturnType<typeof start>>['ui'], index: number) =>
+    (ui.app as unknown as { select(t: unknown): void }).select({ kind: 'edge', index });
+  it('lists ids in file order, disambiguates titles, shows the group title and resets a refusal', async () => {
+    const { ui } = await start('flowchart TD\n  subgraph g[The group]\n    a[Same]\n  end\n  b[Same]\n  b --> g\n  subgraph "Generated title"\n    z\n  end\n');
+    chooseEdge(ui, 0);
+    const selects = document.querySelectorAll<HTMLSelectElement>('.sidebar select');
+    expect([...selects[0].options].map((o) => [o.value, o.textContent])).toEqual([
+      ['g', 'Group: The group'], ['a', 'Same [a]'], ['b', 'Same [b]'], ['z', 'z'],
+    ]);
+    expect(document.querySelector('.ends')!.textContent).toContain('The group');
+    selects[1].add(new Option('Missing', 'missing'));
+    selects[1].value = 'missing'; selects[1].dispatchEvent(new Event('change'));
+    await sleep(100);
+    expect(selects[1].value).toBe('g');
+  });
+  it('follows a relocated duplicate by its new number and undo restores the text', async () => {
+    const before = 'flowchart TD\n  subgraph g[G]\n    a --> b\n    a --> b\n  end\n  x\n';
+    const { ui } = await start(before);
+    chooseEdge(ui, 0);
+    const to = document.querySelectorAll<HTMLSelectElement>('.sidebar select')[1];
+    to.value = 'x'; to.dispatchEvent(new Event('change'));
+    expect(await ui.until((text) => text.includes('a --> x'))).toBe(true);
+    expect(document.querySelector('.sidebar code.id')!.textContent).toBe('#1');
+    ui.undo();
+    expect(await ui.until((text) => text === before)).toBe(true);
+  });
+  it('Undo of a move keeps the arrow selected, moved in place or out of its group', async () => {
+    const selection = (ui: Awaited<ReturnType<typeof start>>['ui']) => (ui.app as unknown as { selection: unknown }).selection;
+    for (const [before, moved, at] of [
+      ['flowchart TD\n  a --> b\n  x\n', 'a --> x', 0],
+      ['flowchart TD\n  subgraph g[G]\n    a --> b\n    c --> d\n  end\n  x\n', '  end\n  a --> x\n', 1],
+    ] as const) {
+      const { ui } = await start(before);
+      chooseEdge(ui, 0);
+      await ui.app.moveEdgeEnd(0, 'end', 'x');
+      expect(await ui.until((text) => text.includes(moved))).toBe(true);
+      expect(selection(ui)).toEqual({ kind: 'edge', index: at });
+      ui.undo();
+      expect(await ui.until((text) => text === before)).toBe(true);
+      expect(selection(ui)).toEqual({ kind: 'edge', index: 0 });
+    }
+  });
+  it('a no-op adds no undo step', async () => {
+    const { ui, disk } = await start('flowchart TD\n  a --> b\n');
+    chooseEdge(ui, 0);
+    await ui.app.moveEdgeEnd(0, 'end', 'b');
+    expect(ui.undoEnabled()).toBe(false);
+    expect(disk.writes).toHaveLength(0);
+  });
+});
+
+
+it('keeps selection on the second arrow when a move makes identical arrows', async () => {
+  const { ui } = await start('flowchart TD\n  a --> x\n  a --> b\n  b\n');
+  (ui.app as unknown as { select(t: unknown): void }).select({ kind: 'edge', index: 1 });
+  const to = document.querySelectorAll<HTMLSelectElement>('.sidebar select')[1];
+  to.value = 'x'; to.dispatchEvent(new Event('change'));
+  expect(await ui.until((text) => text.includes('a --> x\n  a --> x'))).toBe(true);
+  expect(document.querySelector('.sidebar code.id')!.textContent).toBe('#1');
+});

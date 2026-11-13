@@ -8,7 +8,7 @@ import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
-import { nodeLabel, parseDoc, type Doc } from './core/scan';
+import { allRefs, nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
@@ -44,7 +44,15 @@ function followEdge(before: Snap | null, now: Snap, index: number): number | nul
   const alike = (s: Snap) => s.edges.flatMap((e, k) => (JSON.stringify(e) === key ? [k] : []));
   const then = alike(before!);
   const found = alike(now);
-  return found.length === then.length ? found[then.indexOf(index)] : null;
+  if (found.length === then.length) return found[then.indexOf(index)];
+  // One end of this arrow changed (T1.8, or Undo of it) and nothing else in the arrows:
+  // the one arrow that differs from it only in that end, wherever it now is.
+  if (now.edges.length !== before!.edges.length) return null;
+  const others = (s: Snap, skip: number) => s.edges.flatMap((e, k) => (k === skip ? [] : [JSON.stringify(e)])).sort().join('\n');
+  const rest = others(before!, index);
+  const moved = now.edges.flatMap((e, k) =>
+    (e.start === was.start) !== (e.end === was.end) && JSON.stringify({ ...e, start: was.start, end: was.end }) === key && others(now, k) === rest ? [k] : []);
+  return moved.length === 1 ? moved[0] : null;
 }
 
 /** How a message names an item, as `snap` shows it: “Collect data”, the group “Review”, the arrow from “a” to “b”. */
@@ -175,6 +183,7 @@ export class App {
       onSelect: (t) => this.select(t),
       onHighlight: (t) => { void this.toggleHighlight(t); },
       onConnect: (from, to) => { void this.edit({ kind: 'addEdge', from, to }); },
+      onMoveEnd: (index, end, id) => { void this.moveEdgeEnd(index, end, id); },
       onAddNode: () => { void this.addNode(null); },
       onRename: (t) => { this.select(t); this.sidebar.focusTitle(); },
     });
@@ -193,6 +202,7 @@ export class App {
         else void this.edit({ kind: 'moveNode', id, target: group || null });
       },
       deleteNode: (id) => { void this.edit({ kind: 'deleteNode', id }); },
+      setEdgeEnd: (index, end, id) => { void this.moveEdgeEnd(index, end, id); },
       setEdgeLabel: async (index, label) => (await this.edit({ kind: 'setEdgeLabel', index, label })) !== null,
       setEdgeStroke: (index, stroke) => { void this.edit({ kind: 'setEdgeStyle', index, stroke }); },
       setEdgeArrow: (index, arrow) => { void this.edit({ kind: 'setEdgeStyle', index, arrow }); },
@@ -659,7 +669,7 @@ export class App {
     if (s.kind === 'sub' && s.id in snap.subs) return;
     if (s.kind === 'edge') {
       const edited = this.edited?.index === s.index ? this.edited.after : null;
-      const found = edited === null ? -1 : snap.edges.findIndex((e) => JSON.stringify(e) === edited);
+      const found = edited === null ? -1 : JSON.stringify(snap.edges[s.index]) === edited ? s.index : snap.edges.findIndex((e) => JSON.stringify(e) === edited);
       const at = edited === null ? followEdge(before, snap, s.index) : found >= 0 ? found : null;
       if (at === s.index) return;
       if (at !== null) {
@@ -709,6 +719,16 @@ export class App {
       if (before && (op.kind === 'setEdgeLabel' || op.kind === 'setEdgeStyle')) {
         this.edited = { index: op.index, after: JSON.stringify(expectOp(before, op, res).edges[op.index]) };
       }
+      // An arrow's end moved (T1.8): the selection stays on it, at its new number when it
+      // was written out of a group (Q100), and also when an identical arrow is beside it.
+      if (before && op.kind === 'setEdgeEnd' && this.selection?.kind === 'edge' && this.selection.index === op.index) {
+        const at = res.edgeIndex ?? op.index;
+        if (at !== op.index) {
+          this.sidebar.renumber(op.index, at);
+          this.selection = { kind: 'edge', index: at };
+        }
+        this.edited = { index: at, after: JSON.stringify(expectOp(before, op, res).edges[at]) };
+      }
       try {
         await this.apply(res.text, 'chart');
       } finally {
@@ -718,6 +738,10 @@ export class App {
       result = res;
     });
     return result;
+  }
+
+  async moveEdgeEnd(index: number, end: 'start' | 'end', id: string): Promise<void> {
+    await this.edit({ kind: 'setEdgeEnd', index, end, id });
   }
 
   private async addNode(parent: string | null): Promise<void> {
@@ -810,14 +834,30 @@ export class App {
     }
     const e = snap.edges[s.index];
     if (!e) return null;
-    const title = (id: string) => nodeLabel(this.doc, id)?.title ?? snap.subs[id]?.title ?? id;
+    const title = (id: string) => snap.subs[id]?.title ?? nodeLabel(this.doc, id)?.title ?? id;
+    const locations = [...allRefs(this.doc).map(({ line, ref }) => ({ id: ref.id, line, offset: ref.start })),
+      ...this.doc.subs.filter((g) => g.explicitId).map((g) => ({ id: g.id, line: g.line, offset: 0 }))]
+      .sort ( (a, b) => a.line - b.line || a.offset - b.offset);
+    const named = new Set(this.doc.subs.filter((g) => g.explicitId).map((g) => g.id));
+    const seen = new Set<string>();
+    const ids = locations.map(({ id }) => id).filter((id) => {
+      if (seen.has(id) || (!(id in snap.nodes) && !named.has(id))) return false;
+      seen.add(id); return true;
+    });
+    // The arrow's own ends are always there, so each menu shows them; a group with only a
+    // title is no new end, but it may be this arrow's end now.
+    for (const id of [e.start, e.end]) if (!seen.has(id)) { seen.add(id); ids.push(id); }
+    const ends = ids.map((id) => ({ id, title: (snap.subs[id] ? 'Group: ' : '') + title(id) }));
+    const counts = new Map<string, number>();
+    for (const item of ends) counts.set(item.title, (counts.get(item.title) ?? 0) + 1);
+    for (const item of ends) if (counts.get(item.title)! > 1) item.title += ` [${item.id}]`;
     const arrow = ({ arrow_point: 'arrow', arrow_open: 'none', double_arrow_point: 'both', arrow_circle: 'circle', arrow_cross: 'cross' } as const)[e.type] ?? 'arrow';
     let label = e.text;
     const ref = this.doc.edges[s.index];
     if (ref) {
       try { label = parseLink(this.doc.info[ref.line].chains![ref.chain].links[ref.link].raw).label; } catch { /* keep Mermaid's text */ }
     }
-    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), label, stroke: e.stroke as never, arrow };
+    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), fromId: e.start, toId: e.end, ends, label, stroke: e.stroke as never, arrow };
   }
 
   private paint(): void {

@@ -441,6 +441,75 @@ export function addEdge(text: string, from: string, to: string): string {
   return rw.finish();
 }
 
+/** Move one pair, optionally placing it after its outermost enclosing group. */
+export function setEdgeEnd(text: string, index: number, end: 'start' | 'end', id: string, relocate = false): { text: string; index: number } {
+  const doc = load(text);
+  const edge = doc.edges[index];
+  if (!edge) throw new EditError('That arrow is not in the file any more.');
+  const sub = doc.subs.find((s) => s.id === id);
+  if (!ID_OK.test(id) || (sub ? !sub.explicitId : !allRefs(doc).some((r) => r.ref.id === id)))
+    throw new EditError(`"${id}" is not a node or a group with an id written in this file.`);
+  if ((end === 'start' ? edge.from.id : edge.to.id) === id) return { text, index };
+  const li = doc.info[edge.line], line = doc.lines[edge.line];
+  const ch = li.chains![edge.chain], k = edge.link;
+  const left = ch.groups[k], right = ch.groups[k + 1], link = ch.links[k];
+  const rw = new Rewriter(doc);
+  const ref = end === 'start' ? edge.from : edge.to;
+  if (!relocate && ch.groups.length === 2 && left.length === 1 && right.length === 1 && li.chains!.length === 1) {
+    const pieces: Piece[] = [];
+    if (isDecorated(ref)) pieces.push({ text: li.indent + refRaw(line, ref), ids: [ref.id] });
+    else pieces.push({ text: li.indent + ref.id, ids: [ref.id], optional: true });
+    pieces.push({ text: line.slice(0, ref.start) + id + line.slice(ref.end), ids: [end === 'start' ? id : edge.from.id, end === 'end' ? id : edge.to.id] });
+    rw.replace(edge.line, pieces);
+    return { text: rw.finish(), index };
+  }
+  const pieces: Piece[] = [];
+  let moved: Piece | undefined;
+  li.chains!.forEach((other, ci) => {
+    if (ci !== edge.chain) { pieces.push(chainPiece(line, li.indent, other)); return; }
+    pieces.push(...rebuild(line, li.indent, ch.groups.slice(0, k + 1), ch.links.slice(0, k)));
+    const owner = idPair(left, right);
+    let ownerTaken = false;
+    for (const a of left) for (const b of right) {
+      const target = a === edge.from && b === edge.to;
+      const from = target && end === 'start' ? id : a.id;
+      const to = target && end === 'end' ? id : b.id;
+      const ownsId = !ownerTaken && `${a.id}\u0000${b.id}` === owner;
+      if (ownsId) ownerTaken = true;
+      const raw = ownsId ? link.raw : withoutLinkId(link.raw);
+      const pair = { text: `${li.indent}${from} ${raw} ${to}`, ids: [from, to] };
+      if (target && relocate) moved = pair; else pieces.push(pair);
+    }
+    pieces.push(...rebuild(line, li.indent, ch.groups.slice(k + 1), ch.links.slice(k + 1)));
+  });
+  rw.replace(edge.line, pieces);
+  let newIndex = index;
+  if (relocate && moved) {
+    let parent = li.parent;
+    let outer = doc.subs.find((s) => s.line === parent);
+    while (outer && outer.parent !== -1) outer = doc.subs.find((s) => s.line === outer!.parent);
+    if (!outer) throw new EditError('This arrow is not inside a group.');
+    newIndex = doc.edges.filter((e, i) => i !== index && e.line <= outer!.endLine).length;
+    rw.insertAfter(outer.endLine, [{ ...moved, text: topIndent(doc) + moved.text.trimStart() }], -1);
+  }
+  let result = rw.finish();
+  if (newIndex !== index) {
+    const lines = parseDoc(result);
+    lines.info.forEach((info, i) => {
+      if (info.kind !== 'linkStyle' || !info.ids!.every((x) => /^\d+$/.test(x))) return;
+      const map = (n: number) => n === index ? newIndex : n > index && n <= newIndex ? n - 1 : n;
+      lines.lines[i] = lines.lines[i].replace(/^(\s*linkStyle\s+)\S+/, `$1${info.ids!.map((x) => map(Number(x))).join(',')}`);
+    });
+    result = lines.lines.join('\n');
+  }
+  return { text: result, index: newIndex };
+}
+
+/** Separate policy step: take a changed pair out of its enclosing groups. */
+export function relocateEdgeEnd(text: string, index: number, end: 'start' | 'end', id: string): { text: string; index: number } {
+  return setEdgeEnd(text, index, end, id, true);
+}
+
 /** Rewrites one edge's arrow; `change` returns the new arrow, or null to delete the edge. */
 function rewriteEdge(text: string, index: number, change: (raw: string) => string | null): string {
   const doc = load(text);

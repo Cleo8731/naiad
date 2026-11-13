@@ -13,6 +13,7 @@ export interface NodeView {
 export interface EdgeView {
   kind: 'edge'; index: number; from: string; to: string; label: string;
   stroke: LinkParts['stroke']; arrow: ArrowKind;
+  fromId: string; toId: string; ends: { id: string; title: string }[];
 }
 export interface SubView { kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number }
 export type View = NodeView | EdgeView | SubView;
@@ -31,6 +32,7 @@ export interface SidebarActions {
   setGroup(id: string, group: string): void;
   deleteNode(id: string): void;
   setEdgeLabel(index: number, label: string): Promise<boolean>;
+  setEdgeEnd(index: number, end: 'start' | 'end', id: string): void;
   setEdgeStroke(index: number, stroke: LinkParts['stroke']): void;
   setEdgeArrow(index: number, arrow: ArrowKind): void;
   deleteEdge(index: number): void;
@@ -430,6 +432,9 @@ export class Sidebar {
       head.querySelector('code')!.textContent = `#${index}`;
       ends.replaceChildren(h('span', {}, e.from), h('span', { class: 'arrow' }, '→'), h('span', {}, e.to));
     });
+    const choices = (v: View) => (v as EdgeView).ends.map((e) => option(e.id, e.title));
+    const from = this.select(choices, (v) => (v as EdgeView).fromId, (id) => a.setEdgeEnd(index, 'start', id));
+    const to = this.select(choices, (v) => (v as EdgeView).toId, (id) => a.setEdgeEnd(index, 'end', id));
     const label = this.textBox('title', 'Label (optional)', 'label', (v) => (v as EdgeView).label, (value) => a.setEdgeLabel(index, value));
     const stroke = this.select(
       () => [option('normal', 'Solid'), option('dotted', 'Dotted'), option('thick', 'Thick'), option('invisible', 'Invisible')],
@@ -441,7 +446,7 @@ export class Sidebar {
       head,
       ends,
       label,
-      h('div', { class: 'props' }, this.row('Line', stroke), this.row('Head', arrow)),
+      h('div', { class: 'props' }, this.row('From', from), this.row('To', to), this.row('Line', stroke), this.row('Head', arrow)),
       h('div', { class: 'side-foot' }, h('button', { class: 'danger', click: () => a.deleteEdge(index) }, 'Delete arrow')),
     ];
   }

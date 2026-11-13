@@ -3,6 +3,7 @@
 
 import mermaid from 'mermaid';
 import { forMermaid, type Snap } from './semantics';
+import { parseDoc } from './core/scan';
 
 export type Target =
   | { kind: 'node'; id: string }
@@ -14,6 +15,7 @@ export interface ChartEvents {
   /** A click on an item while the Highlight switch is on. */
   onHighlight(target: Target): void;
   onConnect(from: string, to: string): void;
+  onMoveEnd(index: number, end: 'start' | 'end', id: string): void;
   onAddNode(): void;
   onRename(target: Target): void;
 }
@@ -45,12 +47,71 @@ export function configureMermaid(dark: boolean): void {
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 4;
+/** The border strip (T1.8): its width in px, and the view's top speed in px a second. */
+const BORDER_STRIP = 48;
+const BORDER_SPEED = 1200;
 let drawCount = 0;
+
+type Point = { x: number; y: number };
+type End = 'start' | 'end';
+
+/** Velocity of the view in stage pixels per second, towards the chart under the pointer. */
+export function edgePanSpeed(point: Point, rect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>, strip: number, topSpeed: number): Point {
+  if (strip <= 0) return { x: 0, y: 0 };
+  const axis = (p: number, low: number, high: number) =>
+    topSpeed * (Math.max(0, Math.min(1, (low + strip - p) / strip)) - Math.max(0, Math.min(1, (p - high + strip) / strip)));
+  return { x: axis(point.x, rect.left, rect.right), y: axis(point.y, rect.top, rect.bottom) };
+}
+
+/**
+ * How far the border strip moves the view along one axis this frame: `step` as asked,
+ * but only until the chart's edge on the side being shown is `pad` inside the stage, so
+ * the view never runs on into empty space. `offset` is where the chart starts in the
+ * stage, `extent` its drawn size, `room` the stage's size.
+ */
+export function panStep(step: number, offset: number, extent: number, room: number, pad: number): number {
+  if (step > 0) return Math.min(step, Math.max(0, pad - offset));
+  if (step < 0) return Math.max(step, Math.min(0, room - pad - (offset + extent)));
+  return 0;
+}
+
+/** SVG geometry interprets all path commands and returns the actual endpoints of the drawn path. */
+export function pathEnds(path: { getTotalLength(): number; getPointAtLength(distance: number): Point }): { start: Point; end: Point } | null {
+  try {
+    const length = path.getTotalLength();
+    const start = path.getPointAtLength(0);
+    const end = path.getPointAtLength(length);
+    if (![length, start.x, start.y, end.x, end.y].every(Number.isFinite)) return null;
+    return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+  } catch { return null; }
+}
+
+type Drag = {
+  pointerId: number; button: HTMLButtonElement; origin: Point; pointer: Point; fixed: Point;
+  line: SVGLineElement; kind: 'connect' | 'end'; id: string; index?: number; end?: End;
+};
 
 export class Chart {
   private canvas: HTMLDivElement;
   private overlay: SVGSVGElement;
   private handle: HTMLButtonElement;
+  private endHandles: Record<End, HTMLButtonElement>;
+  private explicitSubs = new Set<string>();
+  private drag: Drag | null = null;
+  private frame: number | null = null;
+  private frameTime: number | null = null;
+  private observer: ResizeObserver | null = null;
+  // Escape during a drag cancels only the drag: the app's own Escape (letting go of the
+  // selection) is not reached.
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this.drag) { e.preventDefault(); e.stopPropagation(); this.cancelDrag(); }
+  };
+  // With the pointer past the chart's border during a drag, the wheel still zooms the
+  // chart. Listened to only while a drag is under way, so scrolling elsewhere in the
+  // window never waits on it.
+  private onOutsideWheel = (e: WheelEvent) => {
+    if (this.drag && e.target instanceof Node && !this.stage.contains(e.target)) this.wheelZoom(e);
+  };
   private view = { x: 0, y: 0, k: 1 };
   private size = { w: 0, h: 0 };
   private selected: Target | null = null;
@@ -73,7 +134,15 @@ export class Chart {
     this.handle.title = 'Drag to another node to connect';
     this.handle.setAttribute('aria-label', 'Connect to another node');
     this.handle.hidden = true;
-    stage.append(this.canvas, this.overlay, this.handle);
+    this.endHandles = Object.fromEntries((['start', 'end'] as const).map((end) => {
+      const button = document.createElement('button');
+      button.className = 'end-handle';
+      button.title = `Move the arrow's ${end}`;
+      button.setAttribute('aria-label', button.title);
+      button.hidden = true;
+      return [end, button];
+    })) as Record<End, HTMLButtonElement>;
+    stage.append(this.canvas, this.overlay, this.handle, this.endHandles.start, this.endHandles.end);
     this.bind();
   }
 
@@ -81,10 +150,13 @@ export class Chart {
   resetView(): void { this.fitted = false; }
 
   async draw(text: string, snap: Snap): Promise<void> {
+    this.cancelDrag();
     const id = `chart${++drawCount}`;
     const { svg } = await mermaid.render(id, forMermaid(text));
+    this.cancelDrag();
     this.canvas.innerHTML = svg;
     this.snap = snap;
+    this.explicitSubs = new Set(parseDoc(text.replace(/\r\n?/g, '\n')).subs.filter((sub) => sub.explicitId).map((sub) => sub.id));
     const el = this.canvas.querySelector('svg');
     if (!el) return;
     const box = el.viewBox.baseVal;
@@ -99,9 +171,19 @@ export class Chart {
   }
 
   clear(): void {
+    this.cancelDrag();
     this.canvas.innerHTML = '';
     this.snap = null;
     this.handle.hidden = true;
+    this.endHandles.start.hidden = this.endHandles.end.hidden = true;
+  }
+
+  /** Release observers and active drag work when the chart is discarded. */
+  destroy(): void {
+    this.clear();
+    this.observer?.disconnect();
+    document.removeEventListener('keydown', this.onKeyDown);
+    document.removeEventListener('wheel', this.onOutsideWheel);
   }
 
   private index(svg: SVGSVGElement, id: string, snap: Snap): void {
@@ -147,6 +229,9 @@ export class Chart {
   }
 
   select(target: Target | null): void {
+    // The app paints (and so selects again) for reasons of its own, such as a save; only
+    // a different item ends a drag.
+    if (JSON.stringify(target) !== JSON.stringify(this.selected)) this.cancelDrag();
     this.selected = target;
     this.paintSelection();
   }
@@ -159,6 +244,7 @@ export class Chart {
   }
 
   setHighlighting(on: boolean): void {
+    if (on) this.cancelDrag();
     this.highlighting = on;
     this.stage.classList.toggle('highlighting', on);
     this.placeHandle();
@@ -178,15 +264,107 @@ export class Chart {
     }
   }
 
+  private allowed(t: { kind: 'node' | 'sub'; id: string }): boolean {
+    return t.kind === 'node' || this.explicitSubs.has(t.id);
+  }
+
+  private pathPoints(): { start: Point; end: Point } | null {
+    if (this.selected?.kind !== 'edge') return null;
+    const path = this.elementOf(this.selected) as SVGPathElement | null;
+    const points = path?.getAttribute('d') ? pathEnds(path) : null;
+    const matrix = path?.getScreenCTM();
+    if (!points || !matrix) return null;
+    const convert = (p: Point): Point => ({ x: matrix.a * p.x + matrix.c * p.y + matrix.e, y: matrix.b * p.x + matrix.d * p.y + matrix.f });
+    return { start: convert(points.start), end: convert(points.end) };
+  }
+
   private placeHandle(): void {
-    // No connecting while the Highlight switch is on: a click there highlights.
-    const el = this.selected && this.selected.kind !== 'edge' && !this.highlighting ? this.elementOf(this.selected) : null;
-    if (!el) { this.handle.hidden = true; return; }
-    const r = el.getBoundingClientRect();
+    const selected = this.selected;
+    const el = selected && selected.kind !== 'edge' && !this.highlighting && this.allowed(selected) ? this.elementOf(selected) : null;
+    this.handle.hidden = !el;
     const s = this.stage.getBoundingClientRect();
-    this.handle.hidden = false;
-    this.handle.style.left = `${r.right - s.left + 6}px`;
-    this.handle.style.top = `${r.top - s.top + r.height / 2 - 11}px`;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      this.handle.style.left = `${r.right - s.left + 6}px`;
+      this.handle.style.top = `${r.top - s.top + r.height / 2 - 11}px`;
+    }
+    const points = !this.highlighting ? this.pathPoints() : null;
+    for (const end of ['start', 'end'] as const) {
+      const button = this.endHandles[end];
+      button.hidden = !points;
+      if (points) {
+        button.style.left = `${points[end].x - s.left - 9}px`;
+        button.style.top = `${points[end].y - s.top - 9}px`;
+      }
+    }
+  }
+
+  private refreshDrag(): void {
+    const d = this.drag;
+    if (!d) return;
+    const s = this.stage.getBoundingClientRect();
+    const { x, y, k } = this.view;
+    d.line.setAttribute('x1', String(d.fixed.x * k + x));
+    d.line.setAttribute('y1', String(d.fixed.y * k + y));
+    d.line.setAttribute('x2', String(d.pointer.x - s.left));
+    d.line.setAttribute('y2', String(d.pointer.y - s.top));
+    this.canvas.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
+    const target = this.dropTarget(d.pointer.x, d.pointer.y);
+    if (target) this.elementOf(target)?.classList.add('drop');
+  }
+
+  private cancelDrag(): void {
+    const d = this.drag;
+    this.drag = null;
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    this.frameTime = null;
+    document.removeEventListener('wheel', this.onOutsideWheel);
+    if (d) {
+      d.line.remove();
+      if (d.button.hasPointerCapture(d.pointerId)) d.button.releasePointerCapture(d.pointerId);
+    }
+    this.canvas.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
+  }
+
+  private beginDrag(e: PointerEvent, button: HTMLButtonElement, fixedClient: Point, kind: Drag['kind'], id: string, index?: number, end?: End): void {
+    if (e.button !== 0 || this.drag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const s = this.stage.getBoundingClientRect();
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    this.overlay.append(line);
+    this.drag = { pointerId: e.pointerId, button, origin: { x: e.clientX, y: e.clientY }, pointer: { x: e.clientX, y: e.clientY },
+      fixed: { x: (fixedClient.x - s.left - this.view.x) / this.view.k, y: (fixedClient.y - s.top - this.view.y) / this.view.k }, line, kind, id, index, end };
+    button.setPointerCapture(e.pointerId);
+    document.addEventListener('wheel', this.onOutsideWheel, { passive: false });
+    this.refreshDrag();
+    // The border strip (T1.8): each frame, with the pointer in a strip 48 px wide along
+    // the chart's border or past it, the view moves that way, up to 1,200 px a second,
+    // until the chart's edge on that side is in view (`panStep`). `apply` puts the dashed
+    // line and the marked target right; a pointer move or the wheel does the same on its
+    // own.
+    const tick = (time: number) => {
+      const d = this.drag;
+      if (!d) return;
+      if (this.frameTime !== null) {
+        const s = this.stage.getBoundingClientRect();
+        const speed = edgePanSpeed(d.pointer, s, BORDER_STRIP, BORDER_SPEED);
+        const dt = Math.min(0.05, (time - this.frameTime) / 1000); // no leap after a stalled frame
+        const { x, y, k } = this.view;
+        const dx = panStep(speed.x * dt, x, this.size.w * k, s.width, BORDER_STRIP);
+        const dy = panStep(speed.y * dt, y, this.size.h * k, s.height, BORDER_STRIP);
+        if (dx || dy) {
+          this.view.x += dx;
+          this.view.y += dy;
+          this.manual = true;
+          this.apply();
+        }
+      }
+      this.frameTime = time;
+      this.frame = requestAnimationFrame(tick);
+    };
+    this.frame = requestAnimationFrame(tick);
   }
 
   /** Pans just enough to bring the selected item fully into view. */
@@ -206,6 +384,7 @@ export class Chart {
     const { x, y, k } = this.view;
     this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
     this.placeHandle();
+    this.refreshDrag();
   }
 
   fit(): void {
@@ -231,20 +410,22 @@ export class Chart {
     this.apply();
   }
 
+  private wheelZoom(e: WheelEvent): void {
+    e.preventDefault();
+    this.manual = true;
+    const r = this.stage.getBoundingClientRect();
+    this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016)), e.clientX - r.left, e.clientY - r.top);
+  }
+
   private bind(): void {
     const { stage } = this;
 
-    stage.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      this.manual = true;
-      const r = stage.getBoundingClientRect();
-      this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016)), e.clientX - r.left, e.clientY - r.top);
-    }, { passive: false });
+    stage.addEventListener('wheel', (e) => this.wheelZoom(e), { passive: false });
 
     // Drag anywhere to pan; a press that does not move is a click.
     let pan: { x: number; y: number; vx: number; vy: number; id: number } | null = null;
     stage.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target === this.handle) return;
+      if (e.button !== 0 || (e.target === this.handle || e.target === this.endHandles.start || e.target === this.endHandles.end)) return;
       pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y, id: e.pointerId };
       this.moved = false;
     });
@@ -265,10 +446,10 @@ export class Chart {
     stage.addEventListener('click', (e) => {
       // A link written with Mermaid's `click` must not navigate the app away.
       if ((e.target as Element).closest('a')) e.preventDefault();
-      if (this.moved || e.target === this.handle) { this.moved = false; return; }
+      if (this.moved || (e.target === this.handle || e.target === this.endHandles.start || e.target === this.endHandles.end)) { this.moved = false; return; }
       const t = this.targetAt(e.target as Element);
       if (this.highlighting && t) { this.events.onHighlight(t); return; }
-      if (e.shiftKey && t && t.kind !== 'edge' && this.selected && this.selected.kind !== 'edge') {
+      if (e.shiftKey && t && t.kind !== 'edge' && this.allowed(t) && this.selected && this.selected.kind !== 'edge' && this.allowed(this.selected)) {
         this.events.onConnect(this.selected.id, t.id);
         return;
       }
@@ -281,58 +462,61 @@ export class Chart {
       else if (this.snap) this.events.onAddNode();
     });
 
-    // Connect: drag from the handle beside the selected node onto another node.
-    let from: { id: string; x: number; y: number; line: SVGLineElement } | null = null;
+    // Both kinds of handle use pointer capture, the same preview, and the same edge scrolling.
     this.handle.addEventListener('pointerdown', (e) => {
-      if (!this.selected || this.selected.kind === 'edge') return;
-      e.preventDefault();
-      const s = stage.getBoundingClientRect();
-      const r = this.elementOf(this.selected)!.getBoundingClientRect();
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      const x = r.left + r.width / 2 - s.left;
-      const y = r.top + r.height / 2 - s.top;
-      for (const [k, v] of [['x1', x], ['y1', y], ['x2', x], ['y2', y]] as const) line.setAttribute(k, String(v));
-      this.overlay.append(line);
-      from = { id: this.selected.id, x: e.clientX, y: e.clientY, line };
-      this.handle.setPointerCapture(e.pointerId);
+      const selected = this.selected;
+      if (!selected || selected.kind === 'edge' || !this.allowed(selected)) return;
+      const r = this.elementOf(selected)?.getBoundingClientRect();
+      if (r) this.beginDrag(e, this.handle, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, 'connect', selected.id);
     });
-    this.handle.addEventListener('pointermove', (e) => {
-      if (!from) return;
-      const s = stage.getBoundingClientRect();
-      from.line.setAttribute('x2', String(e.clientX - s.left));
-      from.line.setAttribute('y2', String(e.clientY - s.top));
-      this.canvas.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
-      const t = this.dropTarget(e.clientX, e.clientY);
-      if (t) this.elementOf(t)?.classList.add('drop');
-    });
-    const endConnect = (e: PointerEvent) => {
-      if (!from) return;
-      const start = from;
-      from = null;
-      start.line.remove();
-      this.canvas.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
-      if (e.type !== 'pointerup' || Math.hypot(e.clientX - start.x, e.clientY - start.y) < 8) return;
-      const t = this.dropTarget(e.clientX, e.clientY);
-      if (t) this.events.onConnect(start.id, t.id);
-    };
-    this.handle.addEventListener('pointerup', endConnect);
-    this.handle.addEventListener('pointercancel', endConnect);
+    for (const end of ['start', 'end'] as const) {
+      const button = this.endHandles[end];
+      button.addEventListener('pointerdown', (e) => {
+        const selected = this.selected;
+        const points = this.pathPoints();
+        if (selected?.kind !== 'edge' || !points) return;
+        const edge = this.snap?.edges[selected.index];
+        if (edge) this.beginDrag(e, button, points[end === 'start' ? 'end' : 'start'], 'end', edge[end], selected.index, end);
+      });
+    }
+    for (const button of [this.handle, this.endHandles.start, this.endHandles.end]) {
+      button.addEventListener('pointermove', (e) => {
+        if (!this.drag || this.drag.pointerId !== e.pointerId) return;
+        this.drag.pointer = { x: e.clientX, y: e.clientY };
+        this.refreshDrag();
+      });
+      const finish = (e: PointerEvent) => {
+        const d = this.drag;
+        if (!d || d.pointerId !== e.pointerId) return;
+        const target = e.type === 'pointerup' && Math.hypot(e.clientX - d.origin.x, e.clientY - d.origin.y) >= 8
+          ? this.dropTarget(e.clientX, e.clientY) : null;
+        this.cancelDrag();
+        if (!target) return;
+        if (d.kind === 'connect') this.events.onConnect(d.id, target.id);
+        else if (target.id !== d.id && d.index !== undefined && d.end) this.events.onMoveEnd(d.index, d.end, target.id);
+      };
+      button.addEventListener('pointerup', finish);
+      button.addEventListener('pointercancel', finish);
+      button.addEventListener('lostpointercapture', () => { if (this.drag?.button === button) this.cancelDrag(); });
+    }
+    document.addEventListener('keydown', this.onKeyDown);
 
     // When a side panel opens or closes, keep the chart centred and the selection in view.
     let width = stage.clientWidth;
-    new ResizeObserver(() => {
+    this.observer = new ResizeObserver(() => {
       const next = stage.clientWidth;
       this.view.x += (next - width) / 2;
       width = next;
       this.apply();
       this.reveal();
-    }).observe(stage);
+    });
+    this.observer.observe(stage);
   }
 
   private dropTarget(x: number, y: number): { kind: 'node' | 'sub'; id: string } | null {
     for (const el of document.elementsFromPoint(x, y)) {
       const t = this.targetAt(el);
-      if (t && t.kind !== 'edge') return t;
+      if (t && t.kind !== 'edge' && this.allowed(t)) return t;
     }
     return null;
   }

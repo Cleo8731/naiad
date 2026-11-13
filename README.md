@@ -52,12 +52,17 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Rename | Double-click a node, or press Enter / F2 |
 | Connect two nodes | Drag from the dot on a selected node to another node, or Shift-click the second node |
 | Change an arrow | Click it: label, line, head |
+| Move an arrow's start or end | Click the arrow, then drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |
 | Group nodes | Select a node, then **Group** in the sidebar |
 | Delete | Select, then Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Zoom / pan | Mouse wheel / drag empty space |
 | Point at nodes, arrows or groups with an agent | **Highlight** (key H), then click them; **Clear** takes every highlight off |
 | Show or hide the flowchart's text | **Text** |
+
+While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
+view that way, at up to 1,200 px a second, until the chart's edge on that side comes
+into view; the mouse wheel zooms, and Escape cancels the drag.
 
 The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
 Highlights are kept in a small file of their own beside the flowchart, which an agent

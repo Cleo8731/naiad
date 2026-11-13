@@ -111,11 +111,12 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .overlay line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
-.connect-handle {
+.connect-handle, .end-handle {
   position: absolute; width: 22px; height: 22px; padding: 0; border-radius: 50%;
   background: var(--accent); border: 3px solid var(--bg); cursor: crosshair; touch-action: none;
 }
-.connect-handle:hover { transform: scale(1.15); border-color: var(--bg); }
+.end-handle { width: 18px; height: 18px; }
+.connect-handle:hover, .end-handle:hover { transform: scale(1.15); border-color: var(--bg); }
 
 .empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; cursor: default; color: var(--muted); }
 .empty h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: var(--text); }

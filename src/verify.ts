@@ -15,6 +15,7 @@ export type Op =
   | { kind: 'deleteNode'; id: string }
   | { kind: 'addEdge'; from: string; to: string }
   | { kind: 'deleteEdge'; index: number }
+  | { kind: 'setEdgeEnd'; index: number; end: 'start' | 'end'; id: string }
   | { kind: 'setEdgeLabel'; index: number; label: string }
   | { kind: 'setEdgeStyle'; index: number; stroke?: E.LinkParts['stroke']; arrow?: E.ArrowKind }
   | { kind: 'setStyle'; id: string; changes: Record<string, string | null> }
@@ -25,7 +26,7 @@ export type Op =
   | { kind: 'setSubgraphDirection'; id: string; dir: string | null }
   | { kind: 'ungroup'; id: string };
 
-export interface OpResult { text: string; created?: string }
+export interface OpResult { text: string; created?: string; edgeIndex?: number }
 
 /** The edit itself: text in, text out, no checking. */
 export function runOp(text: string, op: Op): OpResult {
@@ -39,6 +40,7 @@ export function runOp(text: string, op: Op): OpResult {
     }
     case 'deleteNode': return { text: E.deleteNode(text, op.id) };
     case 'addEdge': return { text: E.addEdge(text, op.from, op.to) };
+    case 'setEdgeEnd': { const r = E.setEdgeEnd(text, op.index, op.end, op.id); return { text: r.text, edgeIndex: r.index }; }
     case 'deleteEdge': return { text: E.deleteEdge(text, op.index) };
     case 'setEdgeLabel': return { text: E.setEdgeLabel(text, op.index, op.label) };
     case 'setEdgeStyle': return { text: E.setEdgeStyle(text, op.index, { stroke: op.stroke, arrow: op.arrow }) };
@@ -97,6 +99,12 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
         markdown: false, interpolate: '', classes: [], animate: false, animation: '', id: '',
       });
       break;
+    case 'setEdgeEnd': {
+      const edge = s.edges.splice(op.index, 1)[0];
+      edge[op.end] = op.id;
+      s.edges.splice(res.edgeIndex ?? op.index, 0, edge);
+      break;
+    }
     case 'deleteEdge': s.edges.splice(op.index, 1); break;
     case 'setEdgeLabel': {
       // A Markdown label stays Markdown (as a node's title does); no label is plain.
@@ -148,7 +156,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
   return s;
 }
 
-const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle']);
+const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle', 'setEdgeEnd']);
 
 /**
  * Runs an edit with the check. Throws E.EditError (with a message for the user) when
@@ -168,7 +176,36 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
       throw new E.EditError('The editor reads the arrows in this file differently from Mermaid, so it will not rewrite them. Change this arrow in the text pane.');
     }
   }
-  const res = runOp(text, op);
+  // Moving an arrow's end (T1.8): the new end is a node, or a group whose id is written
+  // in the file (a title-only group's id is Mermaid's own and changes as groups are added).
+  const scanned = op.kind === 'setEdgeEnd' ? parseDoc(text) : null;
+  if (op.kind === 'setEdgeEnd' && !(op.id in before.nodes) && !(scanned!.subs.find((s) => s.id === op.id)?.explicitId && op.id in before.subs)) {
+    throw new E.EditError(`"${op.id}" is not a node or a group with an id written in this file.`);
+  }
+  let res = runOp(text, op);
+  // In place first. Mermaid puts a node into the first group whose block mentions it, so
+  // an arrow written inside a group's block can pull its new end into that group, or
+  // nest a group; and an arrow inside a nested group joined to a group around it cannot
+  // be drawn (ELK). Then the arrow is written at the top level instead, after the
+  // outermost group's `end` (`relocateEdgeEnd`, Q100). An arrow at the top level
+  // changes no group, so its snapshot is not taken twice.
+  if (op.kind === 'setEdgeEnd' && res.text !== text) {
+    const doc = scanned!;
+    const parentLine = doc.info[doc.edges[op.index].line].parent;
+    if (parentLine !== -1) {
+      const byLine = new Map(doc.subs.map((g) => [g.line, g]));
+      let changed = false;
+      for (let p = byLine.get(parentLine)!.parent; p !== -1; p = byLine.get(p)!.parent) if (byLine.get(p)!.id === op.id) changed = true;
+      if (!changed) {
+        try { changed = JSON.stringify((await snapshot(res.text)).subs) !== JSON.stringify(before.subs); }
+        catch { changed = true; }
+      }
+      if (changed) {
+        const moved = E.relocateEdgeEnd(text, op.index, op.end, op.id);
+        res = { text: moved.text, edgeIndex: moved.index };
+      }
+    }
+  }
   // Mermaid reads a file the same with or without its last line break, so `snapshot`
   // cannot see it go or come (bug hunt round 6, oA42).
   if (text.endsWith('\n') !== res.text.endsWith('\n')) {
@@ -188,7 +225,9 @@ export async function applyChecked(text: string, op: Op): Promise<OpResult> {
   } catch {
     throw new E.EditError('That change would have broken the file, so it was not made. Make it in the text pane instead.');
   }
-  if (canon(expectOp(before, op, res)) !== canon(after)) {
+  const expected = expectOp(before, op, res);
+  if (canon(expected) !== canon(after) || (op.kind === 'setEdgeEnd' &&
+      (JSON.stringify(expected.edges) !== JSON.stringify(after.edges) || JSON.stringify(expected.subs) !== JSON.stringify(after.subs)))) {
     throw new E.EditError('That change would have altered other parts of the chart, so it was not made. Make it in the text pane instead.');
   }
   if (descriptionsOf(text, op) !== descriptionsOf(res.text, op)) {

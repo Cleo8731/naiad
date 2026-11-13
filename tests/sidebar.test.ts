@@ -70,7 +70,7 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
       replace(...nodes);
     };
   }
-  const EDGE: EdgeView = { kind: 'edge', index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow' };
+  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow' };
 
   function typing() {
     const s = sidebar();

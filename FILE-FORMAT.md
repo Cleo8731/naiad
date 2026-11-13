@@ -130,6 +130,17 @@ description.
   on the one pair Mermaid gives it to, the last node before the arrow and the first
   after it (`b e1@--> c`). A `linkStyle` line follows its arrow when arrows move, and a
   Markdown label (`` "`...`" ``) stays Markdown.
+- Moving an arrow's start or end changes only that end's id where the arrow is written;
+  its label, line, head, own id and styles stay. When the id it replaces carried the
+  node's shape or title (`b[Title] --> c`, moved off `b`), that mention stays on a line
+  of its own (`b[Title]`), so the node keeps its look and its group. Mermaid puts a node
+  into the first group whose block mentions it, so an arrow written inside a group's
+  block could pull its new end into that group, or take it from another; then the
+  arrow is written instead on a line of its own after the `end` of the outermost group
+  around it, and the numbers in `linkStyle` lines change so each style stays on its
+  arrow. A new end is a node or a group with an id (`subgraph id [Title]`); a group
+  written with only a title gets its id from Mermaid, which numbers such groups in
+  order, so it is never made an end.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
   the ending of the line above it. A byte-order mark is kept. Whether the file ends with
@@ -237,7 +248,9 @@ collect --> clean
 ```
 
 - An item is a node's or a group's id, or an arrow written as its two ends,
-  `from --> to` (the first arrow with those ends).
+  `from --> to` (the first arrow with those ends). Moving an arrow's end does not
+  change this file: a highlight naming the arrow by its old ends no longer finds it, as
+  when the arrow is deleted.
 - Blank lines and lines starting with `#` are ignored, and so is a line that names
   nothing on the chart.
 - A line ends at LF, CRLF or a lone CR. When Naiad changes the list, every line it
