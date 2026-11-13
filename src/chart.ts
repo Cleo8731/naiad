@@ -59,6 +59,10 @@ export function configureMermaid(dark: boolean): void {
         edgeLabelBackground: '#f6f7f9', titleColor: '#4a5362',
       },
     flowchart: { useMaxWidth: false, htmlLabels: true, padding: 14, nodeSpacing: 44, rankSpacing: 52 },
+    // Gaps at crossings (the user, 2026-11-13): where two arrows cross, Mermaid's layout
+    // (ELK, its default) cuts a short gap in one, as on road maps, instead of its own
+    // default, a small hop. Drawing only; a file's own `elk` settings still win.
+    elk: { lineHops: 'gap' },
   });
 }
 
@@ -107,9 +111,13 @@ export function pathEnds(path: { getTotalLength(): number; getPointAtLength(dist
  * Redraws the bends of an arrow drawn with Mermaid's "rounded" curve (straight runs, each
  * bend a quadratic curve 5 px across, its control point the corner) with a larger
  * radius, never more than half of either run beside the bend. The ends stay where they
- * are, so the arrowheads do too. Any other path is returned as it is.
+ * are, so the arrowheads do too. An arrow cut by gaps at crossings is several pieces,
+ * each starting with M; each is rounded on its own, so the gaps stay where they are. Any
+ * other path is returned as it is.
  */
 export function roundBends(d: string, radius: number): string {
+  const pieces = d.match(/M[^M]*/g);
+  if (pieces && pieces.length > 1 && pieces.join('') === d) return pieces.map((piece) => roundBends(piece, radius)).join('');
   const parts = d.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g);
   if (!parts) return d;
   const corners: Point[] = [];
@@ -153,6 +161,38 @@ const HOVER_GRACE = 400;
 
 const sameTarget = (a: Target | null, b: Target | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+/** Trace on hover (the user, 2026-11-13): how long the pointer rests before the rest fades, in ms. */
+const TRACE_REST = 150;
+
+/** The trial of trace on hover beside its variant: the variant's lit arrows also take colours of their own. */
+const TRACE_COLOURS = import.meta.env.VITE_TRACE_COLOURS === '1';
+const TRACE_PALETTE = {
+  light: ['#1c7ed6', '#e8590c', '#2f9e44', '#c2255c', '#7048e8', '#0c8599', '#e67700', '#5c940d'],
+  dark: ['#4dabf7', '#ff922b', '#51cf66', '#f06595', '#9775fa', '#22b8cf', '#fcc419', '#94d82d'],
+};
+
+/**
+ * Trace on hover: what stays lit while the pointer rests on an item, the rest fading. A
+ * node: its arrows and the nodes at their other ends. An arrow: it and its two ends. A
+ * group: the arrows that end at the group itself, their other ends, and its own nodes.
+ * Null when there is nothing to trace (no arrows), so a lone item fades nothing.
+ */
+export function traceOf(t: Target, snap: Pick<Snap, 'edges' | 'subs'>): { ids: Set<string>; edges: Set<number> } | null {
+  if (t.kind === 'edge') {
+    const e = snap.edges[t.index];
+    return e ? { ids: new Set([e.start, e.end]), edges: new Set([t.index]) } : null;
+  }
+  const ids = new Set([t.id, ...(t.kind === 'sub' ? snap.subs[t.id]?.nodes ?? [] : [])]);
+  const edges = new Set<number>();
+  snap.edges.forEach((e, i) => {
+    if (e.start !== t.id && e.end !== t.id) return;
+    edges.add(i);
+    ids.add(e.start);
+    ids.add(e.end);
+  });
+  return edges.size ? { ids, edges } : null;
+}
+
 export class Chart {
   private canvas: HTMLDivElement;
   private overlay: SVGSVGElement;
@@ -166,6 +206,11 @@ export class Chart {
   private hovered: Target | null = null;
   private lit: Target | null = null;
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The group the pointer is on while the grace runs out (`leaveSoon`). */
+  private leavingTo: Target | null = null;
+  /** Trace on hover: the item traced, and the rest before the trace follows the pointer. */
+  private traced: Target | null = null;
+  private traceTimer: ReturnType<typeof setTimeout> | null = null;
   private explicitSubs = new Set<string>();
   private drag: Drag | null = null;
   private frame: number | null = null;
@@ -247,6 +292,7 @@ export class Chart {
     if (!this.fitted || !this.manual) { this.fit(); this.fitted = true; }
     this.paintSelection();
     this.paintHighlights();
+    this.paintTrace();
   }
 
   clear(): void {
@@ -254,6 +300,7 @@ export class Chart {
     this.canvas.innerHTML = '';
     this.snap = null;
     this.stopLeaving();
+    this.trace(null);
     this.hovered = this.lit = null;
     for (const button of this.buttons()) button.hidden = true;
   }
@@ -333,28 +380,117 @@ export class Chart {
     if (t) this.elementOf(t)?.classList.add('hov');
   }
 
+  /** Trace on hover follows the pointer after a short rest, so crossing the chart does not flicker. */
+  private traceSoon(t: Target | null): void {
+    if (this.traceTimer !== null) clearTimeout(this.traceTimer);
+    this.traceTimer = null;
+    if (sameTarget(t, this.traced)) return;
+    this.traceTimer = setTimeout(() => this.trace(t), TRACE_REST);
+  }
+
+  private trace(t: Target | null): void {
+    if (this.traceTimer !== null) clearTimeout(this.traceTimer);
+    this.traceTimer = null;
+    if (sameTarget(t, this.traced)) return;
+    this.traced = t;
+    this.paintTrace();
+  }
+
+  private paintTrace(): void {
+    this.canvas.querySelectorAll('.lit').forEach((e) => e.classList.remove('lit'));
+    this.unpaintTraceColours();
+    const lit = this.traced && this.snap ? traceOf(this.traced, this.snap) : null;
+    this.stage.classList.toggle('tracing', !!lit);
+    if (lit) {
+      for (const id of lit.ids) {
+        this.canvas.querySelector(`[data-node="${CSS.escape(id)}"]`)?.classList.add('lit');
+        this.canvas.querySelector(`[data-sub="${CSS.escape(id)}"]`)?.classList.add('lit');
+      }
+      for (const i of lit.edges) {
+        this.canvas.querySelector(`[data-edge-line="${i}"]`)?.classList.add('lit');
+        this.canvas.querySelector(`g.edgeLabel[data-edge="${i}"]`)?.classList.add('lit');
+      }
+      if (TRACE_COLOURS) this.paintTraceColours([...lit.edges].sort((a, b) => a - b));
+    }
+  }
+
+  /**
+   * The trial's variant: each lit arrow in a colour of its own, its head too (a copy of
+   * its head's marker in that colour). Taken off again when the trace ends.
+   */
+  private paintTraceColours(edges: number[]): void {
+    const dark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+    const palette = TRACE_PALETTE[dark ? 'dark' : 'light'];
+    edges.forEach((i, k) => {
+      const path = this.canvas.querySelector<SVGPathElement>(`[data-edge-line="${i}"]`);
+      if (!path) return;
+      const colour = palette[k % palette.length];
+      path.style.stroke = colour;
+      path.style.setProperty('--trace', colour); // the arrow under the pointer keeps it (`style.css`)
+      path.dataset.traceColour = '';
+      for (const attr of ['marker-start', 'marker-end']) {
+        const url = path.getAttribute(attr);
+        const id = url ? /^url\(#(.+)\)$/.exec(url)?.[1] : undefined;
+        const marker = id ? this.canvas.querySelector(`marker#${CSS.escape(id)}`) : null;
+        if (!url || !marker) continue;
+        const copyId = `${marker.id}-trace-${k % palette.length}`;
+        if (!this.canvas.querySelector(`marker#${CSS.escape(copyId)}`)) {
+          const copy = marker.cloneNode(true) as SVGMarkerElement;
+          copy.id = copyId;
+          copy.querySelectorAll<SVGElement>('*').forEach((e) => { e.style.fill = colour; e.style.stroke = colour; });
+          marker.after(copy);
+        }
+        path.dataset[attr === 'marker-start' ? 'traceStart' : 'traceEnd'] = url;
+        path.setAttribute(attr, `url(#${copyId})`);
+      }
+    });
+  }
+
+  private unpaintTraceColours(): void {
+    this.canvas.querySelectorAll<SVGPathElement>('[data-trace-colour]').forEach((path) => {
+      path.style.removeProperty('stroke');
+      path.style.removeProperty('--trace');
+      delete path.dataset.traceColour;
+      if (path.dataset.traceStart) path.setAttribute('marker-start', path.dataset.traceStart);
+      if (path.dataset.traceEnd) path.setAttribute('marker-end', path.dataset.traceEnd);
+      delete path.dataset.traceStart;
+      delete path.dataset.traceEnd;
+    });
+  }
+
   private hover(t: Target): void {
     this.stopLeaving();
     this.light(t);
+    this.traceSoon(t);
     if (sameTarget(t, this.hovered)) return;
     this.hovered = t;
     this.placeHandles();
   }
 
-  /** The pointer left every item: the light goes at once, the handles after the grace. */
-  private leaveSoon(): void {
+  /**
+   * The pointer left the item for empty space, or for a group (`next`): the light goes at
+   * once, the handles after the grace, and then the group, if the pointer is still on it,
+   * is hovered. Into a group the trace stays with the item until then.
+   */
+  private leaveSoon(next: Target | null): void {
     this.light(null);
+    this.leavingTo = next;
+    if (!next) this.traceSoon(null);
     if (this.hoverTimer !== null || !this.hovered) return;
     this.hoverTimer = setTimeout(() => {
+      const to = this.leavingTo;
       this.hoverTimer = null;
+      this.leavingTo = null;
       this.hovered = null;
-      this.placeHandles();
+      if (to) this.hover(to);
+      else this.placeHandles();
     }, HOVER_GRACE);
   }
 
   private stopLeaving(): void {
     if (this.hoverTimer !== null) clearTimeout(this.hoverTimer);
     this.hoverTimer = null;
+    this.leavingTo = null;
   }
 
   setHighlighting(on: boolean): void {
@@ -386,7 +522,7 @@ export class Chart {
     if (t?.kind !== 'edge') return null;
     const path = this.elementOf(t) as SVGPathElement | null;
     const points = path?.getAttribute('d') ? pathEnds(path) : null;
-    const matrix = path?.getScreenCTM();
+    const matrix = points ? path?.getScreenCTM() : null;
     if (!points || !matrix) return null;
     const convert = (p: Point): Point => ({ x: matrix.a * p.x + matrix.c * p.y + matrix.e, y: matrix.b * p.x + matrix.d * p.y + matrix.f });
     return { start: convert(points.start), end: convert(points.end) };
@@ -450,6 +586,7 @@ export class Chart {
     if (e.button !== 0 || this.drag) return;
     e.preventDefault();
     e.stopPropagation();
+    this.trace(null);
     const s = this.stage.getBoundingClientRect();
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     this.overlay.append(line);
@@ -554,7 +691,7 @@ export class Chart {
       const dx = e.clientX - pan.x;
       const dy = e.clientY - pan.y;
       if (!this.moved && Math.hypot(dx, dy) < 4) return;
-      if (!this.moved) { this.moved = true; this.manual = true; stage.setPointerCapture(pan.id); stage.classList.add('panning'); }
+      if (!this.moved) { this.moved = true; this.manual = true; stage.setPointerCapture(pan.id); stage.classList.add('panning'); this.trace(null); }
       this.view.x = pan.vx + dx;
       this.view.y = pan.vy + dy;
       this.apply();
@@ -589,14 +726,20 @@ export class Chart {
       if (e.pointerType === 'touch' || this.drag || stage.classList.contains('panning')) return;
       if (isHandle(e.target)) {
         this.stopLeaving();
-        this.light(this.buttons(this.sets.hover).includes(e.target as HTMLButtonElement) ? this.sets.hover.owner : null);
+        const owner = this.buttons(this.sets.hover).includes(e.target as HTMLButtonElement) ? this.sets.hover.owner : null;
+        this.light(owner);
+        this.traceSoon(owner ?? this.traced); // the trace stays with the item whose handle this is
         return;
       }
+      // A group is the ground the items in it stand on: coming from another item, the pointer
+      // takes it only after the grace, as with empty space, so it can cross the group to that
+      // item's handles (the user, 2026-11-13, who could not reach a grouped node's handle).
       const t = this.targetAt(e.target as Element);
-      if (t) this.hover(t);
-      else this.leaveSoon();
+      if (t?.kind === 'sub' && this.hovered && !sameTarget(t, this.hovered)) this.leaveSoon(t);
+      else if (t) this.hover(t);
+      else this.leaveSoon(null);
     });
-    stage.addEventListener('pointerleave', () => { if (!this.drag) this.leaveSoon(); });
+    stage.addEventListener('pointerleave', () => { if (!this.drag) this.leaveSoon(null); });
 
     // Both kinds of handle, in both sets, use pointer capture, the same preview, and the
     // same edge scrolling.

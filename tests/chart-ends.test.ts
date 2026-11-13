@@ -59,9 +59,9 @@ describe('drag interactions', () => {
     const path = canvas.querySelector('path')!;
     Object.assign(path, geometry({ x: 10, y: 20 }, { x: 50, y: 60 }), { getScreenCTM: () => ({ a: 2, b: 0, c: 0, d: 2, e: 100, f: 200 }) });
     (canvas.querySelector('[data-node="A"]') as Element).getBoundingClientRect = () => ({ left: 110, top: 210, right: 130, bottom: 230, width: 20, height: 20, x: 110, y: 210, toJSON() {} });
-    Object.assign(chart as any, { snap: { edges: [{ start: 'A', end: 'B' }] }, explicitSubs: new Set(), size: { w: 2000, h: 2000 } });
+    Object.assign(chart as any, { snap: { edges: [{ start: 'A', end: 'B' }], subs: {} }, explicitSubs: new Set(), size: { w: 2000, h: 2000 } });
   });
-  afterEach(() => { chart.destroy(); stage.remove(); vi.unstubAllGlobals(); });
+  afterEach(() => { chart.destroy(); stage.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
   test('handles use screen coordinates and drop only a changed end', () => {
     chart.select({ kind: 'edge', index: 0 });
     const [start, end] = Array.from(stage.querySelectorAll<HTMLButtonElement>('.end-handle'));
@@ -170,6 +170,40 @@ describe('drag interactions', () => {
     a.dispatchEvent(pointer('pointerover', 120, 220));
     expect(a.classList.contains('hov')).toBe(true);
     expect(connects[1].hidden).toBe(true);
+    vi.useRealTimers();
+  });
+  test('a node in a group: the pointer crosses the group to the node\'s handle (the user, 2026-11-13)', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const a = stage.querySelector('[data-node="A"]')!;
+    const group = stage.querySelector('[data-sub="subGraph0"]')!;
+    const connects = stage.querySelectorAll<HTMLButtonElement>('.connect-handle');
+    a.dispatchEvent(pointer('pointerover', 120, 220));
+    group.dispatchEvent(pointer('pointerover', 133, 220)); // the gap is the group's ground
+    expect(a.classList.contains('hov')).toBe(false);
+    expect(group.classList.contains('hov')).toBe(false);
+    expect(connects[1].style.left).toBe('36px'); // still the node's handle
+    connects[1].dispatchEvent(pointer('pointerover', 140, 220)); // reached in time
+    vi.advanceTimersByTime(1000);
+    expect(connects[1].hidden).toBe(false);
+    expect(a.classList.contains('hov')).toBe(true);
+    target = stage.querySelector('[data-node="B"]');
+    connects[1].dispatchEvent(pointer('pointerdown', 140, 220));
+    connects[1].dispatchEvent(pointer('pointerup', 170, 260));
+    expect(events.onConnect).toHaveBeenCalledWith('A', 'B');
+    a.dispatchEvent(pointer('pointerover', 120, 220));
+    group.dispatchEvent(pointer('pointerover', 133, 220)); // staying on the group: it takes over
+    vi.advanceTimersByTime(399);
+    expect(group.classList.contains('hov')).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(group.classList.contains('hov')).toBe(true);
+    stage.dispatchEvent(pointer('pointerover', 300, 400));
+    group.dispatchEvent(pointer('pointerover', 133, 220)); // from nothing hovered, a group is lit at once
+    vi.advanceTimersByTime(400);
+    a.dispatchEvent(pointer('pointerover', 120, 220));
+    stage.dispatchEvent(pointer('pointerover', 300, 400));
+    vi.advanceTimersByTime(400);
+    group.dispatchEvent(pointer('pointerover', 133, 220));
+    expect(group.classList.contains('hov')).toBe(true);
     vi.useRealTimers();
   });
   test('the selected arrow keeps its end handles; an arrow under the pointer is dragged without a click', () => {
