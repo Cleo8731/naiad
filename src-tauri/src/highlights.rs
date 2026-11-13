@@ -574,18 +574,20 @@ fn unreadable(file: &Path) -> String {
     format!("{name} is not UTF-8 text, so Naiad leaves it alone.")
 }
 
-/// Deletes the highlights file, then its folder and the `.naiad` folder if they are
-/// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
-/// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
-/// (`write`): it is kept, with its folders. With `same`, the file is deleted only if
-/// `same` says yes to its bytes, and otherwise kept, with its folders.
+/// `remove` as the last view closing runs it (`change`), for a test.
+#[cfg(test)]
 pub fn delete(flowchart: &Path, same: Same) -> Result<(), String> {
     let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
     remove(flowchart, false, same).map(|_| ())
 }
 
-/// `delete`; with `refuse`, a file Naiad cannot read is an error (Clear, a blank write)
-/// rather than only kept (the last view closing). False: `same` said no.
+/// Deletes the highlights file, then its folder and the `.naiad` folder if they are
+/// left empty (Q24: with nothing in it, there is no `.naiad` folder). Nothing is
+/// removed when the way holds a link (`checked`, `hold`), nor a file Naiad cannot read
+/// (`write`): it is kept, with its folders, and with `refuse` that is an error (Clear, a
+/// blank write) rather than only kept (the last view closing). With `same`, the file is
+/// deleted only if `same` says yes to its bytes, and otherwise kept, with its folders,
+/// and the answer is false. Run while `CHANGING` is held.
 fn remove(flowchart: &Path, refuse: bool, same: Same) -> Result<bool, String> {
     let file = checked(flowchart)?;
     let folder = file.parent().ok_or("No folder.")?;
@@ -671,7 +673,7 @@ pub fn stop_showing(left: Option<&[u8]>) {
 }
 
 /// `show`, the highlights of a flowchart no longer shown deleted only if `delete_if` says
-/// yes to them (`delete`); with no `delete_if`, only if they hold what `SEEN` noted.
+/// yes to them (`remove`); with no `delete_if`, only if they hold what `SEEN` noted.
 fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     let next = flowchart.map(full);
     let before = match SHOWN.lock() {
@@ -699,10 +701,15 @@ fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     if let Some(old) = before {
         let same = next.as_deref().is_some_and(|n| n.to_lowercase() == old.to_lowercase());
         if !same {
+            // What `SEEN` noted is taken and compared with the file in one step
+            // (`CHANGING`), so that no read or write notes newer text between the two (bug
+            // hunt round 7, F25).
+            let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
             let seen = take_seen(&old);
+            stage("seen taken");
             let as_seen = |now: &[u8]| matches!(&seen, Some(Some(bytes)) if bytes.as_slice() == now);
             if !shown_elsewhere(&dir, me, &old) {
-                let _ = delete(Path::new(&old), Some(delete_if.unwrap_or(&as_seen as &dyn Fn(&[u8]) -> bool)));
+                let _ = remove(Path::new(&old), false, Some(delete_if.unwrap_or(&as_seen as &dyn Fn(&[u8]) -> bool)));
             }
         }
     }
@@ -981,6 +988,39 @@ mod tests {
             assert_eq!(fs::read_to_string(&file).ok().as_deref(), Some("a\n"), "{what}: written after the last write, kept");
             fs::remove_file(&file).unwrap();
         }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Bug hunt round 7, F25: a view that went took what `SEEN` noted before it held
+    /// `CHANGING`, so a write made between the two left it comparing against the older
+    /// text, and an agent that then wrote that older text back lost it. The note is taken
+    /// and compared with no write between.
+    #[test]
+    fn a_write_made_while_the_view_goes_is_not_lost_to_an_older_note() {
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = folder("f25");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        let file = file_of(&flow).unwrap();
+        show(Some(&flow));
+        write(&flow, "a\n", None).unwrap();
+        // As the view goes, another view writes "b" and an agent writes "a" back: the
+        // write waits for the going, or, if nothing makes it wait, ends first.
+        let (other, agent) = (flow.clone(), file.clone());
+        let (done, ended) = std::sync::mpsc::channel();
+        let second = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let into = second.clone();
+        at_stage("seen taken", move || {
+            *into.borrow_mut() = Some(std::thread::spawn(move || {
+                write(&other, "b\n", None).unwrap();
+                let _ = done.send(());
+            }));
+            let _ = ended.recv_timeout(std::time::Duration::from_millis(500));
+            fs::write(&agent, "a\n").unwrap();
+        });
+        show(None);
+        second.borrow_mut().take().expect("the second write ran").join().unwrap();
+        assert!(file.exists(), "written after what the going view compares with: kept");
         fs::remove_dir_all(&dir).unwrap();
     }
 
