@@ -175,8 +175,8 @@ More text.
   has its text one column past the marker, and holds nothing when a blank line follows
   it. A line starting with `=` right under an item's text never ends the item: it is
   more of the text, or underlines a heading in the item. Where Naiad cannot tell
-  whether the item ended, it
-  does not find the block, so a code sample is never taken for a flowchart. A fenced
+  whether an item began or ended, it does not find the block, so a code sample or text
+  is never taken for a flowchart. A fenced
   block in a list item also ends with the item: a line in it indented less than the
   item's text (blank lines aside) ends both, and the block then has no closing line.
   Every line of the block must then start with the same whitespace as its opening

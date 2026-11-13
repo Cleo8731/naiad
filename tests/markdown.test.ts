@@ -737,6 +737,18 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     expect(headings('1) item\n       -\n  Notes\n   ===\n' + block(''))).toEqual(['']);
   });
 
+  test('R13: under a line that may or may not start a list item, no item is taken to start (the CommonMark comparison, T5.16)', () => {
+    const at = (md: string) => findBlocks(md).map((b) => `${b.open}-${b.end}`).join(',');
+    const block = (indent: string) => [`${indent}~~~mermaid`, `${indent}flowchart TD`, `${indent}~~~`].join('\n') + '\n';
+    // Under text indented two columns or more, `- ` and `1.` are more of it (Naiad cannot
+    // tell from the text alone whether it stands in an item), and so are the lines under
+    // them: the fence is text, not a block in a `2.` item.
+    expect(at('   [ref]: /url\n- \n  2. Setup\n' + block('     '))).toBe('');
+    expect(at('  Text\n   1.\n  2. Setup\n' + block('       '))).toBe('');
+    // With no text above, the empty item starts, and the `2.` item in it holds the block.
+    expect(at('Text\n\n- \n  2. Setup\n' + block('     '))).toBe('4-7');
+  });
+
   test('R12: a line indented four columns or more under text is no table\'s delimiter row (the CommonMark comparison, T5.16)', () => {
     const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
     const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;

@@ -60,7 +60,7 @@ function columns(ws: string): number {
   return w;
 }
 
-type Role = 'item' | 'lazy' | 'other';
+type Role = 'item' | 'lazy' | 'other' | 'unsure';
 
 /**
  * What `findBlocks` knows of a file's lines as it reads them. `opener[k]` is the opening
@@ -199,7 +199,9 @@ const BLOCK_START = /^[ \t]*(>|#{1,6}([ \t]|$)|<|\||=|([-*_])([ \t]*\3){2,}[ \t]
 /**
  * What line k (not blank, not in a fenced block) is to a list item above it: 'item', a
  * list item's own line; 'lazy', paragraph text going on from the line above, which
- * stands in an item whatever its indent; 'other', any other line, or unsure.
+ * stands in an item whatever its indent; 'unsure', a line like a list item that may be
+ * either; 'other', any other line, or unsure. An item is only ever found on an 'item'
+ * line, so unsure is the safe side.
  */
 function lineRole(r: Reading, k: number): Role {
   return (r.role[k] ??= roleOf(r, k));
@@ -226,7 +228,7 @@ function roleOf(r: Reading, k: number): Role {
     starts = text === null ? null : lead < text;
     if (starts === false && lead - text! <= 3 && /^[ \t]*-[ \t]*$/.test(line)) return 'other';
   }
-  if (starts === null) return 'other';
+  if (starts === null) return 'unsure';
   if (!starts) return 'lazy';
   if (fenceBase(r, k, lead) !== null) return 'item';
   // Its marker is four columns or more past where a block may start: under paragraph
@@ -293,10 +295,13 @@ function paragraphAbove(r: Reading, k: number): 1 | 0 | -1 {
   if (k === 0 || r.opener[k - 1] >= 0) return 0; // nothing above, or a line of a fenced block
   const line = r.lines[k - 1];
   // A line like a list item that is more of the paragraph above it is paragraph text
-  // (R11: `    -` under text). The roles above are worked out first, top down.
+  // (R11: `    -` under text); one that may be either leaves it unsure (R13). The roles
+  // above are worked out first, top down.
   if (listItem(line)) {
     know(r, k - 1);
-    if (lineRole(r, k - 1) === 'lazy') return 1;
+    const role = lineRole(r, k - 1);
+    if (role === 'lazy') return 1;
+    if (role === 'unsure') return -1;
   }
   let above = line;
   for (;;) { // take off the quote and list markers the text above stands in
