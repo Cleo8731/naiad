@@ -43,6 +43,16 @@ export function isMarkdownPath(path: string): boolean {
 const FENCE = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
 const LIST_ITEM = /^([ \t]*)([-+*]|\d{1,9}[.)])([ \t]+|$)/;
 
+/**
+ * The list item line `line` starts, or null. A thematic break written with spaces
+ * (`* * *`, `- - -`) is a break, not an item holding one (the CommonMark comparison,
+ * T5.16, R4: a heading right under one was taken for the item's, and a block under one
+ * ended where the item would have).
+ */
+function listItem(line: string): RegExpExecArray | null {
+  return /^[ \t]*([-*_])([ \t]*\1){2,}[ \t]*$/.test(line) ? null : LIST_ITEM.exec(line);
+}
+
 /** How many columns a run of spaces and tabs takes, a tab reaching the next multiple of 4. */
 function columns(ws: string): number {
   let w = 0;
@@ -141,7 +151,7 @@ function baseAbove(r: Reading, at: number, w: number): number | null {
     if (lead < 0) continue;
     const role = lineRole(r, k);
     if (role === 'item') {
-      if (r.text[k] < 0) r.text[k] = textColumn(LIST_ITEM.exec(lines[k])!);
+      if (r.text[k] < 0) r.text[k] = textColumn(listItem(lines[k])!);
       const text = r.text[k];
       // A lazy line goes on with a paragraph of the item only if the line above it is
       // no code sample in the item (four columns or more past its text).
@@ -188,7 +198,7 @@ function lineRole(r: Reading, k: number): Role {
 function roleOf(r: Reading, k: number): Role {
   const line = r.lines[k];
   const para = paragraphAbove(r, k);
-  const item = LIST_ITEM.exec(line);
+  const item = listItem(line);
   if (!item) return para === 1 && !FENCE.test(line) && !BLOCK_START.test(line) ? 'lazy' : 'other';
   const lead = columns(item[1]);
   // Right under paragraph text, and indented into the item that text stands in, only a
@@ -226,7 +236,7 @@ function paragraphItemText(r: Reading, k: number): number | null {
       break;
     }
     const para = paragraphAbove(r, k);
-    const item = LIST_ITEM.exec(line);
+    const item = listItem(line);
     if (item) {
       const rest = line.slice(item[0].length);
       // Maybe more of the paragraph above, or no paragraph at all: unsure.
@@ -257,7 +267,7 @@ function paragraphAbove(r: Reading, k: number): 1 | 0 | -1 {
   const line = r.lines[k - 1];
   let above = line;
   for (;;) { // take off the quote and list markers the text above stands in
-    const m = /^[ \t]*>[ \t]?/.exec(above) ?? LIST_ITEM.exec(above);
+    const m = /^[ \t]*>[ \t]?/.exec(above) ?? listItem(above);
     if (!m) break;
     above = above.slice(m[0].length);
   }
@@ -467,7 +477,7 @@ function setextHeading(r: Reading, i: number): string | null {
   for (; k >= 0 && r.opener[k] < 0 && r.lines[k].trim() !== ''; k--) {
     const line = r.lines[k];
     if (HEADING_OR_BREAK.test(line)) break; // a heading or a break above: the text starts below it
-    const item = LIST_ITEM.exec(line);
+    const item = listItem(line);
     if (item && (mayInterrupt(line, item) || !paragraph(k - 1))) return null;
     if (/^[ \t]*[>|]/.test(line) || FENCE.test(line)) return null;
     text.unshift(line.trim());

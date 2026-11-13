@@ -487,6 +487,24 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     expect(findBlocks(after).map((b) => b.headings)).toEqual(['2 Backup', '2 Original']);
     expect(again(part('## Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R4: a thematic break written with spaces is no list item (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('# Top\n\n* * *\n  ## Part')).toBe('1 Top\n2 Part');
+    expect(headings('# Top\n\n- - -\n   ### Part')).toBe('1 Top\n3 Part');
+    expect(headings('# Top\n\n_ _ _\n  ## Part')).toBe('1 Top\n2 Part');
+    // A list item holding a break is still one.
+    expect(headings('# Top\n\n- * * *\n  ## In the item')).toBe('1 Top');
+    // A block below one closes at its own closing line, not where an item would end.
+    expect(findBlocks('* * *\n  ```mermaid\n  flowchart TD\nnot in an item\n  ```\n').map((b) => b.close)).toEqual([4]);
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `* * *\n  ## ${head}\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

@@ -163,7 +163,8 @@ More text.
   opening and closing lines are indented at most three spaces, or, inside a list item,
   at most three spaces past the start of the item's text; a fence indented further is
   an indented code sample and is left alone. A line that looks like a list item but
-  stands inside another fenced block, or in an indented code sample, starts no list.
+  stands inside another fenced block, or in an indented code sample, starts no list,
+  nor does a thematic break written with spaces (`* * *`, `- - -`).
   The fence stands in the item only if every line between them does: a line indented
   less than the item's text ends the item, unless it goes on with a paragraph above
   it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
