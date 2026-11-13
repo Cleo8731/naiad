@@ -38,7 +38,7 @@ The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
 
 No installer is published yet. To use Naiad now, make the installer yourself
 ([Building from source](#building-from-source)) and run
-`src-tauri/target/release/bundle/nsis/Naiad_0.2.0_x64-setup.exe` (2.7 MB). It installs
+`src-tauri/target/release/bundle/nsis/Naiad_0.3.0_x64-setup.exe` (2.7 MB). It installs
 Naiad for your Windows user in `%LOCALAPPDATA%\Naiad`, registers it for `.mmd` and
 `.mermaid` files, so a double-click on a `.mmd` file opens it, and adds the `naiad`
 command to your PATH. Then open a file with **Open**, or start one with **New**.
@@ -147,7 +147,7 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 
 ## Limits
 
-- Naiad 0.2.0 has been made and used on Windows 11 (x64) only. There are no macOS or
+- Naiad 0.3.0 has been made and tested on Windows 11 (x64) only. There are no macOS or
   Linux builds.
 - It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`), in
   `.mmd` and `.mermaid` files. It does not open a Markdown file (`.md`), even one with a
