@@ -496,6 +496,10 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     expect(headings('# Top\n\n_ _ _\n  ## Part')).toBe('1 Top\n2 Part');
     // A list item holding a break is still one.
     expect(headings('# Top\n\n- * * *\n  ## In the item')).toBe('1 Top');
+    // Under a break, a `---` is another break and a `===` text: no heading.
+    for (const brk of ['- - -', '* * *', '_ _ _', '---', '***']) {
+      for (const under of ['---', '  ====']) expect(headings(`# Top\n\n${brk}\n${under}`), brk + under).toBe('1 Top');
+    }
     // A block below one closes at its own closing line, not where an item would end.
     expect(findBlocks('* * *\n  ```mermaid\n  flowchart TD\nnot in an item\n  ```\n').map((b) => b.close)).toEqual([4]);
     // So a backup under another heading is never taken for the shown block.

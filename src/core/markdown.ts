@@ -457,7 +457,7 @@ function inItem(r: Reading, k: number): boolean {
 }
 
 /** A heading or a thematic break three columns in at most: no paragraph goes on past it. */
-const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4){2,}[ \t]*$)/;
+const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([-*_])([ \t]*\4){2,}[ \t]*$)/;
 
 /**
  * The text of the heading that line i underlines (a `===` or `---` line right under
