@@ -164,13 +164,6 @@ const sameTarget = (a: Target | null, b: Target | null): boolean => JSON.stringi
 /** Trace on hover (the user, 2026-11-13): how long the pointer rests before the rest fades, in ms. */
 const TRACE_REST = 150;
 
-/** The trial of trace on hover beside its variant: the variant's lit arrows also take colours of their own. */
-const TRACE_COLOURS = import.meta.env.VITE_TRACE_COLOURS === '1';
-const TRACE_PALETTE = {
-  light: ['#1c7ed6', '#e8590c', '#2f9e44', '#c2255c', '#7048e8', '#0c8599', '#e67700', '#5c940d'],
-  dark: ['#4dabf7', '#ff922b', '#51cf66', '#f06595', '#9775fa', '#22b8cf', '#fcc419', '#94d82d'],
-};
-
 /**
  * Trace on hover: what stays lit while the pointer rests on an item, the rest fading. A
  * node: its arrows and the nodes at their other ends. An arrow: it and its two ends. A
@@ -398,7 +391,6 @@ export class Chart {
 
   private paintTrace(): void {
     this.canvas.querySelectorAll('.lit').forEach((e) => e.classList.remove('lit'));
-    this.unpaintTraceColours();
     const lit = this.traced && this.snap ? traceOf(this.traced, this.snap) : null;
     this.stage.classList.toggle('tracing', !!lit);
     if (lit) {
@@ -410,52 +402,7 @@ export class Chart {
         this.canvas.querySelector(`[data-edge-line="${i}"]`)?.classList.add('lit');
         this.canvas.querySelector(`g.edgeLabel[data-edge="${i}"]`)?.classList.add('lit');
       }
-      if (TRACE_COLOURS) this.paintTraceColours([...lit.edges].sort((a, b) => a - b));
     }
-  }
-
-  /**
-   * The trial's variant: each lit arrow in a colour of its own, its head too (a copy of
-   * its head's marker in that colour). Taken off again when the trace ends.
-   */
-  private paintTraceColours(edges: number[]): void {
-    const dark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
-    const palette = TRACE_PALETTE[dark ? 'dark' : 'light'];
-    edges.forEach((i, k) => {
-      const path = this.canvas.querySelector<SVGPathElement>(`[data-edge-line="${i}"]`);
-      if (!path) return;
-      const colour = palette[k % palette.length];
-      path.style.stroke = colour;
-      path.style.setProperty('--trace', colour); // the arrow under the pointer keeps it (`style.css`)
-      path.dataset.traceColour = '';
-      for (const attr of ['marker-start', 'marker-end']) {
-        const url = path.getAttribute(attr);
-        const id = url ? /^url\(#(.+)\)$/.exec(url)?.[1] : undefined;
-        const marker = id ? this.canvas.querySelector(`marker#${CSS.escape(id)}`) : null;
-        if (!url || !marker) continue;
-        const copyId = `${marker.id}-trace-${k % palette.length}`;
-        if (!this.canvas.querySelector(`marker#${CSS.escape(copyId)}`)) {
-          const copy = marker.cloneNode(true) as SVGMarkerElement;
-          copy.id = copyId;
-          copy.querySelectorAll<SVGElement>('*').forEach((e) => { e.style.fill = colour; e.style.stroke = colour; });
-          marker.after(copy);
-        }
-        path.dataset[attr === 'marker-start' ? 'traceStart' : 'traceEnd'] = url;
-        path.setAttribute(attr, `url(#${copyId})`);
-      }
-    });
-  }
-
-  private unpaintTraceColours(): void {
-    this.canvas.querySelectorAll<SVGPathElement>('[data-trace-colour]').forEach((path) => {
-      path.style.removeProperty('stroke');
-      path.style.removeProperty('--trace');
-      delete path.dataset.traceColour;
-      if (path.dataset.traceStart) path.setAttribute('marker-start', path.dataset.traceStart);
-      if (path.dataset.traceEnd) path.setAttribute('marker-end', path.dataset.traceEnd);
-      delete path.dataset.traceStart;
-      delete path.dataset.traceEnd;
-    });
   }
 
   private hover(t: Target): void {

@@ -132,9 +132,6 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .canvas g.node, .canvas path[data-edge-line], .canvas g.edgeLabel { transition: opacity 120ms ease; }
 .stage.tracing .canvas g.node:not(.lit), .stage.tracing .canvas path[data-edge-line]:not(.lit),
 .stage.tracing .canvas g.edgeLabel:not(.lit) { opacity: 0.22; }
-/* The trial's colour variant: the arrow under the pointer keeps its trace colour, so leaving
-   it shows no second colour while the trace lingers (the user saw a flash, 2026-11-13). */
-.canvas path.hov[data-trace-colour]:not(.sel) { stroke: var(--trace) !important; }
 .canvas .node.sel .label-container, .canvas .node.sel .label-container path,
 .canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
 .canvas .cluster.sel > rect { stroke: var(--accent) !important; stroke-width: 2px !important; }
