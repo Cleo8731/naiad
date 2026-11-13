@@ -456,15 +456,19 @@ function inItem(r: Reading, k: number): boolean {
   return w >= 2 && itemText(r, k, w, 0) > 0;
 }
 
-/** A heading or a thematic break (an underline too), its indent taken off: no paragraph goes on past it. */
-const ENDS_PARAGRAPH = /^(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([-*_])([ \t]*\4){2,}[ \t]*$)/;
+/**
+ * A heading or a thematic break (`---` an underline, when under text), its indent taken
+ * off: no paragraph goes on past it.
+ */
+const ENDS_PARAGRAPH = /^(#{1,6}([ \t]|$)|([-*_])([ \t]*\3){2,}[ \t]*$)/;
 
 /**
  * The text of the heading that line i underlines (a `===` or `---` line right under
  * paragraph text), or null. The lines above it, up to a blank line, a block, a heading
  * or a thematic break, are read from the top, as Markdown reads them: a line indented
  * four columns or more is more of the text under text, else a code sample, and the
- * text starts below it (the CommonMark comparison, T5.16, R5). Text standing in a list
+ * text starts below it (the CommonMark comparison, T5.16, R5). A `===` or `--` line
+ * with no text above it is text itself (R7). Text standing in a list
  * item, a quote or a table is not taken for one: under it, a `---` is a thematic
  * break, and a `===` more text (in a table, a row). A line starting with `|` is text
  * unless a table starts. Lines of HTML are marked (`htmlBlock`), so the text starts
@@ -491,7 +495,15 @@ function setextHeading(r: Reading, i: number): string | null {
   let start = -1;
   for (let k = s; k < i; k++) {
     const line = r.lines[k];
-    if (columns(lead(k)) >= 4) continue; // more text, or a code sample: the text starts below it
+    const ws = lead(k);
+    if (columns(ws) >= 4) continue; // more text, or a code sample: the text starts below it
+    if (start >= 0 && /^(=+|-+)[ \t]*$/.test(line.slice(ws.length))) {
+      // An underline: the text above is a heading, and the next starts below it. Under
+      // link reference definitions alone, it is text (R7).
+      const above = r.lines.slice(start, k).map((l) => l.trim());
+      start = definitionLines(above) === above.length ? k : -1;
+      continue;
+    }
     const item = listItem(line);
     if (item) {
       if (start >= 0 && !mayInterrupt(line, item)) continue; // more of the text

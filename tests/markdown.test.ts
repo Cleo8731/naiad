@@ -575,6 +575,30 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R7: a line like an underline with no text above it is text (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('--\n---')).toBe('2 --');
+    expect(headings('===\n   ===')).toBe('1 ===');
+    expect(headings('=\n---')).toBe('2 =');
+    expect(headings('  ==\n  --')).toBe('2 ==');
+    // Under a heading's underline, no text stands above.
+    expect(headings('Title\n===\n===')).toBe('1 Title');
+    expect(headings('Title\n===\n===\n---')).toBe('1 Title\n2 ===');
+    // Under link reference definitions alone, it is text too, but `---` a thematic break.
+    expect(headings('[ref]: /u\n===\nx\n===')).toBe('1 === x');
+    expect(headings('[ref]: /u\n--\nx\n---')).toBe('2 -- x');
+    expect(headings('[ref]: /u\n-\nx\n---')).toBe('2 - x');
+    expect(headings('---\n---')).toBe('');
+    expect(headings('-\n---')).toBe('');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `${head}\n===\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('==', chart) + '\n' + part('===', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('===', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {
