@@ -140,8 +140,10 @@ export class App {
           <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
           <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
         </select>
-        <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
+        <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
+             Highlight stays where it is and a second click on it never lands on Clear. -->
         <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
+        <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
         <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">Syntax</button>
       </header>
