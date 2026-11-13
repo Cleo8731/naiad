@@ -150,7 +150,9 @@ function baseAbove(r: Reading, at: number, w: number): number | null {
     const lead = indentOf(r, k);
     if (lead < 0) continue;
     const role = lineRole(r, k);
-    if (role === 'item') {
+    // An item with nothing on its line and a blank line under it holds nothing (a list
+    // item begins with one blank line at most: R6).
+    if (role === 'item' && !(emptyItem(listItem(lines[k])!) && indentOf(r, k + 1) < 0)) {
       if (r.text[k] < 0) r.text[k] = textColumn(listItem(lines[k])!);
       const text = r.text[k];
       // A lazy line goes on with a paragraph of the item only if the line above it is
@@ -170,10 +172,19 @@ function baseAbove(r: Reading, at: number, w: number): number | null {
   return null;
 }
 
-/** The column where a list item's text starts: one to four spaces past the marker, or one when more. */
+/**
+ * The column where a list item's text starts: one to four spaces past the marker, or one
+ * when more, or when nothing follows the marker on its line (the CommonMark comparison,
+ * T5.16, R6).
+ */
 function textColumn(item: RegExpExecArray): number {
   const gap = columns(item[1] + item[2] + item[3]) - columns(item[1] + item[2]);
-  return columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 ? gap : 1);
+  return columns(item[1]) + item[2].length + (gap >= 1 && gap <= 4 && !emptyItem(item) ? gap : 1);
+}
+
+/** Whether a list item's own line holds nothing past its marker. */
+function emptyItem(item: RegExpExecArray): boolean {
+  return item.input.slice(item[0].length).trim() === '';
 }
 
 /** Right under paragraph text, only a bullet or a 1 with text after it can start a list item. */
@@ -250,6 +261,12 @@ function paragraphItemText(r: Reading, k: number): number | null {
         break;
       }
       // No list item: more of the paragraph above, if there is one.
+    }
+    // Began right under an item with nothing on its line, indented to its text: in it (R6).
+    const above = para === 0 && k > 0 && r.opener[k - 1] < 0 ? listItem(r.lines[k - 1]) : null;
+    if (above && emptyItem(above) && lineRole(r, k - 1) === 'item' && indentOf(r, k) >= textColumn(above)) {
+      text = textColumn(above);
+      break;
     }
     if (para !== 1) { // began on a line of its own, or unsure
       text = null;
@@ -468,7 +485,8 @@ const ENDS_PARAGRAPH = /^(#{1,6}([ \t]|$)|([-*_])([ \t]*\3){2,}[ \t]*$)/;
  * or a thematic break, are read from the top, as Markdown reads them: a line indented
  * four columns or more is more of the text under text, else a code sample, and the
  * text starts below it (the CommonMark comparison, T5.16, R5). A `===` or `--` line
- * with no text above it is text itself (R7). Text standing in a list
+ * with no text above it is text itself (R7); so is the text under a list item with
+ * nothing on its line, when indented less than the item's text (R6). Text standing in a list
  * item, a quote or a table is not taken for one: under it, a `---` is a thematic
  * break, and a `===` more text (in a table, a row). A line starting with `|` is text
  * unless a table starts. Lines of HTML are marked (`htmlBlock`), so the text starts
@@ -496,6 +514,7 @@ function setextHeading(r: Reading, i: number): string | null {
   }
   // Down from there: the paragraph open on line i, if any, starts on line `start`.
   let start = -1;
+  const ended = new Set<number>(); // items with nothing on their line, ended by the line under them
   for (let k = s; k < i; k++) {
     const line = r.lines[k];
     const ws = lead(k);
@@ -510,13 +529,19 @@ function setextHeading(r: Reading, i: number): string | null {
     const item = listItem(line);
     if (item) {
       if (start >= 0 && !mayInterrupt(line, item)) continue; // more of the text
+      // An item with nothing on its line holds no text under it indented less than its
+      // own text: that line ended it, and any list it stands in (R6).
+      if (start < 0 && emptyItem(item) && k + 1 < i && indentOf(r, k + 1) < textColumn(item)) {
+        ended.add(k);
+        continue;
+      }
       return null; // a list item: the lines under it may stand in it
     }
     if (FENCE.test(line)) return null;
     if (start < 0) start = k;
   }
   if (start < 0) return null;
-  for (let k = s; k <= start; k++) if (inItem(r, k)) return null;
+  for (let k = s; k <= start; k++) if (!ended.has(k) && inItem(r, k)) return null;
   if (inItem(r, i)) return null;
   const text = r.lines.slice(start, i).map((l) => l.trim());
   const heading = text.slice(definitionLines(text));

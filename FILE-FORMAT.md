@@ -168,7 +168,9 @@ More text.
   The fence stands in the item only if every line between them does: a line indented
   less than the item's text ends the item, unless it goes on with a paragraph above
   it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
-  text after it starts a new item. Where Naiad cannot tell whether the item ended, it
+  text after it starts a new item. An item with nothing after its marker on its line
+  has its text one column past the marker, and holds nothing when a blank line follows
+  it. Where Naiad cannot tell whether the item ended, it
   does not find the block, so a code sample is never taken for a flowchart. A fenced
   block in a list item also ends with the item: a line in it indented less than the
   item's text (blank lines aside) ends both, and the block then has no closing line.
