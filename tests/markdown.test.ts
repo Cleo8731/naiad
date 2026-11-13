@@ -553,6 +553,28 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R5: lines indented four columns or more above an underline (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    // A code sample right above the text: the heading's text starts below it.
+    expect(headings('    code\nTitle\n===')).toBe('1 Title');
+    expect(headings('    # code\n    more\n   Title\n---')).toBe('2 Title');
+    expect(headings('    code\n===')).toBe('');
+    // Under text, a line indented four columns or more is more of it, whatever it looks like.
+    expect(headings('Title\n    - more\n===')).toBe('1 Title - more');
+    expect(headings('Title\n     > more\n===')).toBe('1 Title > more');
+    expect(headings('Title\n    ```\n===')).toBe('1 Title ```');
+    // In a list item, all of it is the item's.
+    expect(headings('- a\n\n    code\nTitle\n===')).toBe('');
+    expect(headings('- a\n    code\nTitle\n===')).toBe('');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `    code\n${head}\n---\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

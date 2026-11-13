@@ -456,36 +456,54 @@ function inItem(r: Reading, k: number): boolean {
   return w >= 2 && itemText(r, k, w, 0) > 0;
 }
 
-/** A heading or a thematic break three columns in at most: no paragraph goes on past it. */
-const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([-*_])([ \t]*\4){2,}[ \t]*$)/;
+/** A heading or a thematic break (an underline too), its indent taken off: no paragraph goes on past it. */
+const ENDS_PARAGRAPH = /^(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([-*_])([ \t]*\4){2,}[ \t]*$)/;
 
 /**
  * The text of the heading that line i underlines (a `===` or `---` line right under
- * paragraph text), or null. Text standing in a list item, a quote or a table is not
- * taken for one: under it, a `---` is a thematic break, and a `===` more text (in a
- * table, a row). A line starting with `|` is text unless a table starts. Lines of
- * HTML are marked (`htmlBlock`), so the text starts below them; a line starting with
- * `<` that opens no HTML is text (R1). A
- * line shaped like a list item that cannot start one under paragraph text (a number
- * other than 1, or nothing after the marker) is more of the text when paragraph text
- * stands above it (bug hunt round 7, B31: `2. continuation`).
+ * paragraph text), or null. The lines above it, up to a blank line, a block, a heading
+ * or a thematic break, are read from the top, as Markdown reads them: a line indented
+ * four columns or more is more of the text under text, else a code sample, and the
+ * text starts below it (the CommonMark comparison, T5.16, R5). Text standing in a list
+ * item, a quote or a table is not taken for one: under it, a `---` is a thematic
+ * break, and a `===` more text (in a table, a row). A line starting with `|` is text
+ * unless a table starts. Lines of HTML are marked (`htmlBlock`), so the text starts
+ * below them; a line starting with `<` that opens no HTML is text (R1). A line shaped
+ * like a list item that cannot start one under paragraph text (a number other than 1,
+ * or nothing after the marker) is more of the text (bug hunt round 7, B31:
+ * `2. continuation`).
  */
 function setextHeading(r: Reading, i: number): string | null {
   if (!/^ {0,3}(=+|-+)[ \t]*$/.test(r.lines[i])) return null;
-  const text: string[] = [];
-  let k = i - 1;
-  const paragraph = (j: number) => j >= 0 && r.opener[j] < 0 && r.lines[j].trim() !== '' && !HEADING_OR_BREAK.test(r.lines[j]);
-  for (; k >= 0 && r.opener[k] < 0 && r.lines[k].trim() !== ''; k--) {
-    const line = r.lines[k];
-    if (HEADING_OR_BREAK.test(line)) break; // a heading or a break above: the text starts below it
-    const item = listItem(line);
-    if (item && (mayInterrupt(line, item) || !paragraph(k - 1))) return null;
-    if (/^[ \t]*>/.test(line) || FENCE.test(line)) return null;
-    text.unshift(line.trim());
+  const lead = (k: number) => /^[ \t]*/.exec(r.lines[k])![0];
+  // The first line after the last one that no paragraph goes on past.
+  let s = i;
+  for (let k = i - 1; k >= 0 && r.opener[k] < 0 && r.lines[k].trim() !== ''; k--) {
+    const ws = lead(k);
+    if (columns(ws) <= 3) {
+      const t = r.lines[k].slice(ws.length);
+      if (ENDS_PARAGRAPH.test(t)) break;
+      if (t[0] === '>') return null;
+    }
+    s = k;
   }
-  // Text whose first line is indented four columns or more is a code sample.
-  if (!text.length || columns(/^[ \t]*/.exec(r.lines[k + 1])![0]) >= 4) return null;
-  if (inItem(r, k + 1) || inItem(r, i)) return null;
+  // Down from there: the paragraph open on line i, if any, starts on line `start`.
+  let start = -1;
+  for (let k = s; k < i; k++) {
+    const line = r.lines[k];
+    if (columns(lead(k)) >= 4) continue; // more text, or a code sample: the text starts below it
+    const item = listItem(line);
+    if (item) {
+      if (start >= 0 && !mayInterrupt(line, item)) continue; // more of the text
+      return null; // a list item: the lines under it may stand in it
+    }
+    if (FENCE.test(line)) return null;
+    if (start < 0) start = k;
+  }
+  if (start < 0) return null;
+  for (let k = s; k <= start; k++) if (inItem(r, k)) return null;
+  if (inItem(r, i)) return null;
+  const text = r.lines.slice(start, i).map((l) => l.trim());
   const heading = text.slice(definitionLines(text));
   // A table (GitHub's: a header row over a delimiter row of as many cells) runs on to
   // the underline, which is then a row of it or a thematic break (R3: a line starting
