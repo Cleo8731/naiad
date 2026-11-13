@@ -729,6 +729,12 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     // A bullet with text after it starts an item; a fence three columns in at most is one.
     expect(at('text\n    -\n- a\n' + block('  '))).toBe('3-6');
     expect(at('text\n2.\n3. b\n' + block('   '))).toBe('3-6');
+    // A `-` alone, three columns past the text's start at most, underlines it: the text
+    // ends there, so a line under it indented less than the item's text is the file's
+    // own. Four columns past, it is more of the text, and so are the lines under it.
+    const headings = (md: string) => findBlocks(md).map((b) => b.headings);
+    expect(headings('1) item\n   -\n  Notes\n   ===\n' + block(''))).toEqual(['1 Notes']);
+    expect(headings('1) item\n       -\n  Notes\n   ===\n' + block(''))).toEqual(['']);
   });
 });
 

@@ -217,12 +217,14 @@ function roleOf(r: Reading, k: number): Role {
   const lead = columns(item[1]);
   // Right under paragraph text, and indented into the item that text stands in, only a
   // bullet or a 1 with text after it starts a list item; any other is more of the
-  // paragraph.
+  // paragraph, but for a `-` alone three columns past the text's start at most, which
+  // underlines it: no paragraph goes on past it.
   let starts: boolean | null = true;
   if (para === -1 && !mayInterrupt(line, item)) starts = null;
   else if (para === 1 && !mayInterrupt(line, item)) {
     const text = paragraphItemText(r, k - 1);
     starts = text === null ? null : lead < text;
+    if (starts === false && lead - text! <= 3 && /^[ \t]*-[ \t]*$/.test(line)) return 'other';
   }
   if (starts === null) return 'other';
   if (!starts) return 'lazy';

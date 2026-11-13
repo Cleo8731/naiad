@@ -170,7 +170,8 @@ More text.
   it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
   text after it starts a new item; any other line that looks like an item (one with
   nothing after its marker, or a number other than 1) is more of the text, and a fence
-  under it stands in no item. An item with nothing after its marker on its line
+  under it stands in no item. A `-` alone there, indented at most three columns past
+  the start of the text, underlines the text instead (a heading), which ends it. An item with nothing after its marker on its line
   has its text one column past the marker, and holds nothing when a blank line follows
   it. A line starting with `=` right under an item's text never ends the item: it is
   more of the text, or underlines a heading in the item. Where Naiad cannot tell
