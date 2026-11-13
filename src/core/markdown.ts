@@ -528,7 +528,7 @@ function setextHeading(r: Reading, i: number): string | null {
       const t = r.lines[k].slice(ws.length);
       if (ENDS_PARAGRAPH.test(t)) break;
       if (t[0] === '>') {
-        if (quoteCloses(t)) break;
+        if (quoteCloses(t) || quoteUnderline(r, k)) break;
         return null; // more of the quote, maybe
       }
     }
@@ -639,6 +639,95 @@ function quoteCloses(t: string): boolean {
   if (ENDS_PARAGRAPH.test(rest)) return true;
   const f = FENCE.exec(rest);
   return f !== null && !(f[2][0] === '`' && f[3].includes('`'));
+}
+
+/**
+ * A quote's line, read past its `>` markers: how many (`depth`), the text after them
+ * (`text`, its indent taken off) and whether that text is indented four columns or more
+ * past the marker (`deep`: code, or more of the text above), null when a tab makes that
+ * unclear. Null for a line indented four columns or more, or not starting with `>`.
+ */
+function quoteText(line: string): { depth: number; text: string; deep: boolean | null } | null {
+  const ws = /^[ \t]*/.exec(line)![0];
+  if (columns(ws) > 3 || line[ws.length] !== '>') return null;
+  let rest = line.slice(ws.length);
+  let depth = 0;
+  for (;;) {
+    depth++;
+    rest = rest.slice(rest[1] === ' ' ? 2 : 1);
+    const gap = /^ {0,3}/.exec(rest)![0];
+    if (rest[gap.length] !== '>') break;
+    rest = rest.slice(gap.length);
+  }
+  const gap = /^[ \t]*/.exec(rest)![0];
+  return { depth, text: rest.slice(gap.length), deep: gap.includes('\t') ? null : gap.length >= 4 };
+}
+
+/**
+ * Whether quote line k (`>` markers, then `===` or `---` alone) underlines text open in
+ * the quote: a heading in the quote, so no text is open under it, and the line below,
+ * without `>`, is no more of the quote (the CommonMark comparison, T5.16, R14: `Notes`
+ * over `---` under `> text` and `> ===` was not read as a heading). The quote's lines are
+ * read from the top of their run of lines: text opened at one depth of quotes is
+ * underlined only at that depth, with nothing but text above it in the quote (link
+ * reference definitions alone are no heading's text). False when unsure: a list item, a
+ * fence, HTML or code in the quote.
+ */
+function quoteUnderline(r: Reading, k: number): boolean {
+  const q = quoteText(r.lines[k]);
+  if (!q || q.deep !== false || !/^(=+|-+)[ \t]*$/.test(q.text)) return false;
+  let top = k;
+  while (top > 0 && r.opener[top - 1] < 0 && r.lines[top - 1].trim() !== '') top--;
+  let quotes = 0; // the quotes open
+  let open = false; // text open in the innermost of them
+  let text: string[] = [];
+  for (let j = top; j < k; j++) {
+    const line = r.lines[j];
+    const l = quoteText(line);
+    if (!l) {
+      // A line without `>`: more of the text open in the quote, unless it starts a block
+      // of its own, which ends the quotes.
+      const t = line.trimStart();
+      const lazy = columns(/^[ \t]*/.exec(line)![0]) >= 4 || !(ENDS_PARAGRAPH.test(t) || FENCE.test(t) || listItem(t) || t[0] === '<');
+      if (open && lazy) text.push(t);
+      else if (open && t[0] === '<') return false;
+      else { quotes = 0; open = false; }
+      continue;
+    }
+    if (l.deep === null) return false;
+    const t = l.text;
+    if (l.depth < quotes && open) {
+      // The inner quotes go on unless the line ends them: more of the open text.
+      if (t === '') { quotes = l.depth; open = false; }
+      else if (l.deep) text.push(t);
+      else if (ENDS_PARAGRAPH.test(t)) { quotes = l.depth; open = false; }
+      else if (FENCE.test(t) || listItem(t) || t[0] === '<') return false;
+      else text.push(t);
+      continue;
+    }
+    if (l.depth === quotes && open) {
+      if (t === '' || (!l.deep && ENDS_PARAGRAPH.test(t))) open = false;
+      else if (l.deep) text.push(t);
+      else if (/^(=+|-+)[ \t]*$/.test(t)) {
+        if (definitionLines(text) < text.length) open = false; // a heading in the quote
+        else text.push(t);
+      } else {
+        const item = listItem(t);
+        if (item && mayInterrupt(t, item)) return false;
+        if (!item && (FENCE.test(t) || t[0] === '<')) return false;
+        text.push(t);
+      }
+      continue;
+    }
+    // Text, if any, starts here, at this depth: the quotes below it are ended.
+    quotes = l.depth;
+    open = false;
+    if (t === '' || (!l.deep && ENDS_PARAGRAPH.test(t))) continue;
+    if (l.deep || FENCE.test(t) || listItem(t) || t[0] === '<') return false;
+    open = true;
+    text = [t];
+  }
+  return open && q.depth === quotes && definitionLines(text) < text.length;
 }
 
 /** A table's delimiter row (its line under the header row), trimmed: `---`, `:--`, `--:` or `:-:` cells between `|`. */

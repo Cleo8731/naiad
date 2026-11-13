@@ -300,7 +300,8 @@ More text.
   the `---`, a line indented four spaces or more right above a heading's text is a code
   sample, not its first line, while under its text it is more of it, a `===` or `--` line with no text above it
   is text, so `==` over `===` is a heading, text right under a quote whose last line
-  is blank, a heading, a thematic break or a fence line is no more of the quote, so it
+  is blank, a heading, a thematic break or a fence line, or `===` or `---` under text in
+  the quote (a heading there), is no more of the quote, so it
   may be a heading, so is text under a list item, indented less than the item's text,
   once no text is open in the item (it is empty, or ends in a heading or a code
   sample) or another item began, a heading inside a list item is the item's,
