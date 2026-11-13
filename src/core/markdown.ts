@@ -485,7 +485,35 @@ function setextHeading(r: Reading, i: number): string | null {
   // Text whose first line is indented four columns or more is a code sample.
   if (!text.length || columns(/^[ \t]*/.exec(r.lines[k + 1])![0]) >= 4) return null;
   if (inItem(r, k + 1) || inItem(r, i)) return null;
-  return text.join(' ');
+  const heading = text.slice(definitionLines(text));
+  return heading.length ? heading.join(' ') : null;
+}
+
+/**
+ * A link reference definition at the start of a text: `[label]: destination`, with a
+ * title in quotes or brackets if any, over one line or more, and nothing after it on its
+ * last line. The patterns follow the reference reader's (`commonmark`).
+ */
+const LINK_DEFINITION = new RegExp(
+  /^\[((?:[^[\]\\]|\\.){0,999})\]:[ \t]*\n?[ \t]*/.source +
+  /(?:<(?:[^<>\n\\]|\\.)*>|(?!<)(?:[^\x00-\x20()\\]|\\[^\x00-\x20]?|\((?:[^\x00-\x20()\\]|\\[^\x00-\x20]?)*\))+)/.source +
+  /(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\((?:[^()\\]|\\[\s\S])*\)))?[ \t]*(?:\n|$)/.source,
+);
+
+/**
+ * How many of a paragraph's first lines (`text`, each trimmed) are link reference
+ * definitions: Markdown takes them out of the paragraph, so they are no heading's text,
+ * and under them alone a `---` is a thematic break (the CommonMark comparison, T5.16,
+ * R2: `[ref]: /url` over `---` was read as a heading, and took the place of the file's
+ * own at its level).
+ */
+function definitionLines(text: string[]): number {
+  let used = 0;
+  for (;;) {
+    const m = LINK_DEFINITION.exec(text.slice(used).join('\n'));
+    if (!m || !/\S/.test(m[1])) return used;
+    used += m[0].replace(/\n$/, '').split('\n').length;
+  }
 }
 
 function readBlock(file: string, lines: string[], open: number, close: number, end: number, indent: string, heading: string, headings: string): Block {

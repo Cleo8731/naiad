@@ -505,6 +505,29 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R2: a link reference definition is no heading\'s text (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('[ref]: /url\n---')).toBe('');
+    expect(headings('[ref]: /url\n===')).toBe('');
+    expect(headings('[ref]: /url\nTitle\n===')).toBe('1 Title');
+    expect(headings('[ref]: <the url> "a title"\n[other]: /x\n---')).toBe('');
+    expect(headings("[ref]:\n  /url\n  'a title\n  over two lines'\n---")).toBe('');
+    expect(headings('[ref]: /a_(b)_c (title)\n---')).toBe('');
+    // Not a definition: text after its title, no label, a link, no destination.
+    expect(headings('[ref]: /url "title" more\n---')).toBe('2 [ref]: /url "title" more');
+    expect(headings('[ref]: /url\n"title" more\n===')).toBe('1 "title" more');
+    expect(headings('[ ]: /url\n---')).toBe('2 [ ]: /url');
+    expect(headings('[a](b)\n---')).toBe('2 [a](b)');
+    expect(headings('[ref]:\n---')).toBe('2 [ref]:');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `## ${head}\n[link]: /x\n---\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {
