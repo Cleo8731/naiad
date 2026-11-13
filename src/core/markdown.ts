@@ -462,7 +462,8 @@ const HEADING_OR_BREAK = /^ {0,3}(#{1,6}([ \t]|$)|(=+|-+)[ \t]*$|([*_])([ \t]*\4
 /**
  * The text of the heading that line i underlines (a `===` or `---` line right under
  * paragraph text), or null. Text standing in a list item, a quote or a table is not
- * taken for one: under it, a `---` is a thematic break, and a `===` more text. Lines of
+ * taken for one: under it, a `---` is a thematic break, and a `===` more text (in a
+ * table, a row). A line starting with `|` is text unless a table starts. Lines of
  * HTML are marked (`htmlBlock`), so the text starts below them; a line starting with
  * `<` that opens no HTML is text (R1). A
  * line shaped like a list item that cannot start one under paragraph text (a number
@@ -479,14 +480,26 @@ function setextHeading(r: Reading, i: number): string | null {
     if (HEADING_OR_BREAK.test(line)) break; // a heading or a break above: the text starts below it
     const item = listItem(line);
     if (item && (mayInterrupt(line, item) || !paragraph(k - 1))) return null;
-    if (/^[ \t]*[>|]/.test(line) || FENCE.test(line)) return null;
+    if (/^[ \t]*>/.test(line) || FENCE.test(line)) return null;
     text.unshift(line.trim());
   }
   // Text whose first line is indented four columns or more is a code sample.
   if (!text.length || columns(/^[ \t]*/.exec(r.lines[k + 1])![0]) >= 4) return null;
   if (inItem(r, k + 1) || inItem(r, i)) return null;
   const heading = text.slice(definitionLines(text));
+  // A table (GitHub's: a header row over a delimiter row of as many cells) runs on to
+  // the underline, which is then a row of it or a thematic break (R3: a line starting
+  // with `|` alone made no table, and the heading under it was not read).
+  for (let j = 0; j + 1 < heading.length; j++) if (DELIMITER_ROW.test(heading[j + 1]) && cells(heading[j + 1]) === cells(heading[j])) return null;
   return heading.length ? heading.join(' ') : null;
+}
+
+/** A table's delimiter row (its line under the header row), trimmed: `---`, `:--`, `--:` or `:-:` cells between `|`. */
+const DELIMITER_ROW = /^\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?$/;
+
+/** How many cells a table row (trimmed) holds: split at each `|` not escaped, a leading and a trailing `|` taken off. */
+function cells(row: string): number {
+  return row.replace(/^\|/, '').replace(/(^|[^\\])\|$/, '$1').split(/(?<!\\)\|/).length;
 }
 
 /**

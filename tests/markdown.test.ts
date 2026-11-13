@@ -528,6 +528,27 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R3: a line starting with `|` is a heading\'s text unless a table starts above it (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    expect(headings('| a | b |\n---')).toBe('2 | a | b |');
+    expect(headings('  | a | b |\n===')).toBe('1 | a | b |');
+    expect(headings('Text\n| a |\n===')).toBe('1 Text | a |');
+    expect(headings('| a | b |\n|---|\n---')).toBe('2 | a | b | |---|');
+    // GitHub's table: a header row over a delimiter row of as many cells. Under it, a
+    // `---` or `===` is no underline (a row of the table, or a thematic break).
+    expect(headings('# Top\n\n| a | b |\n|---|---|\n| x | y |\n---')).toBe('1 Top');
+    expect(headings('# Top\n\na | b\n:-- | --:\nx | y\n===')).toBe('1 Top');
+    expect(headings('# Top\n\nText\n| a |\n| --- |\n---')).toBe('1 Top');
+    expect(headings('# Top\n\n| a \\| b |\n|---|---|\n---')).toBe('1 Top\n2 | a \\| b | |---|---|');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `| ${head} |\n---\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {
