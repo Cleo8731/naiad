@@ -487,7 +487,10 @@ function setextHeading(r: Reading, i: number): string | null {
     if (columns(ws) <= 3) {
       const t = r.lines[k].slice(ws.length);
       if (ENDS_PARAGRAPH.test(t)) break;
-      if (t[0] === '>') return null;
+      if (t[0] === '>') {
+        if (quoteCloses(t)) break;
+        return null; // more of the quote, maybe
+      }
     }
     s = k;
   }
@@ -522,6 +525,28 @@ function setextHeading(r: Reading, i: number): string | null {
   // with `|` alone made no table, and the heading under it was not read).
   for (let j = 0; j + 1 < heading.length; j++) if (DELIMITER_ROW.test(heading[j + 1]) && cells(heading[j + 1]) === cells(heading[j])) return null;
   return heading.length ? heading.join(' ') : null;
+}
+
+/**
+ * Whether a quote's line `t` (its indent taken off) leaves no paragraph open in the
+ * quote, so that the line under it, without `>`, is no more of the quote: its text, the
+ * `>` markers taken off, is blank, a heading, a thematic break or a fence line (the
+ * CommonMark comparison, T5.16, R8: the text under `> ---` was not read as a heading).
+ * Text, or unsure (a tab, or a line indented four columns or more past the marker:
+ * code, or more of the text above), is false.
+ */
+function quoteCloses(t: string): boolean {
+  let rest = t;
+  while (rest[0] === '>') {
+    rest = rest.slice(rest[1] === ' ' ? 2 : 1);
+    if (rest.trim() === '') return true;
+    const ws = /^[ \t]*/.exec(rest)![0];
+    if (ws.includes('\t') || ws.length >= 4) return false;
+    rest = rest.slice(ws.length);
+  }
+  if (ENDS_PARAGRAPH.test(rest)) return true;
+  const f = FENCE.exec(rest);
+  return f !== null && !(f[2][0] === '`' && f[3].includes('`'));
 }
 
 /** A table's delimiter row (its line under the header row), trimmed: `---`, `:--`, `--:` or `:-:` cells between `|`. */

@@ -292,7 +292,9 @@ More text.
   like `|---|---|`, as many cells in each) starts above the `---`, a line indented four
   spaces or more right above a heading's text is a code sample, not its first line,
   while under its text it is more of it, a `===` or `--` line with no text above it
-  is text, so `==` over `===` is a heading, a heading inside a list item is the item's,
+  is text, so `==` over `===` is a heading, text right under a quote whose last line
+  is blank, a heading, a thematic break or a fence line is no more of the quote, so it
+  may be a heading, a heading inside a list item is the item's,
   which does not count, and one inside HTML is none),
   whatever the lines below each say: the shown block may have been changed in
   place, with the text below it and its heading, and the old text kept with the copy.

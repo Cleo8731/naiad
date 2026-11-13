@@ -599,6 +599,36 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('==', chart) + '\n' + part('===', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('===', chart), after, 0)).toBe(-1);
   });
+
+  test('R8: text right under a quote that leaves no paragraph open is no more of the quote (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    // The quote's last line is blank, a heading, a thematic break or a fence line.
+    expect(headings('> ---\nx  \n=')).toBe('1 x');
+    expect(headings('> ~~~\n  #notheading\n==')).toBe('1 #notheading');
+    expect(headings('> ###### Flow#\n text\n---')).toBe('2 text');
+    expect(headings('> ````\n  | a | b |\n--')).toBe('2 | a | b |');
+    expect(headings('>\nx\n===')).toBe('1 x');
+    expect(headings('> a\n> ---\nx\n===')).toBe('1 x');
+    expect(headings('> > # h\nx\n===')).toBe('1 x');
+    expect(headings('   > # h\nx\n===')).toBe('1 x');
+    expect(headings('> - ---\nx\n===')).toBe('1 x');
+    expect(headings('>> ***\nx\n---')).toBe('2 x');
+    // Under quoted text, the lines are more of it.
+    expect(headings('> a\nx\n===')).toBe('');
+    expect(headings('> a\n===')).toBe('');
+    expect(headings('> ```a`b\nx\n===')).toBe('');
+    expect(headings('> - a\nx\n===')).toBe('');
+    expect(headings('> ===\nx\n===')).toBe('');
+    expect(headings('> --\nx\n===')).toBe('');
+    expect(headings('> a\n>     ~~~\nx\n===')).toBe('');
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `> ---\n${head}\n===\n\n${intro}\n${body}\n${end}\n`;
+    const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {
