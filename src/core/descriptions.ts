@@ -93,9 +93,9 @@ function blockLines(id: string, desc: string, indent: string): string[] {
 /**
  * A block's lines (`old`, its first line included) for a new description. The first line,
  * and each line whose text is the same as a line of the new description, stay as they
- * were written; a changed or added line is written in Naiad's spelling with the first
- * line's indent. Empty lines at the block's start and end are not part of the text, and
- * stay too (bug hunt round 6, A42).
+ * were written, wherever the line moves; a changed or added line is written in Naiad's
+ * spelling with the first line's indent. Empty lines at the block's start and end are not
+ * part of the text, and stay too (bug hunt round 6, A42).
  */
 function rewriteBlock(old: string[], desc: string, indent: string): string[] {
   const body = old.slice(1);
@@ -105,7 +105,23 @@ function rewriteBlock(old: string[], desc: string, indent: string): string[] {
   let to = read.length;
   while (to > from && read[to - 1] === '') to--;
   const want = desc.split('\n');
-  const same = matchLines(read.slice(from, to), want);
+  const was = read.slice(from, to);
+  const same = matchLines(was, want);
+  // Lines are matched in their order first; a line moved past another is then matched
+  // by its text alone, so that it keeps its spelling too (bug hunt round 7, A44). Each old
+  // line is taken once, the copies of a repeated line in their order.
+  const taken = new Set(same);
+  const free = new Map<string, number[]>();
+  was.forEach((l, k) => {
+    if (taken.has(k)) return;
+    const copies = free.get(l);
+    if (copies) copies.push(k);
+    else free.set(l, [k]);
+  });
+  for (let j = 0; j < want.length; j++) {
+    const k = same[j] < 0 ? free.get(want[j])?.shift() : undefined;
+    if (k !== undefined) same[j] = k;
+  }
   const middle = want.map((l, j) => (same[j] >= 0 ? body[from + same[j]] : indent + encodeLine(l)));
   return [old[0], ...body.slice(0, from), ...middle, ...body.slice(to)];
 }

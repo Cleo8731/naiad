@@ -171,6 +171,24 @@ describe('description blocks', () => {
     }
   });
 
+  // Lines were matched in their order only, so a line moved past another counted as
+  // changed and was written again in Naiad's spelling (bug hunt round 7, A44).
+  test('A44: a line moved to another place keeps its spelling', () => {
+    const cases: [string, string, string][] = [
+      // [the file, the new description, the file expected]
+      ['flowchart TD\na[Node]\n\n%% @a\n%%first\n  %% second\n', 'second\nfirst',
+        'flowchart TD\na[Node]\n\n%% @a\n  %% second\n%%first\n'],
+      // Moved and changed at once; each copy of a repeated line keeps its own spelling.
+      ['flowchart TD\na\n\n%% @a\n%%one\n%%x\n  %%two\n%% x\n', 'two\nnew\nx\none\nx',
+        'flowchart TD\na\n\n%% @a\n  %%two\n%% new\n%%x\n%%one\n%% x\n'],
+    ];
+    for (const [before, desc, after] of cases) {
+      const out = setDescription(before, 'a', desc);
+      expect(out, JSON.stringify(before)).toBe(after);
+      expect(getDescriptions(out).get('a')).toBe(desc);
+    }
+  });
+
   test('tolerates a hand-typed bare %% as an empty line', () => {
     expect(getDescriptions('flowchart TD\n A\n%% @A\n%% one\n%%\n%% two\n').get('A')).toBe('one\n\ntwo');
   });

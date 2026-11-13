@@ -181,12 +181,10 @@ More text.
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
   other line, its spacing and its comments stay byte for byte as they were.
 - A description written in the sidebar changes only the lines of its block whose text
-  changed. The block's first line, each line whose text is unchanged, and the empty
-  lines at the block's start and end stay as they were written (`%%first` stays
-  `%%first`, with its indent); a changed or added line is written `%% text`, with the
-  indent of the block's first line. (Where more than a million pairs of lines would have
-  to be compared, between the first change and the last, the lines between them are
-  all written that way.)
+  changed. The block's first line, each line whose text is unchanged (moved to another
+  place in the block or not), and the empty lines at the block's start and end stay as
+  they were written (`%%first` stays `%%first`, with its indent); a changed or added
+  line is written `%% text`, with the indent of the block's first line.
 - An arrow written for several pairs at once (`a & b --> c`) is written out one pair per
   line when an edit changes one of its pairs. An arrow's own id (`a & b e1@--> c`) stays
   on the one pair Mermaid gives it to, the last node before the arrow and the first
