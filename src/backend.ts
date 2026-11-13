@@ -59,11 +59,7 @@ export interface Backend {
 }
 
 const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
-const OPEN_FILTERS = [
-  { name: 'Flowcharts (Mermaid, Markdown)', extensions: ['mmd', 'mermaid', 'md', 'markdown'] },
-  ...NEW_FILTERS,
-  { name: 'Markdown', extensions: ['md', 'markdown'] },
-];
+const OPEN_FILTERS = NEW_FILTERS;
 
 async function desktop(): Promise<Backend> {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -181,7 +177,7 @@ function browser(): Backend {
     viewing: () => {},
     async pickOpen() {
       if (served) return null;
-      const typed = window.prompt('Full path of the .mmd or .md file to open:');
+      const typed = window.prompt('Full path of the .mmd or .mermaid file to open:');
       if (!typed) return null;
       return (await call('api/open', { method: 'POST', body: typed })).path;
     },

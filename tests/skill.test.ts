@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
-import { checkFile } from '../src/core/check';
+import { checkFile, checkFlowchart } from '../src/core/check';
 import { parseDescriptions } from '../src/core/descriptions';
 import { reading } from '../src/semantics';
 
@@ -46,17 +46,10 @@ describe('the starter template', () => {
 });
 
 describe('the examples in the skill', () => {
-  test('every flowchart block passes the check', async () => {
-    const report = await checkFile('SKILL.md', skill, reading);
-    expect(report.findings).toEqual([]);
-    expect(report.charts).toBe(1);
-  });
-
-  test('the Markdown example passes the check', async () => {
-    const examples = [...skill.matchAll(/^````markdown\n([\s\S]*?)\n````$/gm)].map((m) => m[1]);
+  test('every Mermaid example passes the flowchart check', async () => {
+    const examples = [...skill.matchAll(/^```mermaid\n([\s\S]*?)\n```$/gm)].map((m) => m[1]);
     expect(examples).toHaveLength(1);
-    const report = await checkFile('example.md', examples[0], reading);
-    expect(report).toEqual({ findings: [], charts: 1 });
+    for (const example of examples) expect(await checkFlowchart(example, reading)).toEqual([]);
   });
 });
 

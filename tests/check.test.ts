@@ -362,49 +362,18 @@ describe('what breaks the Naiad file format', () => {
   });
 });
 
-const MD = [
-  '# Title',
-  '',
-  'Text.',
-  '',
-  '```mermaid',
-  'flowchart TD',
-  '  A --> B',
-  '%%',
-  '  C[Title with (parens)] --> B',
-  '```',
-  '',
-  '1. A list',
-  '',
-  '   ```mermaid',
-  '   flowchart LR',
-  '     X --> Y',
-  '   %% @Z',
-  '   %% text',
-  '   ```',
-  '',
-  '```mermaid',
-  'sequenceDiagram',
-  '  A->>B: hi',
-  '```',
-  '',
-].join('\n');
-
-describe('Markdown files', () => {
-  test('each flowchart block is checked, with lines of the file', async () => {
-    const report = await checkFile('doc.md', MD, reading);
-    expect(report.charts).toBe(2);
-    expect(brief(report.findings)).toEqual(['8 bare-comment', '9 mermaid', '17 description-without-node']);
-  });
-
-  test('a file with no flowchart block', async () => {
-    const report = await checkFile('doc.md', '# Title\n\n```mermaid\npie\n  "a": 1\n```\n', reading);
-    expect(brief(report.findings)).toEqual(['1 markdown']);
-  });
-
-  test('a block Naiad shows but does not change', async () => {
-    const report = await checkFile('doc.md', '  ```mermaid\n  flowchart TD\nA --> B\n  ```\n', reading);
-    expect(report.findings.some((f) => f.rule === 'markdown' && f.line === 1)).toBe(true);
+describe('which files the command line reads', () => {
+  test('.mmd and .mermaid in any letter case; a Markdown file is refused before it is read', async () => {
+    const reads: string[] = [];
+    const backend = { read: async (path: string) => { reads.push(path); return 'flowchart TD\nA --> B\n'; } } as unknown as Backend;
+    for (const mode of ['check', 'fix'] as const) {
+      const files = ['flow.MMD', 'flow.Mermaid', 'notes.md', 'notes.markdown'].map((name) => ({ name, path: name }));
+      const result = await runCli({ mode, files }, backend);
+      expect(result.code).toBe(2);
+      expect(result.output).toContain('notes.md: not checked: Naiad reads .mmd and .mermaid files.');
+      expect(result.output).toContain('notes.markdown: not checked: Naiad reads .mmd and .mermaid files.');
+    }
+    expect(reads).toEqual(['flow.MMD', 'flow.Mermaid', 'flow.MMD', 'flow.Mermaid']);
   });
 });
 
@@ -477,8 +446,6 @@ describe('fix', () => {
     expect(mixed.raw).toBe('flowchart TD\r\n  A --> B\n%% .\r\n%% x\n');
     const loneCr = await fixFile('flow.mmd', 'flowchart TD\r  A --> B\r%%\r', reading);
     expect(loneCr.raw).toBe('flowchart TD\r  A --> B\r%% .\r');
-    const md = '# Title\r\nintro\r\n\n```mermaid\nflowchart TD\n  A --> B\n%%\n```\nafter\r\n';
-    expect((await fixFile('doc.md', md, reading)).raw).toBe(md.replace('%%\n', '%% .\n'));
     // Beside a "%% ." line already there, each fixed line keeps its own ending (bug hunt
     // round 4, D28), and a second fix changes nothing.
     const beside = await fixFile('flow.mmd', 'flowchart TD\r\n%%\n%% .\r%%\r\nA-->B\n', reading);
@@ -504,9 +471,6 @@ describe('fix', () => {
     const fixed = await fixFile('flow.mmd', text, reading);
     expect(fixed.raw).toBe(text);
     expect(fixed.lines).toEqual([]);
-    const md = '---\ntitle: x\ndesc: |\n  ```mermaid\n  flowchart TD\n  %%\n  ```\n---\n\n```mermaid\nflowchart TD\n  A --> B\n%%\n```\n';
-    const inMd = await fixFile('doc.md', md, reading);
-    expect(inMd.raw).toBe(md.replace('%%\n```', '%% .\n```'));
   });
 
   test('a file with nothing to fix comes back as it was', async () => {
@@ -524,18 +488,4 @@ describe('fix', () => {
     expect(fixed.refused).toMatch(/nothing was changed/);
   });
 
-  test('in a Markdown file, only lines inside a flowchart block change', async () => {
-    const md = MD.replace('  C[Title with (parens)] --> B\n', '').replace('Text.', 'Text.\n\n%%');
-    const fixed = await fixFile('doc.md', md, reading);
-    expect(fixed.refused).toBeNull();
-    const before = md.split('\n');
-    const after = fixed.raw.split('\n');
-    const changed = after.map((l, i) => (l !== before[i] ? i + 1 : 0)).filter(Boolean);
-    expect(changed).toEqual(fixed.lines);
-    expect(changed.length).toBe(1);
-    expect(before[changed[0] - 1]).toBe('%%');
-    expect(after[changed[0] - 1]).toBe('%% .');
-    expect(before[4]).toBe('%%'); // the bare %% in the Markdown text itself is not a flowchart line
-    expect(after[4]).toBe('%%');
-  });
 });

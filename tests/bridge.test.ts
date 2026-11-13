@@ -66,6 +66,29 @@ async function bridge(files: Record<string, string | Buffer> = {}, served = 'flo
   return { dir, file, port, other: path.join(dir, 'other.mmd'), call, heard, read: (p: string) => fs.readFileSync(p, 'utf8') };
 }
 
+describe('the dev bridge accepts only Mermaid files', () => {
+  it('refuses other extensions on open while keeping the current file', async () => {
+    const { dir, file, call } = await bridge({ 'notes.md': 'notes', 'notes.markdown': 'notes', 'chart.MERMAID': 'flowchart TD\nA-->B\n' });
+    for (const name of ['notes.md', 'notes.markdown']) {
+      const result = await call('/open', { method: 'POST', body: path.join(dir, name) });
+      expect(result).toEqual({ status: 400, body: { error: 'Only .mmd and .mermaid files can be opened.' } });
+    }
+    expect((await call('/file')).body.path).toBe(file);
+    expect((await call('/open', { method: 'POST', body: path.join(dir, 'chart.MERMAID') })).status).toBe(200);
+  });
+
+  it('refuses an unsupported initial file', () => {
+    const before = process.env.NAIAD_FILE;
+    try {
+      process.env.NAIAD_FILE = 'notes.md';
+      expect(() => (fileBridge().configureServer as (s: unknown) => void)({})).toThrow('Only .mmd and .mermaid files can be opened.');
+    } finally {
+      if (before === undefined) delete process.env.NAIAD_FILE;
+      else process.env.NAIAD_FILE = before;
+    }
+  });
+});
+
 describe('the dev page hears of a change whatever the letter case of its path (bug hunt C18)', () => {
   it('a change to the file served is heard', async () => {
     const { file, heard } = await bridge();

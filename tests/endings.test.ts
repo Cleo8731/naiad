@@ -2,7 +2,6 @@
 // lone CR keeps every unchanged line's ending when Naiad writes it back.
 import { describe, expect, test } from 'vitest';
 import { plainText, withEndingsOf } from '../src/core/endings';
-import { findBlocks, putBlock } from '../src/core/markdown';
 
 /** Writes `text` over `raw` the way a save does. */
 const write = (raw: string, text: string) => withEndingsOf(raw, text);
@@ -59,15 +58,5 @@ describe('every line keeps its own ending', () => {
     const out = write(raw, text);
     expect(Date.now() - started).toBeLessThan(1000);
     expect(plainText(out)).toBe(text);
-  });
-});
-
-describe('a save in a Markdown file with mixed endings', () => {
-  test('changes only the flowchart block, and no line ending outside it', () => {
-    const raw = '# Title\r\nintro\r\n\n```mermaid\nflowchart TD\n    a --> b\n```\nafter one\r\nafter two\n';
-    const file = plainText(raw);
-    const index = findBlocks(file).findIndex((b) => b.flowchart);
-    const out = write(raw, putBlock(file, index, 'flowchart TD\n    a --> b\n    b --> c\n'));
-    expect(out).toBe('# Title\r\nintro\r\n\n```mermaid\nflowchart TD\n    a --> b\n    b --> c\n```\nafter one\r\nafter two\n');
   });
 });

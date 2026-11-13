@@ -2,8 +2,8 @@
 // flowchart file through the Vite dev server. Development only (`npm run dev`); the
 // desktop app uses the Rust commands in src-tauri/src/lib.rs instead.
 //
-// It serves requests from this machine only, touches only flowchart and Markdown files
-// (.mmd, .mermaid, .md, .markdown), and requires a custom header on writes so that no
+// It serves requests from this machine only, touches only flowchart files
+// (.mmd, .mermaid), and requires a custom header on writes so that no
 // other web page can trigger one.
 
 import fs from 'node:fs';
@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { fnv1a64 } from '../src/core/hash.ts';
 
-const ALLOWED = new Set(['.mmd', '.mermaid', '.md', '.markdown']);
+const ALLOWED = new Set(['.mmd', '.mermaid']);
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,6 +97,7 @@ export function fileBridge(): Plugin {
     apply: 'serve',
     configureServer(server) {
       let current = path.resolve(process.env.NAIAD_FILE ?? 'examples/sample.mmd');
+      if (!ALLOWED.has(path.extname(current).toLowerCase())) throw new Error('Only .mmd and .mermaid files can be opened.');
       const listeners = new Set<ServerResponse>();
       let watchers: fs.FSWatcher[] = [];
       let timer: NodeJS.Timeout | null = null;
@@ -256,7 +257,7 @@ export function fileBridge(): Plugin {
           }
           if (url === '/open' && req.method === 'POST') {
             const next = path.resolve((await readBody(req)).trim());
-            if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd, .mermaid and .md files can be opened.' });
+            if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd and .mermaid files can be opened.' });
             if (!fs.existsSync(next)) return send(404, { error: `No file at ${next}` });
             current = next;
             watch();

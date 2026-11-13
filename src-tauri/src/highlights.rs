@@ -797,8 +797,8 @@ mod tests {
     fn the_file_sits_in_a_folder_named_for_the_flowchart_file() {
         let got = file_of(Path::new(r"C:\a\flow.mmd")).unwrap();
         assert_eq!(got, Path::new(r"C:\a\.naiad\flow.mmd\highlights.txt"));
-        let got = file_of(Path::new(r"C:\a\notes.md")).unwrap();
-        assert_eq!(got, Path::new(r"C:\a\.naiad\notes.md\highlights.txt"));
+        let got = file_of(Path::new(r"C:\a\notes.mermaid")).unwrap();
+        assert_eq!(got, Path::new(r"C:\a\.naiad\notes.mermaid\highlights.txt"));
     }
 
     #[test]

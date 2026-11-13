@@ -88,10 +88,9 @@ fn print_out(text: &str) {
 #[derive(Default)]
 struct Watching(Mutex<Option<Watch>>);
 
-/// The shell only ever touches flowchart files and Markdown files (which can hold a
-/// flowchart block), whatever the page asks for. On Windows a ':' inside a name names a
-/// hidden part (a stream) of another file (`notes.txt:flow.mmd`), so such a path is
-/// refused whatever its extension.
+/// The shell only ever touches flowchart files, whatever the page asks for. On Windows
+/// a ':' inside a name names a hidden part (a stream) of another file
+/// (`notes.txt:flow.mmd`), so such a path is refused whatever its extension.
 fn check(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
     let stream = |c: std::path::Component| matches!(c, std::path::Component::Normal(n) if n.to_string_lossy().contains(':'));
@@ -103,10 +102,10 @@ fn check(path: &str) -> Result<PathBuf, String> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
-    if matches!(ext.as_str(), "mmd" | "mermaid" | "md" | "markdown") {
+    if matches!(ext.as_str(), "mmd" | "mermaid") {
         Ok(p)
     } else {
-        Err("Only .mmd, .mermaid and .md files can be opened.".into())
+        Err("Only .mmd and .mermaid files can be opened.".into())
     }
 }
 
@@ -612,11 +611,11 @@ mod tests {
     }
 
     #[test]
-    fn only_flowchart_and_markdown_files_are_touched() {
+    fn only_flowchart_files_are_touched() {
         assert!(check(r"C:\a\flow.mmd").is_ok());
         assert!(check(r"C:\a\flow.Mermaid").is_ok());
-        assert!(check(r"\\?\C:\a\notes.MD").is_ok());
-        assert!(check("notes.markdown").is_ok());
+        assert!(check(r"\\?\C:\a\notes.MD").is_err());
+        assert!(check("notes.markdown").is_err());
         assert!(check(r"C:\a\notes.txt").is_err());
         assert!(check(r"C:\a\flow").is_err());
     }

@@ -8,7 +8,7 @@ import type { Backend, CliJob } from './backend';
 import { checkFile, fixFile, formatReport } from './core/check';
 import { reading } from './semantics';
 
-const KINDS = /\.(mmd|mermaid|md|markdown)$/i;
+const KINDS = /\.(mmd|mermaid)$/i;
 
 export async function runCli(job: CliJob, backend: Backend): Promise<{ code: number; output: string }> {
   mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true });
@@ -19,7 +19,7 @@ export async function runCli(job: CliJob, backend: Backend): Promise<{ code: num
   let failed = false;
   for (const { name, path } of job.files) {
     if (!KINDS.test(name)) {
-      out.push(`${name}: not checked: Naiad reads .mmd, .mermaid and .md files.`);
+      out.push(`${name}: not checked: Naiad reads .mmd and .mermaid files.`);
       failed = true;
       continue;
     }

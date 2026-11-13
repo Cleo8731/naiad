@@ -25,9 +25,7 @@ flowchart TD
 %% Descriptions are **Markdown**: lists, `code` and links all work.
 ```
 
-- The flowchart is one `.mmd` file, or a `mermaid` code block inside a Markdown file
-  (`.md`), where Naiad changes nothing outside the code block. A Markdown file with
-  several flowcharts shows one at a time; a list in the toolbar switches between them.
+- The flowchart is one `.mmd` or `.mermaid` file.
 - Naiad reloads the file whenever it changes on disk, so a change an agent makes shows
   at once.
 - A change made in Naiad rewrites only the lines it needs, and Mermaid's own parser
@@ -146,7 +144,9 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 
 - Naiad 0.2.0 has been made and used on Windows 11 (x64) only. There are no macOS or
   Linux builds.
-- It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`).
+- It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`), in
+  `.mmd` and `.mermaid` files. It does not open a Markdown file (`.md`), even one with a
+  `mermaid` code block.
 - Some Mermaid forms are drawn but can be changed only as text; the forms the chart
   can change are listed in
   [FILE-FORMAT.md](FILE-FORMAT.md#mermaid-syntax-naiad-can-edit-from-the-chart).

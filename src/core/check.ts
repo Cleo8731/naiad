@@ -4,12 +4,11 @@
 
 import { parseDescriptions } from './descriptions';
 import { plainText, withEndingsOf } from './endings';
-import { findBlocks, isMarkdownPath } from './markdown';
 import { parseDoc, usedIds, type LineKind } from './scan';
 
 export type Rule =
   | 'mermaid' | 'comment-after-statement' | 'bare-comment' | 'unreadable-line'
-  | 'description-without-node' | 'second-description' | 'markdown';
+  | 'description-without-node' | 'second-description';
 
 export interface Finding {
   /** Line in the file, counted from 1. */
@@ -39,7 +38,7 @@ export type Reader = (flowchartText: string, asIs?: boolean) => Promise<Reading>
 
 export interface Report {
   findings: Finding[];
-  /** Flowcharts looked at: 1 for a flowchart file, the number of flowchart blocks in a Markdown file. */
+  /** Flowcharts looked at: 1 for a flowchart file. */
   charts: number;
 }
 
@@ -295,27 +294,10 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
   return findings.sort((a, b) => a.line - b.line);
 }
 
-/** Checks a file: a flowchart file, or every flowchart block of a Markdown file. */
-export async function checkFile(name: string, raw: string, read: Reader): Promise<Report> {
+/** Checks a whole flowchart file. */
+export async function checkFile(_name: string, raw: string, read: Reader): Promise<Report> {
   const text = (raw.startsWith('﻿') ? raw.slice(1) : raw).replace(/\r\n?/g, '\n');
-  if (!isMarkdownPath(name)) return { findings: await checkFlowchart(text, read), charts: 1 };
-
-  const blocks = findBlocks(text).filter((b) => b.flowchart);
-  if (!blocks.length) {
-    return {
-      charts: 0,
-      findings: [{ line: 1, rule: 'markdown', fixable: false, message: 'This Markdown file holds no Mermaid flowchart block: a fenced block that opens with ```mermaid and whose first line is "flowchart TD".' }],
-    };
-  }
-  const findings: Finding[] = [];
-  for (const b of blocks) {
-    if (b.locked) {
-      findings.push({ line: b.open + 1, rule: 'markdown', fixable: false, message: `Naiad shows this flowchart block but cannot change it: ${b.locked}` });
-    }
-    // Line 1 of the block's text is the line after the opening fence.
-    for (const f of await checkFlowchart(b.text, read)) findings.push({ ...f, line: f.line + b.open + 1 });
-  }
-  return { findings: findings.sort((a, b) => a.line - b.line), charts: blocks.length };
+  return { findings: await checkFlowchart(text, read), charts: 1 };
 }
 
 export interface Fixed {
@@ -332,26 +314,14 @@ export interface Fixed {
  * becomes "%% ." (the empty-line marker). Each line is replaced in place; no other
  * byte of the file changes. Refuses when Mermaid reads a flowchart differently after.
  */
-export async function fixFile(name: string, raw: string, read: Reader): Promise<Fixed> {
+export async function fixFile(_name: string, raw: string, read: Reader): Promise<Fixed> {
   const lines = plainText(raw).split('\n');
   const text = lines.join('\n');
   const none: Fixed = { raw, lines: [], refused: null };
 
   // The bare "%%" lines, as indexes into `lines`: those the scanner reads as comment
   // lines, so never a line of front matter or of a quoted text that runs over lines.
-  const bare = (chart: string, first: number) => parseDoc(chart).warnings.map((w) => first + w.line);
-  let targets: number[];
-  if (isMarkdownPath(name)) {
-    const blocks = findBlocks(text).filter((b) => b.flowchart);
-    if (blocks.some((b) => b.locked)) {
-      const fixable = blocks.some((b) => bare(b.text, 0).length > 0);
-      return fixable ? { ...none, refused: 'a flowchart block in this file is one Naiad does not change (see the check).' } : none;
-    }
-    // Line 0 of a block's text is the line after its opening fence.
-    targets = blocks.flatMap((b) => bare(b.text, b.open + 1));
-  } else {
-    targets = bare(text, 0);
-  }
+  const targets = parseDoc(text).warnings.map((w) => w.line);
 
   const out = [...lines];
   const changed: number[] = [];
@@ -363,37 +333,31 @@ export async function fixFile(name: string, raw: string, read: Reader): Promise<
   }
   if (!changed.length) return none;
 
-  // The check: every flowchart must mean the same to Mermaid before and after.
-  const chartsOf = (all: string[]): string[] =>
-    isMarkdownPath(name) ? findBlocks(all.join('\n')).filter((b) => b.flowchart).map((b) => b.text) : [all.join('\n')];
-  const before = chartsOf(lines);
-  const after = chartsOf(out);
-  if (before.length !== after.length) return { ...none, refused: 'the fix would have changed the Mermaid blocks of the file.' };
-  for (let k = 0; k < before.length; k++) {
-    let a: Reading;
-    let b: Reading;
-    try {
-      a = await read(forReading(before[k].split('\n')));
-      b = await read(forReading(after[k].split('\n')));
-    } catch {
-      return { ...none, refused: 'Mermaid cannot read the flowchart, so nothing was changed. Put the other problems right first.' };
-    }
-    if (a.shape !== b.shape) return { ...none, refused: 'the fix would have changed what the flowchart means.' };
-    // The reading above blanks the lines the scanner takes for bare "%%" comments, so it
-    // cannot see one the scanner misreads. Mermaid's reading of the text as it stands can:
-    // there a "%%" line in an accessible text is its text (bug hunt round 7, D35 to D37).
-    const accOf = async (t: string): Promise<string | null> => {
-      try { return (await read(forReading(t.split('\n')), true)).acc ?? null; } catch { return null; }
-    };
-    const accBefore = await accOf(before[k]);
-    if (accBefore !== null && accBefore !== (await accOf(after[k]))) {
-      return { ...none, refused: 'the fix would have changed an accessible title or description.' };
-    }
-    const descriptions = (t: string) => JSON.stringify(parseDescriptions(t.split('\n')).map((d) => [d.id, d.text]));
-    if (descriptions(before[k]) !== descriptions(after[k])) return { ...none, refused: 'the fix would have changed a description.' };
+  // The check: the flowchart must mean the same to Mermaid before and after.
+  const after = out.join('\n');
+  let a: Reading;
+  let b: Reading;
+  try {
+    a = await read(forReading(lines));
+    b = await read(forReading(out));
+  } catch {
+    return { ...none, refused: 'Mermaid cannot read the flowchart, so nothing was changed. Put the other problems right first.' };
   }
+  if (a.shape !== b.shape) return { ...none, refused: 'the fix would have changed what the flowchart means.' };
+  // The reading above blanks the lines the scanner takes for bare "%%" comments, so it
+  // cannot see one the scanner misreads. Mermaid's reading of the text as it stands can:
+  // there a "%%" line in an accessible text is its text (bug hunt round 7, D35 to D37).
+  const accOf = async (t: string): Promise<string | null> => {
+    try { return (await read(forReading(t.split('\n')), true)).acc ?? null; } catch { return null; }
+  };
+  const accBefore = await accOf(text);
+  if (accBefore !== null && accBefore !== (await accOf(after))) {
+    return { ...none, refused: 'the fix would have changed an accessible title or description.' };
+  }
+  const descriptions = (t: string) => JSON.stringify(parseDescriptions(t.split('\n')).map((d) => [d.id, d.text]));
+  if (descriptions(text) !== descriptions(after)) return { ...none, refused: 'the fix would have changed a description.' };
   // Each line keeps its own line ending; the changed lines keep theirs too.
-  return { raw: withEndingsOf(raw, out.join('\n')), lines: changed, refused: null };
+  return { raw: withEndingsOf(raw, after), lines: changed, refused: null };
 }
 
 const count = (n: number): string => (n === 1 ? '1 problem' : `${n} problems`);

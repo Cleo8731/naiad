@@ -1,9 +1,7 @@
 # The Naiad file format
 
 For anyone, person or AI agent, who edits a Naiad file by hand. A Naiad file is an
-ordinary Mermaid flowchart saved as `.mmd` (or `.mermaid`), or a Markdown file (`.md`)
-with the flowchart in a `mermaid` block
-([A flowchart inside a Markdown file](#a-flowchart-inside-a-markdown-file)). It opens
+ordinary Mermaid flowchart saved as `.mmd` (or `.mermaid`). It opens
 unchanged in every Mermaid tool. Naiad adds one convention on top: **description
 blocks**, written as Mermaid comments, which hold each node's full description.
 
@@ -118,75 +116,6 @@ Mermaid without error, and `check` does not report it. There, and inside
 about it nor changes it, and no edit is made that would change an accessible title or
 description.
 
-## A flowchart inside a Markdown file
-
-Naiad also opens a Markdown file (`.md`, `.markdown`) and works on a flowchart kept in
-it as a fenced block marked `mermaid`, the form GitHub and most Markdown tools draw in
-place. This guide calls it the **flowchart block**:
-
-````markdown
-# Pipeline
-
-Some text.
-
-```mermaid
-flowchart TD
-    collect[Collect data] --> clean{Clean?}
-
-%% @collect
-%% Pull the raw exports from the warehouse.
-```
-
-More text.
-````
-
-- Everything said above holds inside the flowchart block: titles, description blocks,
-  `%% .`. Description blocks go inside the flowchart block, before its closing line, so
-  it stays one valid Mermaid flowchart and still draws on GitHub.
-- Naiad changes only lines between the flowchart block's opening and closing lines.
-  Every other line of the Markdown file stays byte for byte as it was. Before saving,
-  Naiad reads its own result back and refuses to save if the flowchart block would no
-  longer be found whole.
-- The text pane shows the flowchart's text, not the Markdown around it.
-- A flowchart block is opened with three or more backticks or tildes followed by
-  `mermaid`, and closed by a line of the same character, at least as many of them.
-  Fenced blocks in other languages, and `mermaid` blocks that are not flowcharts (their
-  first line is not `flowchart` or `graph`), are left alone. A flowchart block inside a
-  quote (`>`) is not found, nor is a fence inside YAML front matter at the top of the
-  file (from a first line of `---` to the next `---` or `...`), nor one inside HTML:
-  from a line that opens a block of HTML, such as `<div>`, `<details>` or `<!--`, to
-  its end (a blank line; for a comment, the line holding `-->`), Markdown shows the
-  lines as HTML, so a fence or a heading there is none.
-- A file with several flowchart blocks shows one at a time; a list in the toolbar
-  switches between them.
-- A flowchart block may be indented, for example inside a list. As in Markdown, its
-  opening and closing lines are indented at most three spaces, or, inside a list item,
-  at most three spaces past the start of the item's text; a fence indented further is
-  an indented code sample and is left alone. A line that looks like a list item but
-  stands inside another fenced block, or in an indented code sample, starts no list,
-  nor does a thematic break written with spaces (`* * *`, `- - -`).
-  The fence stands in the item only if every line between them does: a line indented
-  less than the item's text ends the item, unless it goes on with a paragraph above
-  it. Right under paragraph text, only a bullet (`-`, `+`, `*`) or a `1.` or `1)` with
-  text after it starts a new item; any other line that looks like an item (one with
-  nothing after its marker, or a number other than 1) is more of the text, and a fence
-  under it stands in no item. A `-` alone there, indented at most three columns past
-  the start of the text, underlines the text instead (a heading), which ends it. An item with nothing after its marker on its line
-  has its text one column past the marker, and holds nothing when a blank line follows
-  it. A line starting with `=` right under an item's text never ends the item: it is
-  more of the text, or underlines a heading in the item. Where Naiad cannot tell
-  whether an item began or ended, it does not find the block, so a code sample or text
-  is never taken for a flowchart. A fenced
-  block in a list item also ends with the item: a line in it indented less than the
-  item's text (blank lines aside) ends both, and the block then has no closing line.
-  Every line of the block must then start with the same whitespace as its opening
-  line (empty lines may be fully empty, or all carry that whitespace). If they do
-  not, or the closing line is missing, Naiad shows the flowchart but does not change
-  it.
-- A line that would close the flowchart block (three or more backticks alone on a line,
-  when it was opened with backticks) cannot be part of a flowchart in a Markdown file.
-  Naiad does not save such a text.
-
 ## What Naiad changes in a file, and what it never does
 
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
@@ -272,42 +201,6 @@ More text.
   other letters only (`flow.mmd` to `Flow.mmd`), it is still the file, and its changes
   are still seen. A save keeps the name the file has on disk, whatever letters the path
   was typed in.
-  In a Markdown file, a change on disk that leaves the
-  flowchart block as it was (only the text around it changed) is taken in without
-  touching the flowchart or an unsaved edit to it. If Naiad cannot tell for certain
-  which flowchart block it was showing (the block was removed, or it changed while
-  other Mermaid blocks were added, removed or changed), it changes nothing more in the
-  file until it can tell again (the block is back, unchanged) or the file is opened
-  again. When another block now holds the same text (a copy written beside it), the
-  one shown is the one whose lines around it, above and below both, read more as they
-  did than the other's; if the lines around the two do not tell them apart, or the
-  lines above point to one and the lines below to the other, Naiad cannot tell. Nor can
-  it when another block sits where the shown block was (more of the lines above it read
-  as they did, its heading say; or as many, at least one, and more below), whatever
-  its text, even a copy of a third block's, and the shown block's text is now
-  elsewhere: the shown block may have been changed in place and its old text kept as a
-  copy, or another block changed to it. So too when no block was added or taken away
-  and the block holding the shown text is now at another place in their order, while
-  the block at the shown block's place stands under the same headings and its lines
-  above read as much as they did: a section moved among sections under the same
-  headings looks just like that. So too when the block holding the shown text now
-  stands under other headings than the shown block did (any heading above it, not only
-  the nearest, renamed, added or taken away; a heading underlined with `===` or `---`
-  counts, each read as Markdown reads it: `# Original#` is "Original#", `#` alone is an
-  empty heading, `[ref]: /url` over `---` is a link reference definition, not a
-  heading, `| a | b |` over `---` is a heading unless a table (a header row over a row
-  like `|---|---|`, as many cells in each, indented three spaces at most) starts above
-  the `---`, a line indented four spaces or more right above a heading's text is a code
-  sample, not its first line, while under its text it is more of it, a `===` or `--` line with no text above it
-  is text, so `==` over `===` is a heading, text right under a quote whose last line
-  is blank, a heading, a thematic break or a fence line, or `===` or `---` under text in
-  the quote (a heading there), is no more of the quote, so it
-  may be a heading, so is text under a list item, indented less than the item's text,
-  once no text is open in the item (it is empty, or ends in a heading or a code
-  sample) or another item began, a heading inside a list item is the item's,
-  which does not count, and one inside HTML is none),
-  whatever the lines below each say: the shown block may have been changed in
-  place, with the text below it and its heading, and the old text kept with the copy.
 - The checker's `fix` changes one thing only: a line holding nothing but `%%` becomes
   `%% .`, in place. A line inside front matter, or inside a quoted text that runs over
   several lines, is never changed: Mermaid reads it as part of that. (A double quote in
@@ -346,7 +239,7 @@ collect --> clean
 - An item is a node's or a group's id, or an arrow written as its two ends,
   `from --> to` (the first arrow with those ends).
 - Blank lines and lines starting with `#` are ignored, and so is a line that names
-  nothing on the chart. In a Markdown file the items apply to the flowchart shown.
+  nothing on the chart.
 - A line ends at LF, CRLF or a lone CR. When Naiad changes the list, every line it
   writes ends in LF.
 - In Naiad, the **Highlight** switch in the toolbar (key H) makes a click on an item
@@ -438,9 +331,9 @@ naiad fix flow.mmd
 
 - `naiad check` prints each place a file breaks this format, with its line number and
   how to put it right, and ends each file with the number of its problems, or
-  `no problems`. It reads `.mmd`, `.mermaid` and every flowchart block of a `.md` or
-  `.markdown` file, and takes several files at once. Its exit code is 0
-  when there are no problems, 1 when there are, and 2 when a file could not be checked.
+  `no problems`. It reads `.mmd` and `.mermaid` files, and takes several files at once.
+  Its exit code is 0 when there are no problems, 1 when there are, and 2 when a file
+  could not be checked.
 - It reports: text Mermaid's flowchart parser rejects; a line holding nothing but `%%`;
   a comment after a statement on the same line; a description block whose id matches
   no node or group; a second description block for one id; a line Naiad's scanner
@@ -464,8 +357,6 @@ naiad fix flow.mmd
 - Write an empty description line as `%% .`.
 - Leave an empty line between a description block and an ordinary `%%` comment under
   it; without one, the comment becomes part of the description.
-- In a Markdown file, keep description blocks inside the flowchart block, and keep
-  every line of an indented flowchart block at its indent.
 - Naiad reloads the file as soon as you save it; nothing else needs doing.
 - Write the whole file in one step. Naiad waits a second after a change on disk before
   it saves, so a second step that adds to the file within that second is taken in;

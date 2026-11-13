@@ -1,6 +1,6 @@
 ---
 name: naiad
-description: Make or change a flowchart as a Naiad file, a plain Mermaid flowchart (a .mmd or .mermaid file, or a mermaid block inside a Markdown file) in which a node has a short title and can have a longer description kept in %% comment lines. Use when asked to draw, create, update or fix a flowchart or a diagram of a process, pipeline or architecture, when working on a .mmd or .mermaid file, or when a Markdown file holds a mermaid flowchart block.
+description: Make or change a flowchart as a Naiad file, a plain Mermaid flowchart (a .mmd or .mermaid file) in which a node has a short title and can have a longer description kept in %% comment lines. Use when asked to draw, create, update or fix a flowchart or a diagram of a process, pipeline or architecture, when working on a .mmd or .mermaid file.
 ---
 
 # Naiad flowcharts
@@ -44,8 +44,8 @@ Run `naiad --version`.
 ### A new flowchart
 
 Start from the starter template, `template.mmd` in this skill's folder: a small
-correct file to change. Save the flowchart as a `.mmd` file, unless the user wants it
-inside a Markdown file. A finished file looks like this:
+correct file to change. Save the flowchart as a `.mmd` file. A finished file looks
+like this:
 
 ```mermaid
 flowchart TD
@@ -155,36 +155,6 @@ arrows and one new description block at the end, after one empty line:
 %% Sent on Monday mornings.
 ```
 
-### A flowchart inside a Markdown file
-
-The flowchart is a fenced block marked `mermaid` (the **flowchart block**), the form
-GitHub draws in place:
-
-````markdown
-# Pipeline
-
-Some text.
-
-```mermaid
-flowchart TD
-    collect[Collect data] --> clean{Clean?}
-
-%% @collect
-%% Pull the raw exports from the warehouse.
-```
-
-More text.
-````
-
-- Everything above holds inside the flowchart block.
-- Description blocks go inside the flowchart block, before its closing line.
-- Change only lines between the flowchart block's opening and closing lines, unless
-  the task is about the rest of the document.
-- If the flowchart block is indented (inside a list, for example), every line of it
-  starts with the same whitespace as its opening line. Empty lines may be fully empty.
-- A line of three or more backticks alone cannot be part of the flowchart: it would
-  close the flowchart block.
-
 ## 3. Check
 
 After every change to a Naiad file, where `naiad` can run:
@@ -197,8 +167,7 @@ naiad check flow.mmd
   it right, and ends each file with the number of its problems, or `no problems`.
   Exit code 0: no problems. 1: problems. 2: a file could not be checked.
 - Put right what it reports and run it again, until it reports no problems.
-- It reads `.mmd`, `.mermaid` and every flowchart block of a `.md` or `.markdown`
-  file, and takes several files at once. It never writes.
+- It reads `.mmd` and `.mermaid` files, and takes several files at once. It never writes.
 - `naiad fix flow.mmd` turns each line holding only `%%` into `%% .`, changes nothing
   else, then checks.
 

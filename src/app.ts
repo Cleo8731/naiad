@@ -8,7 +8,6 @@ import { getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
-import { findAgain, findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
@@ -75,23 +74,11 @@ function remember(key: string, value?: string): string | null {
   return null;
 }
 
-/** A Markdown file: the whole file as last read or written, and the Mermaid block shown. */
-interface MarkdownFile {
-  file: string;
-  blocks: Block[];
-  /** Index into `blocks` (all Mermaid blocks, flowchart or not). */
-  index: number;
-  /** Set when the block could not be found again after the file changed on disk. */
-  gone: boolean;
-}
-
 export class App {
-  /** The flowchart's text: the whole `.mmd` file, or the block shown from a Markdown file. */
+  /** The flowchart's text: the whole Mermaid file. */
   private text = '';
   /** The flowchart's text as last read from or written to disk. */
   private saved = '';
-  private md: MarkdownFile | null = null;
-  private blockError: string | null = null;
   private path: string | null = null;
   private doc: Doc = parseDoc('');
   private snap: Snap | null = null;
@@ -123,7 +110,7 @@ export class App {
     name: HTMLElement; status: HTMLElement; area: HTMLTextAreaElement; notices: HTMLElement; stage: HTMLElement;
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    block: HTMLSelectElement; highlight: HTMLButtonElement; clear: HTMLButtonElement;
+    highlight: HTMLButtonElement; clear: HTMLButtonElement;
   };
 
   constructor(private root: HTMLElement, private backend: Backend) {}
@@ -135,7 +122,6 @@ export class App {
         <button data-act="new" title="Start a new flowchart file">New</button>
         <div class="file">
           <span class="name"></span>
-          <select data-act="block" title="Which flowchart of this file to show" aria-label="Which flowchart of this file to show" hidden></select>
           <span class="status"></span>
         </div>
         <div class="spacer"></div>
@@ -159,7 +145,7 @@ export class App {
         <section class="stage" tabindex="-1">
           <div class="empty" hidden>
             <h1>No file open</h1>
-            <p>Open a Mermaid flowchart file (<code>.mmd</code>), or a Markdown file (<code>.md</code>) with a flowchart in it, to view and edit it.</p>
+            <p>Open a Mermaid flowchart file (<code>.mmd</code> or <code>.mermaid</code>) to view and edit it.</p>
             <p><button class="primary" data-act="open">Open a file</button> <button data-act="new">New flowchart</button></p>
           </div>
         </section>
@@ -171,7 +157,7 @@ export class App {
       name: q('.name'), status: q('.status'), area: q('textarea'), notices: q('.notices'), stage: q('.stage'),
       empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="text"]'), pane: q('.textpane'),
-      fit: q('[data-act="fit"]'), block: q('[data-act="block"]'), highlight: q('[data-act="highlight"]'),
+      fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
@@ -334,7 +320,6 @@ export class App {
 
   /** Why the text shown cannot be saved, for a question: ' (…)' or ''. */
   private unsavedWhy(): string {
-    if (this.blockError) return ' (the text would end the Mermaid block early)';
     if (this.error) return ' (Mermaid cannot read the text)';
     return '';
   }
@@ -349,22 +334,11 @@ export class App {
       this.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
       return;
     }
-    let index = -1;
-    if (isMarkdownPath(path)) {
-      // Looked at before anything is changed, so a file with no flowchart leaves the open one as it is.
-      index = findBlocks(plainText(raw)).findIndex((b) => b.flowchart);
-      if (index < 0) {
-        this.toast(`${basename(path)} holds no Mermaid flowchart block.`);
-        return;
-      }
-    }
     if (!(await this.leave(`Open ${basename(path)}`))) return;
     this.stopWatch?.();
     this.path = path;
     this.displaced = false;
-    const body = plainText(raw);
-    this.md = index < 0 ? null : { file: body, blocks: findBlocks(body), index, gone: false };
-    this.text = this.saved = this.md ? this.md.blocks[index].text : body;
+    this.text = this.saved = plainText(raw);
     this.undoStack = [];
     this.redoStack = [];
     this.selection = null;
@@ -508,28 +482,14 @@ export class App {
     // nor it over an edit half done.
     await this.queue(async () => {
       if (path !== this.path) return; // another file is shown now
-      let disk = plainText(raw);
-      // Our own save, or nothing really changed. While the block shown is gone, `md.file`
-      // is the file from before it went: the file coming back as it was is a change (C5).
-      if (disk === (this.md ? this.md.file : this.saved) && !this.md?.gone) return;
+      const disk = plainText(raw);
+      if (disk === this.saved) return;
       this.changedOutside = Date.now();
-      if (this.md) {
-        if (this.md.gone) this.note = '';
-        const blocks = findBlocks(disk);
-        const index = findAgain(this.md.file, this.md.blocks, disk, blocks, this.md.index);
-        if (index < 0) {
-          this.md = { ...this.md, gone: true };
-          this.note = 'The flowchart block shown cannot be found after the change on disk: open the file again';
-          this.paint();
-          return;
-        }
-        this.md = { file: disk, blocks, index, gone: false };
-        disk = blocks[index].text;
-      }
       await this.takeTypingNow(); // typed while the file was read or this job waited (C25)
       const hadUnsaved = this.text !== this.saved;
       if (disk === this.saved) {
-        // Only the Markdown around the flowchart changed: an unsaved edit still stands.
+        // A save of ours finished while this job waited, and the disk holds it: an
+        // unsaved edit made since still stands.
         if (hadUnsaved) this.scheduleSave();
         this.paint();
         return;
@@ -545,43 +505,6 @@ export class App {
       }
       this.paintBar();
     });
-  }
-
-  /** Why the flowchart can be shown but not changed, or null. */
-  private locked(): string | null {
-    if (!this.md) return null;
-    if (this.md.gone) return 'its block is no longer in the file.';
-    return this.md.blocks[this.md.index]?.locked ?? null;
-  }
-
-  private async pickBlock(index: number): Promise<void> {
-    if (!(await this.writeDraft())) { this.paintBar(); return; }
-    await this.flushSave();
-    await this.work;
-    const block = this.md?.blocks[index];
-    if (!this.md || !block || index === this.md.index) { this.paintBar(); return; }
-    if (this.text !== this.saved) {
-      this.toast('This flowchart holds a change that is not saved (a syntax error?). Fix it or undo it before showing another one.');
-      this.paintBar();
-      return;
-    }
-    if (this.displaced && !(await this.backend.confirm(this.displacedQuestion('Show another flowchart')))) {
-      this.paintBar();
-      return;
-    }
-    // Looked up again: the file may have changed on disk while the question was open.
-    const now = this.md?.blocks[index];
-    if (!this.md || !now?.flowchart || this.text !== this.saved) { this.paintBar(); return; }
-    this.md = { ...this.md, index }; // a new object: a save under way sees the change (saveNow)
-    this.text = this.saved = now.text;
-    this.displaced = false;
-    this.undoStack = [];
-    this.redoStack = [];
-    this.selection = null;
-    this.snap = null;
-    this.el.area.value = this.text;
-    this.chart.resetView();
-    await this.queue(() => this.refresh(true));
   }
 
   private scheduleSave(): void {
@@ -613,21 +536,17 @@ export class App {
     const wait = this.changedOutside + SETTLE_MS - Date.now();
     if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
     const path = this.path;
-    const md = this.md;
-    if (!path || this.text === this.saved || this.locked()) return;
-    if ((this.error || this.blockError) && !force) { this.paintBar(); return; }
+    if (!path || this.text === this.saved) return;
+    if (this.error && !force) { this.paintBar(); return; }
     const text = this.text;
     try {
       // If the file changed since it was last read, take that change in rather than overwrite it.
       const raw = await this.backend.read(path);
-      if (path !== this.path || md !== this.md) return; // another file or flowchart is shown now
-      if (plainText(raw) !== (md ? md.file : this.saved)) { await this.takeDisk(); return; }
-      // In a Markdown file only the block's own lines are replaced; putBlock reads the result back.
-      const out = md ? putBlock(md.file, md.index, text) : text;
+      if (path !== this.path) return; // another file is shown now
+      if (plainText(raw) !== this.saved) { await this.takeDisk(); return; }
       // Every line keeps the line ending it has on disk now. The write is refused if the
       // file changed after it was read (bug hunt C7); that change is then taken in.
-      if (!(await this.backend.write(path, withEndingsOf(raw, out), raw))) { await this.takeDisk(); return; }
-      if (md) this.md = { ...md, file: out, blocks: findBlocks(out) };
+      if (!(await this.backend.write(path, withEndingsOf(raw, text), raw))) { await this.takeDisk(); return; }
       this.saved = text;
       this.note = '';
     } catch (e) {
@@ -679,9 +598,7 @@ export class App {
 
   /** Whether the text pane holds typing that the text does not have yet and could take in. */
   private typingWaits(): boolean {
-    let typed = this.typed();
-    if (this.md && typed !== '' && !typed.endsWith('\n')) typed += '\n'; // as `apply` puts it in
-    return typed !== this.text && !this.locked();
+    return this.typed() !== this.text;
   }
 
   /**
@@ -689,10 +606,7 @@ export class App {
    * text was made from (an edit, a reading of the file) is still the text shown.
    */
   private async apply(next: string, source: Source): Promise<void> {
-    // Inside a Markdown block the last line always ends with a newline (the closing fence follows).
-    if (this.md && next !== '' && !next.endsWith('\n')) next += '\n';
     if (next === this.text) return;
-    if (source !== 'disk' && this.locked()) return;
     if (source !== 'disk') this.displaced = false; // the person has acted since: their own change is now the last
     if (source !== 'history') {
       this.undoStack.push({ text: this.text, disk: source === 'disk' });
@@ -712,10 +626,6 @@ export class App {
 
   private async refresh(force: boolean): Promise<void> {
     this.doc = parseDoc(this.text);
-    this.blockError = null;
-    if (this.md && !this.locked()) {
-      try { putBlock(this.md.file, this.md.index, this.text); } catch (e) { this.blockError = errorText(e); }
-    }
     const before = this.snap;
     try {
       const snap = await snapshot(this.text);
@@ -779,12 +689,6 @@ export class App {
       do {
         await this.takeTypingNow(); // typed while this job waited (C25)
         before = this.snap;
-        const why = this.locked();
-        if (why) {
-          this.toast(this.refusal = `This flowchart can be shown but not changed here: ${why}`);
-          this.paint();
-          return;
-        }
         try {
           res = await applyChecked(this.text, op);
         } catch (e) {
@@ -826,9 +730,8 @@ export class App {
 
   /**
    * Undo (back) or Redo, as one job of the queue. The stacks are looked up in it, after
-   * the typing is taken in, since taking it in (or a reload) empties Redo. While the
-   * flowchart is locked both stacks stay as they are (bug hunt C9). An Undo that would
-   * take back a change made on disk asks first, since it saves over that change (C3).
+   * the typing is taken in, since taking it in (or a reload) empties Redo. An Undo that
+   * would take back a change made on disk asks first, since it saves over that change (C3).
    */
   private async history(back: boolean): Promise<void> {
     await this.takeTyping();
@@ -837,11 +740,6 @@ export class App {
       const [from, to] = back ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
       const step = from[from.length - 1];
       if (!step) return;
-      const why = this.locked();
-      if (why) {
-        this.toast(`This flowchart can be shown but not changed here: ${why}`);
-        return;
-      }
       if (back && step.disk && !(await this.backend.confirm(
         `The last change to ${basename(this.path ?? '')} was made on disk, by an agent or another program. Undo takes it back and saves your earlier version over it; Redo brings it back. Undo it?`,
       ))) return;
@@ -926,7 +824,6 @@ export class App {
     const open = this.path !== null;
     this.el.empty.hidden = open;
     this.el.area.disabled = !open;
-    this.el.area.readOnly = this.locked() !== null;
     this.chart.select(this.selection);
     this.paintHighlights();
     this.sidebar.show(this.view());
@@ -938,13 +835,11 @@ export class App {
     const open = this.path !== null;
     this.el.name.textContent = this.path ? basename(this.path) : '';
     this.el.name.title = this.path ?? '';
-    this.paintBlocks();
     let status = '';
     let state = '';
     if (open) {
-      if (/^(Could not|The file cannot|The flowchart block)/.test(this.note)) { status = this.note; state = 'bad'; }
+      if (/^(Could not|The file cannot)/.test(this.note)) { status = this.note; state = 'bad'; }
       else if (this.text === this.saved) status = this.note || 'Saved';
-      else if (this.blockError) { status = 'Not saved: the text would end the Mermaid block early'; state = 'bad'; }
       else if (this.error) { status = 'Not saved: syntax error (Ctrl+S saves anyway)'; state = 'bad'; }
       else status = 'Saving…';
     }
@@ -955,31 +850,6 @@ export class App {
     this.el.add.disabled = this.el.fit.disabled = this.el.dir.disabled = this.el.highlight.disabled = !open || !this.snap;
     if (this.el.highlight.disabled && this.hlOn) this.setHighlighting(false);
     if (this.snap) this.el.dir.value = this.snap.direction === 'TB' ? 'TD' : this.snap.direction;
-  }
-
-  /** The list of flowcharts, shown only for a Markdown file that holds more than one. */
-  private blocksShown = '';
-  private paintBlocks(): void {
-    const md = this.md;
-    const list = md ? md.blocks.flatMap((b, i) => (b.flowchart || i === md.index ? [{ b, i }] : [])) : [];
-    const shown = list.length > 1 ? list.map(({ b, i }) => `${i}\t${b.heading}\t${b.open}`).join('\n') : '';
-    if (shown !== this.blocksShown) {
-      this.blocksShown = shown;
-      this.el.block.replaceChildren(...(shown ? list : []).map(({ b, i }) => {
-        const o = document.createElement('option');
-        o.value = String(i);
-        o.textContent = `${b.heading || 'Flowchart'} (line ${b.open + 1})`;
-        return o;
-      }));
-    }
-    this.el.block.hidden = !shown;
-    if (md && shown) this.el.block.value = String(md.index);
-  }
-
-  /** A line of the flowchart's text, named for a notice; in a Markdown file, with its line in the file. */
-  private lineName(line: number): string {
-    const block = this.md?.blocks[this.md.index];
-    return block && !this.md!.gone ? `${line + 1} (line ${block.open + line + 2} of the file)` : String(line + 1);
   }
 
   private paintNotices(): void {
@@ -996,16 +866,13 @@ export class App {
       }
       items.push(div);
     };
-    const why = this.locked();
-    if (why) notice('warn', `This flowchart can be shown but not changed here: ${why} Change it in the Markdown file.`);
-    if (this.blockError) notice('bad', `${this.blockError} It is not saved.`);
     if (this.error) notice('bad', `Mermaid cannot read this text, so the chart shows the last good version.\n${this.error}`);
     else if (this.doc.problems.length) {
       const p = this.doc.problems[0];
-      notice('warn', `Line ${this.lineName(p.line)}: ${p.message} The chart can show this file but will not edit it; change it here.`);
+      notice('warn', `Line ${String(p.line + 1)}: ${p.message} The chart can show this file but will not edit it; change it here.`);
     }
-    if (this.doc.warnings.length && !why) {
-      const lines = this.doc.warnings.map((w) => this.lineName(w.line)).join(', ');
+    if (this.doc.warnings.length) {
+      const lines = this.doc.warnings.map((w) => String(w.line + 1)).join(', ');
       notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, {
         label: 'Change to "%% ."',
         run: () => { void this.queue(async () => { await this.takeTypingNow(); await this.apply(this.text.replace(/^([ \t]*)%%[ \t]*$/gm, '$1%% .'), 'chart'); }); },
@@ -1045,7 +912,6 @@ export class App {
       if (act === 'clear') void this.clearHighlights();
     });
     this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
-    this.el.block.addEventListener('change', () => { void this.pickBlock(Number(this.el.block.value)); });
 
     this.el.area.addEventListener('input', () => {
       window.clearTimeout(this.textTimer);

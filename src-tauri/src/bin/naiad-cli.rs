@@ -14,7 +14,7 @@ use std::process::{exit, Command, Stdio};
 
 const USAGE: &str = "Naiad, a viewer and editor for Mermaid flowchart files.
 
-  naiad <file>            open a .mmd or .md file in Naiad
+  naiad <file>            open a .mmd or .mermaid file in Naiad
   naiad check <file>...   report where the files break the Naiad file format
                           (exit code 0: no problems, 1: problems, 2: not checked)
   naiad fix <file>...     put right what cannot change the flowchart, then check
