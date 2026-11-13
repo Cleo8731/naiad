@@ -662,6 +662,31 @@ describe('what is not a flowchart block (bug hunt S4, S5)', () => {
     const after = '# Doc\n\n' + part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
     expect(again('# Doc\n\n' + part('Original', chart), after, 0)).toBe(-1);
   });
+
+  test('R9: a line starting with `=` under a list item\'s text does not end the item (the CommonMark comparison, T5.16)', () => {
+    const chart = '```mermaid\nflowchart TD\n  a --> b\n```\n';
+    const headings = (above: string) => findBlocks(above + '\n\n' + chart)[0].headings;
+    // Less indented than the item's text, it is more of that text; indented to it, it
+    // underlines a heading in the item. Either way, the lines under it stand in the item.
+    expect(headings('+ Flow\n===\n  ##### Notes')).toBe('');
+    expect(headings('- a\n===\n  # h')).toBe('');
+    expect(headings('- a\n=foo\n  # h')).toBe('');
+    expect(headings('- a\n  ===\n  # h')).toBe('');
+    expect(headings('- The code\n===\n\n   The code\n - ')).toBe('');
+    // At the top level, it underlines the text above; a `---` there ends the list.
+    expect(headings('a\n===\n  # h')).toBe('1 h');
+    expect(headings('- a\n\nb\n===\n  # h')).toBe('1 h');
+    expect(headings('- a\n---\n  # h')).toBe('1 h');
+    // A flowchart block under it stands in the item, and ends with it.
+    const b = findBlocks('- a\n==\n  ```mermaid\n  flowchart TD\nb\n  ```\n')[0];
+    expect([b.close, b.end, b.text]).toEqual([-1, 4, 'flowchart TD\n']);
+    // So a backup under another heading is never taken for the shown block.
+    const again = (before: string, after: string, was: number) => findAgain(before, findBlocks(before), after, findBlocks(after), was);
+    const changed = chart.replace('a --> b', 'a --> c');
+    const part = (head: string, body: string, intro = 'intro', end = 'end') => `# ${head}\n\n- x\n===\n  # Same\n\n${intro}\n${body}\n${end}\n`;
+    const after = part('Backup', chart) + '\n' + part('Original', changed, 'changed intro', 'changed end');
+    expect(again(part('Original', chart), after, 0)).toBe(-1);
+  });
 });
 
 describe('a long list is read in good time (bug hunt round 3: B20)', () => {

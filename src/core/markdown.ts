@@ -210,7 +210,10 @@ function roleOf(r: Reading, k: number): Role {
   const line = r.lines[k];
   const para = paragraphAbove(r, k);
   const item = listItem(line);
-  if (!item) return para === 1 && !FENCE.test(line) && !BLOCK_START.test(line) ? 'lazy' : 'other';
+  // Under paragraph text, a line starting with `=` never ends an item: it is more of the
+  // text, or (indented to the item's text) it underlines a heading in the item (the
+  // CommonMark comparison, T5.16, R9).
+  if (!item) return para === 1 && !FENCE.test(line) && (!BLOCK_START.test(line) || /^[ \t]*=/.test(line)) ? 'lazy' : 'other';
   const lead = columns(item[1]);
   // Right under paragraph text, and indented into the item that text stands in, only a
   // bullet or a 1 with text after it starts a list item; any other is more of the
