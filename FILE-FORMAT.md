@@ -230,7 +230,9 @@ More text.
   typed while it is written; if it cannot be written, Naiad asks, and unless the person
   lets it go, it stays in its box. One entered (Enter, or focus leaving the box) counts
   as written only once it is in the file: until then it is treated as not yet entered,
-  and one that could not be written stays in its box. What is typed in the sidebar
+  and one that could not be written stays in its box. When another item is selected,
+  such a box is written too, and if it cannot be, its panel goes with it: Naiad says
+  why, and shows the text. What is typed in the sidebar
   while those saves run is written too. When a change on disk gives the arrow shown in
   the sidebar another number (an arrow added or taken away above it), the sidebar
   follows it, with what is typed there. When a change takes away the item a title,

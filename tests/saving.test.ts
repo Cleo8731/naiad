@@ -950,6 +950,30 @@ describe('a description being written is saved when the person leaves it (bug hu
     expect(titleBox().value).toBe('Collect everything');
   });
 
+  // Q90 (after round 7): a refused title went with its panel when another item was
+  // selected, with no word of it.
+  it('Q90: a refused title when another item is selected: Naiad says why, with the text', async () => {
+    const { ui } = await refusedOnBlur();
+    select(ui, { kind: 'node', id: 'clean' });
+    await sleep(500);
+    expect(ui.toast()).toMatch(/^The file has a syntax error right now\. Fix it in the text pane first\. /);
+    expect(ui.toast()).toMatch(/The title you were typing for “Collect data” was not saved: “Collect everything”/);
+  });
+
+  it('Q90: and so for one still being checked as the panel turns', async () => {
+    const { ui } = await start();
+    select(ui, { kind: 'edge', index: 0 });
+    await sleep(50);
+    titleBox().focus();
+    typeInto(titleBox(), 'gathered');
+    ui.type(BROKEN);
+    await sleep(400);
+    titleBox().blur(); // the label's write starts
+    select(ui, { kind: 'node', id: 'clean' });
+    await sleep(500);
+    expect(ui.toast()).toMatch(/The label you were typing for the arrow from “Collect data” to “Clean\?” was not saved: “gathered”/);
+  });
+
   it('oC56: a title entered while the close saves the file is written before the close ends', async () => {
     const { disk, ui } = await start();
     select(ui, { kind: 'node', id: 'collect' });

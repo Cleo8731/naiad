@@ -11,7 +11,7 @@ import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core
 import { findAgain, findBlocks, isMarkdownPath, putBlock, type Block } from './core/markdown';
 import { nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
-import { NEW_GROUP, Sidebar, type View } from './sidebar';
+import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
 
 type Source = 'chart' | 'text' | 'disk' | 'history';
@@ -46,6 +46,25 @@ function followEdge(before: Snap | null, now: Snap, index: number): number | nul
   const then = alike(before!);
   const found = alike(now);
   return found.length === then.length ? found[then.indexOf(index)] : null;
+}
+
+/** How a message names an item, as `snap` shows it: “Collect data”, the group “Review”, the arrow from “a” to “b”. */
+function itemName(target: Target, snap: Snap | null): string {
+  if (target.kind === 'node') return `“${snap?.nodes[target.id]?.text ?? target.id}”`;
+  if (target.kind === 'sub') return `the group “${snap?.subs[target.id]?.title || target.id}”`;
+  const e = snap?.edges[target.index];
+  const end = (id: string) => snap?.nodes[id]?.text ?? snap?.subs[id]?.title ?? id;
+  return e ? `the arrow from “${end(e.start)}” to “${end(e.end)}”` : 'the arrow';
+}
+
+function sameTarget(a: Target | null, b: Target | null): boolean {
+  if (!a || !b || a.kind !== b.kind) return a === b;
+  return a.kind === 'edge' ? a.index === (b as typeof a).index : a.id === (b as typeof a).id;
+}
+
+/** Typed text as a message quotes it: at most 120 characters. */
+function clip(text: string): string {
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
 function remember(key: string, value?: string): string | null {
@@ -713,27 +732,22 @@ export class App {
   }
   private chartText: string | null = null;
 
+  /** The arrow an edit of its label or style is putting in, and how it reads after (`edit`). */
+  private edited: { index: number; after: string } | null = null;
+
   /**
    * After a new text, keeps the selection on its item. An arrow whose number changed (one
    * added or taken away above it) is followed, with the panel and what is typed in it
    * (bug hunt round 7, C55, oC55). An item no longer there is let go; what was typed for
    * it in the panel cannot be written anywhere, so Naiad says so and shows the text.
    */
-  /** The arrow an edit of its label or style is putting in, and how it reads after (`edit`). */
-  private edited: { index: number; after: string } | null = null;
-
   private keepSelection(before: Snap | null): void {
     const s = this.selection;
     const snap = this.snap;
     if (!s || !snap) return;
-    let name: string;
-    if (s.kind === 'node') {
-      if (s.id in snap.nodes) return;
-      name = `“${before?.nodes[s.id]?.text ?? s.id}”`;
-    } else if (s.kind === 'sub') {
-      if (s.id in snap.subs) return;
-      name = `The group “${before?.subs[s.id]?.title || s.id}”`;
-    } else {
+    if (s.kind === 'node' && s.id in snap.nodes) return;
+    if (s.kind === 'sub' && s.id in snap.subs) return;
+    if (s.kind === 'edge') {
       const edited = this.edited?.index === s.index ? this.edited.after : null;
       const found = edited === null ? -1 : snap.edges.findIndex((e) => JSON.stringify(e) === edited);
       const at = edited === null ? followEdge(before, snap, s.index) : found >= 0 ? found : null;
@@ -743,17 +757,17 @@ export class App {
         this.selection = { kind: 'edge', index: at };
         return;
       }
-      const e = before?.edges[s.index];
-      const end = (id: string) => before?.nodes[id]?.text ?? before?.subs[id]?.title ?? id;
-      name = e ? `The arrow from “${end(e.start)}” to “${end(e.end)}”` : 'The arrow';
     }
     const lost = this.sidebar.typed() ?? (() => { const d = this.sidebar.draft(); return d && { what: 'description', text: d.text }; })();
     if (lost) {
-      const text = lost.text.length > 120 ? `${lost.text.slice(0, 120)}…` : lost.text;
-      this.toast(`${name} is no longer in the flowchart, so the ${lost.what} you were typing for it was not saved: “${text}”`);
+      const name = itemName(s, before);
+      this.toast(`${name[0].toUpperCase()}${name.slice(1)} is no longer in the flowchart, so the ${lost.what} you were typing for it was not saved: “${clip(lost.text)}”`);
     }
     this.selection = null;
   }
+
+  /** Why the last edit was refused, as its message said (`writeLeft`). */
+  private refusal: string | null = null;
 
   private async edit(op: Op): Promise<OpResult | null> {
     await this.takeTyping();
@@ -767,14 +781,14 @@ export class App {
         before = this.snap;
         const why = this.locked();
         if (why) {
-          this.toast(`This flowchart can be shown but not changed here: ${why}`);
+          this.toast(this.refusal = `This flowchart can be shown but not changed here: ${why}`);
           this.paint();
           return;
         }
         try {
           res = await applyChecked(this.text, op);
         } catch (e) {
-          this.toast(e instanceof EditError ? e.message : errorText(e));
+          this.toast(this.refusal = e instanceof EditError ? e.message : errorText(e));
           this.paint(); // put the controls back to what the file says
           return;
         }
@@ -845,8 +859,25 @@ export class App {
     if (draft && !(target?.kind === 'node' && target.id === draft.id)) {
       void this.writeDescription(draft.id, draft.text);
     }
+    // So is a title, label or group title typed and not in the file (Q90).
+    const was = this.selection;
+    const typed = was && !sameTarget(was, target) ? this.sidebar.typed() : null;
+    if (typed) void this.writeLeft(typed, itemName(was!, this.snap));
     this.selection = target;
     this.paint();
+  }
+
+  /**
+   * Writes what was typed into a box of a panel that turns to another item or none; focus
+   * leaving the box has most often begun the write, and it is waited for. One that cannot
+   * be written goes with its panel, so Naiad says why, with the text, as for an item taken
+   * away on disk (Q90, after bug hunt round 7).
+   */
+  private async writeLeft(typed: Typed, name: string): Promise<void> {
+    this.refusal = null;
+    if (await typed.write()) return;
+    const why = this.refusal ? `${this.refusal} ` : '';
+    this.toast(`${why}The ${typed.what} you were typing for ${name} was not saved: “${clip(typed.text)}”`);
   }
 
   private deleteSelection(): void {
