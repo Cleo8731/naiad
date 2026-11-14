@@ -9,6 +9,7 @@ import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
+import { ICONS } from './icons';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
@@ -20,6 +21,14 @@ const NEW_FILE = 'flowchart TD\n    start[Start]\n';
 /** How long the file must have been quiet after a change from outside before a save (`saveNow`). */
 const SETTLE_MS = 1000;
 const NODE_TEXT = '#1c2026';
+/**
+ * The View button's tooltip. Like Obsidian's, its icon shows where a click goes (Q131):
+ * the open book while editing, the pencil in View mode.
+ */
+const VIEW_TIP = {
+  editing: 'Editing. Click for View mode, to read the chart without changing it',
+  viewing: 'View mode: reading without changing. Click to edit',
+};
 
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -156,8 +165,8 @@ export class App {
         </div>
         <div class="spacer"></div>
         <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
-        <button data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
-        <button data-act="redo" title="Redo (Ctrl+Y)">Redo</button>
+        <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
+        <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
         <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
           <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
           <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
@@ -165,11 +174,11 @@ export class App {
         <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
              Highlight stays where it is and a second click on it never lands on Clear. -->
         <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
-        <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
+        <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
-        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">Syntax</button>
+        <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
         <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
-        <button data-act="view" title="View mode: read the chart without changing it (press again to edit)" aria-pressed="false">View</button>
+        <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
       </header>
       <main>
         <section class="textpane" hidden>
@@ -511,6 +520,8 @@ export class App {
     this.chart.setViewing(on);
     this.sidebar.setViewing(on);
     this.el.view.setAttribute('aria-pressed', String(on));
+    this.el.view.innerHTML = on ? ICONS.edit : ICONS.read;
+    this.el.view.title = on ? VIEW_TIP.viewing : VIEW_TIP.editing;
     // The toolbar keeps the file's name, Open, New, Highlight, Fit, Syntax and View.
     for (const control of [this.el.add, this.el.undo, this.el.redo, this.el.dir]) control.hidden = on;
     this.el.area.readOnly = on;

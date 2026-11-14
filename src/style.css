@@ -72,6 +72,18 @@ button.danger:hover { border-color: var(--bad); }
 .bar .status[data-state="bad"] { color: var(--bad); }
 .bar .spacer { flex: 1; }
 .bar [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+/* Icon buttons (T4.7): no border; a soft rounded square behind the icon on hover, as in
+   Obsidian. A switch that is on (Highlight, Syntax) keeps the square, in the accent. The
+   View button shows where a click goes, not a state, so it has no "on" look. */
+.bar button.icon {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; padding: 0; border-color: transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+}
+.bar button.icon svg { width: 18px; height: 18px; display: block; }
+.bar button.icon[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.bar button.icon[data-act="view"][aria-pressed="true"] { background: transparent; color: var(--muted); }
+.bar button.icon:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--text); }
 
 main { position: relative; flex: 1; display: flex; min-height: 0; }
 
