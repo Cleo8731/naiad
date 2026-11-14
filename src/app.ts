@@ -3,7 +3,7 @@
 // drawn again and saved to the file. A change to the file on disk comes back the same way.
 
 import type { Backend } from './backend';
-import { Chart, configureMermaid, type Target } from './chart';
+import { Chart, configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
@@ -29,6 +29,15 @@ const VIEW_TIP = {
   editing: 'Editing. Click for View mode, to read the chart without changing it',
   viewing: 'View mode: reading without changing. Click to edit',
 };
+/**
+ * The Touchpad and Mouse switch (D1.5, the user's option): its icon and label show the
+ * mode it is in, and its tooltip what a click changes. Touchpad at the first start.
+ */
+const WHEEL_TIP: Record<WheelMode, string> = {
+  touchpad: 'Touchpad mode: two fingers move the chart, a pinch zooms. Click for Mouse mode, where the wheel zooms',
+  mouse: 'Mouse mode: the wheel zooms, a drag moves the chart. Click for Touchpad mode, where two fingers move it',
+};
+const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mouse: 'Mouse mode' };
 
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -150,6 +159,7 @@ export class App {
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
+    wheel: HTMLButtonElement;
   };
 
   constructor(private root: HTMLElement, private backend: Backend) {}
@@ -176,6 +186,7 @@ export class App {
         <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
+        <button class="icon" data-act="wheel" title="${WHEEL_TIP.touchpad}" aria-label="${WHEEL_LABEL.touchpad}">${ICONS.touchpad}</button>
         <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
         <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
         <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
@@ -202,6 +213,7 @@ export class App {
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
+      wheel: q('[data-act="wheel"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
@@ -257,6 +269,8 @@ export class App {
     if (remember('syntaxpane') === 'shown') this.toggleText(true);
     // Naiad opens in the mode it was last left in (Q114).
     if (remember('mode') === 'view') this.showViewing(true);
+    // Touchpad or Mouse mode, as last chosen; Touchpad at the first start (D1.5).
+    this.setWheelMode(remember('wheel') === 'mouse' ? 'mouse' : 'touchpad');
     // The flowchart's description shows unless the person hid it (T1.13).
     if (remember('about') === 'hidden') this.showAbout(false);
     // A notice's details wrap to another height when the window's width changes.
@@ -515,6 +529,18 @@ export class App {
     this.showViewing(on);
   }
 
+  /** Touchpad or Mouse mode (D1.5): the person's choice, kept by the app between runs. */
+  private wheelMode: WheelMode = 'touchpad';
+
+  private setWheelMode(mode: WheelMode): void {
+    this.wheelMode = mode;
+    this.chart.setWheelMode(mode);
+    this.el.wheel.innerHTML = ICONS[mode];
+    this.el.wheel.title = WHEEL_TIP[mode];
+    this.el.wheel.setAttribute('aria-label', WHEEL_LABEL[mode]);
+    remember('wheel', mode);
+  }
+
   private showViewing(on: boolean): void {
     this.viewing = on;
     this.chart.setViewing(on);
@@ -522,7 +548,8 @@ export class App {
     this.el.view.setAttribute('aria-pressed', String(on));
     this.el.view.innerHTML = on ? ICONS.edit : ICONS.read;
     this.el.view.title = on ? VIEW_TIP.viewing : VIEW_TIP.editing;
-    // The toolbar keeps the file's name, Open, New, Highlight, Fit, Syntax and View.
+    // The toolbar keeps the file's name, Open, New, Highlight, Fit, the Touchpad and Mouse
+    // switch, Syntax, About and View.
     for (const control of [this.el.add, this.el.undo, this.el.redo, this.el.dir]) control.hidden = on;
     this.el.area.readOnly = on;
     if (!on) this.endViewNotice();
@@ -1141,6 +1168,7 @@ export class App {
       if (act === 'clear') void this.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
       if (act === 'about') this.setAbout(!this.about);
+      if (act === 'wheel') this.setWheelMode(this.wheelMode === 'touchpad' ? 'mouse' : 'touchpad');
     });
     this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
 

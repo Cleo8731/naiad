@@ -10,6 +10,9 @@ export type Target =
   | { kind: 'edge'; index: number }
   | { kind: 'sub'; id: string };
 
+/** The user's Touchpad and Mouse switch (D1.5): what a wheel event without Ctrl does. */
+export type WheelMode = 'touchpad' | 'mouse';
+
 export interface ChartEvents {
   onSelect(target: Target | null): void;
   /** A click on an item while the Highlight switch is on. */
@@ -238,12 +241,16 @@ export class Chart {
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.drag) { e.preventDefault(); e.stopPropagation(); this.cancelDrag(); }
   };
-  // With the pointer past the chart's border during a drag, the wheel still zooms the
-  // chart. Listened to only while a drag is under way, so scrolling elsewhere in the
+  // With the pointer past the chart's border during a drag, the wheel still moves or zooms
+  // the chart. Listened to only while a drag is under way, so scrolling elsewhere in the
   // window never waits on it.
   private onOutsideWheel = (e: WheelEvent) => {
-    if (this.drag && e.target instanceof Node && !this.stage.contains(e.target)) this.wheelZoom(e);
+    if (this.drag && e.target instanceof Node && !this.stage.contains(e.target)) this.onWheel(e);
   };
+  /** What a wheel event without Ctrl does (D1.5, the user's switch): in Touchpad mode it
+   * moves the view, in Mouse mode it zooms. A Ctrl-marked event (a pinch, or Ctrl held
+   * with the wheel) zooms in both. Nothing is guessed from the event itself. */
+  private wheelMode: WheelMode = 'touchpad';
   private view = { x: 0, y: 0, k: 1 };
   private size = { w: 0, h: 0 };
   private selected: Target | null = null;
@@ -474,6 +481,11 @@ export class Chart {
     this.placeHandles();
   }
 
+  /** Touchpad or Mouse mode (D1.5): what a wheel event without Ctrl does (`onWheel`). */
+  setWheelMode(mode: WheelMode): void {
+    this.wheelMode = mode;
+  }
+
   /** View mode: a drag under way ends, the handles go, and so does the dot grid (`.stage.viewing`). */
   setViewing(on: boolean): void {
     if (on) this.cancelDrag();
@@ -649,6 +661,24 @@ export class Chart {
     this.apply();
   }
 
+  /** A wheel event over the chart: in Touchpad mode, one without Ctrl (two fingers, or a
+   * mouse wheel) moves the view the way a page scrolls on the same computer; Shift with
+   * an up-and-down wheel moves it sideways. Otherwise it zooms (`wheelZoom`). */
+  private onWheel(e: WheelEvent): void {
+    if (this.wheelMode === 'mouse' || e.ctrlKey) { this.wheelZoom(e); return; }
+    e.preventDefault();
+    // Pixels per unit: a line is about 16 px; a page is the chart's area.
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.stage.getBoundingClientRect().height : 1;
+    let dx = e.deltaX * unit;
+    let dy = e.deltaY * unit;
+    if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+    if (!dx && !dy) return;
+    this.manual = true;
+    this.view.x -= dx;
+    this.view.y -= dy;
+    this.apply();
+  }
+
   private wheelZoom(e: WheelEvent): void {
     e.preventDefault();
     this.manual = true;
@@ -686,7 +716,7 @@ export class Chart {
   private bind(): void {
     const { stage } = this;
 
-    stage.addEventListener('wheel', (e) => this.wheelZoom(e), { passive: false });
+    stage.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
 
     // Drag anywhere to pan; a press that does not move is a click.
     let pan: { x: number; y: number; vx: number; vy: number; id: number } | null = null;

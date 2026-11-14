@@ -13,12 +13,16 @@ export const chartTiming = { drawDelay: 0 };
 /** The events the app gave the last stand-in chart (a click on an item, say). */
 export const chartEvents: { last: import('../src/chart').ChartEvents | null } = { last: null };
 
+/** The wheel mode the app last gave the chart (`setWheelMode`), or null before any. */
+export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { mode: null };
+
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
     constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    setWheelMode(mode: import('../src/chart').WheelMode) { chartWheel.mode = mode; }
     async draw() { if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay); }
   },
 });

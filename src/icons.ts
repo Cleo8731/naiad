@@ -11,6 +11,8 @@ import bookOpen from './icons/book-open.svg?raw';
 import pencilLine from './icons/pencil-line.svg?raw';
 import codeXml from './icons/code-xml.svg?raw';
 import highlighter from './icons/highlighter.svg?raw';
+import touchpad from './icons/touchpad.svg?raw';
+import mouse from './icons/mouse.svg?raw';
 
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
@@ -26,4 +28,7 @@ export const ICONS = {
   edit: icon('edit', pencilLine),
   syntax: icon('syntax', codeXml),
   highlight: icon('highlight', highlighter),
+  /** The Touchpad and Mouse switch (D1.5) shows the mode it is in. */
+  touchpad: icon('touchpad', touchpad),
+  mouse: icon('mouse', mouse),
 } as const;

@@ -60,14 +60,16 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |
 | Delete | Select, then Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows in the toolbar |
-| Zoom / pan | Mouse wheel / drag empty space |
+| Zoom / pan | Pinch, or Ctrl with the mouse wheel / two fingers, the mouse wheel (Shift: sideways), or drag empty space |
+| Make the mouse wheel zoom | The **Touchpad mode** button, a touchpad, switches to Mouse mode: the wheel zooms, and the button shows a mouse. Naiad starts in Touchpad mode and remembers your choice |
 | Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear** takes every highlight off |
 | Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>` (the syntax is hidden when Naiad starts, unless you left it open) |
 | Read without changing anything | The **View mode** button, an open book: no dots to drag, no dot grid, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. In View mode the button shows a pencil: click it to edit again. Naiad opens in the mode you left it in |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
 view that way, at up to 1,200 px a second, until the chart's edge on that side comes
-into view; the mouse wheel zooms, and Escape cancels the drag.
+into view; the wheel and a pinch work as they do outside a drag, and Escape cancels the
+drag.
 
 The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
 Highlights are kept in a small file of their own beside the flowchart, which an agent
@@ -145,8 +147,8 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
-- Whether the Syntax pane is shown, its width, and whether View mode is on, in the
-  window's own storage.
+- Whether the Syntax pane is shown, its width, whether View mode is on, and Touchpad or
+  Mouse mode, in the window's own storage.
 - Naiad makes no network requests of its own. An image in a description that points to
   a web address is loaded from there when the description is shown, and a link in a
   description opens in your browser.

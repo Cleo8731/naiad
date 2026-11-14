@@ -125,21 +125,32 @@ describe('drag interactions', () => {
     const line = stage.querySelector('line')!;
     expect(line.getAttribute('x1')).toBe('-40');
     expect(line.getAttribute('x2')).toBe('400');
-    // A notch glides to its zoom over a few frames (T1.12): run every frame asked for.
+    // A pinch (a Ctrl-marked wheel event) zooms in either mode (D1.5), and glides to its
+    // zoom over a few frames (T1.12): run every frame asked for.
     const canvas = stage.querySelector<HTMLElement>('.canvas')!;
     const scale = () => Number(canvas.style.transform.match(/scale\(([\d.e-]+)\)/)![1]);
+    const moved = () => Number(canvas.style.transform.match(/translate\([-\d.e]+px, ([-\d.e]+)px\)/)![1]);
     const all = (time: number) => { const due = [...frames.values()]; frames.clear(); due.forEach((f) => f(time)); };
     let k = scale();
-    stage.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 300, clientY: 350, deltaY: -100 }));
+    stage.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 300, clientY: 350, deltaY: -100, ctrlKey: true }));
     all(316);
     expect(scale()).toBeGreaterThan(k);
     k = scale();
     const afterZoom = line.getAttribute('x1');
-    document.body.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 550, clientY: 350, deltaY: -100 }));
+    document.body.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 550, clientY: 350, deltaY: -100, ctrlKey: true }));
     all(332);
     expect(scale()).toBeGreaterThan(k);
     expect(line.getAttribute('x1')).not.toBe(afterZoom);
     for (let t = 348; t < 1000; t += 16) all(t); // the glide ends
+    // In Touchpad mode, the chart's start, two fingers past the border move the view.
+    k = scale();
+    const y = moved();
+    const afterPinch = line.getAttribute('y1');
+    document.body.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 550, clientY: 350, deltaY: 40 }));
+    expect(moved()).toBe(y - 40);
+    expect(scale()).toBe(k);
+    expect(line.getAttribute('y1')).not.toBe(afterPinch);
+    for (let t = 1000; t < 1100; t += 16) all(t);
     connect.dispatchEvent(pointer('pointercancel', 500, 350));
     expect(frames.size).toBe(0);
     // With no drag, the wheel outside the chart is not the chart's.
