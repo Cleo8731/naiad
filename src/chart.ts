@@ -70,6 +70,16 @@ export function configureMermaid(dark: boolean): void {
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 4;
+/** How much one wheel event changes the zoom, per unit of its deltaY: a mouse wheel's
+ * notch is 100, so a plain notch zooms e^0.16, 17.4%. A Ctrl-marked event is a pinch
+ * (or Ctrl held), which a browser that takes the pinch itself sends as many small
+ * events; 0.01 makes the chart follow the fingers. */
+const WHEEL_ZOOM = 0.0016;
+const PINCH_ZOOM = 0.01;
+/** The most one Ctrl-marked event may zoom: one plain notch. Codex's browser pane sends
+ * each pinch step as a whole notch (deltaY 100), which without this zoomed 2.7 times;
+ * a smooth pinch's events stay under it (T1.12, 2026-11-13). */
+const MOST_PINCH_STEP = 100 * WHEEL_ZOOM;
 /** The border strip (T1.8): its width in px, and the view's top speed in px a second. */
 const BORDER_STRIP = 48;
 const BORDER_SPEED = 1200;
@@ -629,7 +639,10 @@ export class Chart {
     e.preventDefault();
     this.manual = true;
     const r = this.stage.getBoundingClientRect();
-    this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016)), e.clientX - r.left, e.clientY - r.top);
+    const step = e.ctrlKey
+      ? Math.max(-MOST_PINCH_STEP, Math.min(MOST_PINCH_STEP, -e.deltaY * PINCH_ZOOM))
+      : -e.deltaY * WHEEL_ZOOM;
+    this.zoom(Math.exp(step), e.clientX - r.left, e.clientY - r.top);
   }
 
   private bind(): void {
