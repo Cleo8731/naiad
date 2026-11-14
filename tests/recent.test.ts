@@ -41,9 +41,9 @@ describe('the recent list', () => {
   });
 
   it('names each entry by its file, and under it the last two folders', () => {
-    expect(fileName('C:\\Users\\me\\proj\\docs\\flow.mmd')).toBe('flow.mmd');
+    expect(fileName('D:\\work\\team\\proj\\docs\\flow.mmd')).toBe('flow.mmd');
     expect(fileName('C:/proj/docs/flow.mmd')).toBe('flow.mmd');
-    expect(folderLabel('C:\\Users\\me\\proj\\docs\\flow.mmd')).toBe('proj\\docs');
+    expect(folderLabel('D:\\work\\team\\proj\\docs\\flow.mmd')).toBe('proj\\docs');
     expect(folderLabel('C:/proj/docs/flow.mmd')).toBe('proj/docs');
     expect(folderLabel('C:\\x\\flow.mmd')).toBe('C:\\x');
     expect(folderLabel('C:\\flow.mmd')).toBe('C:\\');
