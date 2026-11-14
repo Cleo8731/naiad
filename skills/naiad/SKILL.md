@@ -187,6 +187,15 @@ naiad serve flow.mmd
   once. Open that address in the browser pane, in the background if your tool lets you
   choose, and leave the tab open. The page is Naiad itself: it redraws each time the
   file is saved, and the user can change the flowchart in it.
+- Check that the pane draws the chart, with Naiad's controls, before telling the user
+  it is shown. A printed address, or your tool's reply that the page opened or is
+  queued, is not proof.
+- In a sandboxed session (seen in Codex on Windows, 2026-11-13), the address that
+  `naiad serve` prints from inside the sandbox may not be reachable from the pane,
+  which then shows a refused connection. Run the same command again
+  outside the sandbox, through your tool's usual way of asking for that, and check the
+  page again. A request made from inside the sandbox can't tell whether the pane can
+  reach the page.
 - Keep one tab per file. After every later change to the file, run `naiad serve` on it
   again: while the file is still being served, it prints the same address. If a tab at
   that address (the same port) is open, do nothing more; if not, open one.

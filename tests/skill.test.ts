@@ -92,6 +92,13 @@ describe('what the skill repeats from other files', () => {
     }
   });
 
+  test('the skill says to check that the page draws the chart, and what to do in a sandbox', () => {
+    const flat = (doc: string): string => doc.replace(/\s+/g, ' ');
+    for (const text of ['Check that the pane draws the chart', 'is not proof', 'outside the sandbox']) {
+      expect(flat(section(skill, '4. Show'))).toContain(text);
+    }
+  });
+
   test('the highlights file is the same in the skill and FILE-FORMAT.md', () => {
     for (const text of ['.naiad/flow.mmd/highlights.txt', '\ncollect\nclean\ncollect --> clean\n```']) {
       expect(skill).toContain(text);
