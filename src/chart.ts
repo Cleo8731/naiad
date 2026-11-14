@@ -80,6 +80,15 @@ const PINCH_ZOOM = 0.01;
  * each pinch step as a whole notch (deltaY 100), which without this zoomed 2.7 times;
  * a smooth pinch's events stay under it (T1.12, 2026-11-13). */
 const MOST_PINCH_STEP = 100 * WHEEL_ZOOM;
+/** A wheel event that zooms more than GLIDE_FROM (as the natural log of its factor, 0.05
+ * is 5%) glides there over a few frames instead of jumping in one: each frame covers
+ * part of what is left, so after GLIDE_TIME ms 63% is done and after 3 × GLIDE_TIME 95%.
+ * A notch (17.4%) is 95% done after 150 ms and done after about 220 ms; no frame moves
+ * more than half a notch, even with three notches in 80 ms. A smooth pinch's small
+ * events zoom at once, so the chart follows the fingers (T1.12: the user found a notch's
+ * one-frame jump choppy). */
+const GLIDE_FROM = 0.05;
+const GLIDE_TIME = 50;
 /** The border strip (T1.8): its width in px, and the view's top speed in px a second. */
 const BORDER_STRIP = 48;
 const BORDER_SPEED = 1200;
@@ -220,6 +229,9 @@ export class Chart {
   private drag: Drag | null = null;
   private frame: number | null = null;
   private frameTime: number | null = null;
+  /** A wheel zoom gliding to its goal: the zoom `k` it is going to, about the point
+   * (x, y) in the chart's area, and its frame (`wheelZoom`). */
+  private glide: { k: number; x: number; y: number; time: number | null; frame: number } | null = null;
   private observer: ResizeObserver | null = null;
   // Escape during a drag cancels only the drag: the app's own Escape (letting go of the
   // selection) is not reached.
@@ -315,6 +327,7 @@ export class Chart {
   /** Release observers and active drag work when the chart is discarded. */
   destroy(): void {
     this.clear();
+    this.stopGlide();
     this.observer?.disconnect();
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('wheel', this.onOutsideWheel);
@@ -613,6 +626,7 @@ export class Chart {
   }
 
   fit(): void {
+    this.stopGlide();
     const r = this.stage.getBoundingClientRect();
     if (!this.size.w || !r.width) return;
     const pad = 48;
@@ -642,7 +656,31 @@ export class Chart {
     const step = e.ctrlKey
       ? Math.max(-MOST_PINCH_STEP, Math.min(MOST_PINCH_STEP, -e.deltaY * PINCH_ZOOM))
       : -e.deltaY * WHEEL_ZOOM;
-    this.zoom(Math.exp(step), e.clientX - r.left, e.clientY - r.top);
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    if (!this.glide && Math.abs(step) < GLIDE_FROM) { this.zoom(Math.exp(step), x, y); return; }
+    // The glide's goal moves by the step; a notch during a glide adds to where it is going.
+    const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (this.glide?.k ?? this.view.k) * Math.exp(step)));
+    if (this.glide) { Object.assign(this.glide, { k, x, y }); return; }
+    const glide = { k, x, y, time: null as number | null, frame: 0 };
+    const tick = (time: number) => {
+      if (this.glide !== glide) return;
+      const dt = glide.time === null ? 16 : Math.min(50, time - glide.time); // no leap after a stalled frame
+      glide.time = time;
+      const left = Math.log(glide.k / this.view.k);
+      const done = Math.abs(left) < 0.002;
+      this.zoom(Math.exp(done ? left : left * (1 - Math.exp(-dt / GLIDE_TIME))), glide.x, glide.y);
+      if (done) this.glide = null;
+      else glide.frame = requestAnimationFrame(tick);
+    };
+    this.glide = glide;
+    glide.frame = requestAnimationFrame(tick);
+  }
+
+  /** Stops a wheel zoom's glide where it is. */
+  private stopGlide(): void {
+    if (this.glide) cancelAnimationFrame(this.glide.frame);
+    this.glide = null;
   }
 
   private bind(): void {

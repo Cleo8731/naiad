@@ -125,15 +125,24 @@ describe('drag interactions', () => {
     const line = stage.querySelector('line')!;
     expect(line.getAttribute('x1')).toBe('-40');
     expect(line.getAttribute('x2')).toBe('400');
+    // A notch glides to its zoom over a few frames (T1.12): run every frame asked for.
+    const canvas = stage.querySelector<HTMLElement>('.canvas')!;
+    const scale = () => Number(canvas.style.transform.match(/scale\(([\d.e-]+)\)/)![1]);
+    const all = (time: number) => { const due = [...frames.values()]; frames.clear(); due.forEach((f) => f(time)); };
+    let k = scale();
     stage.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 300, clientY: 350, deltaY: -100 }));
-    expect(Number(line.getAttribute('x1'))).not.toBe(-100);
+    all(316);
+    expect(scale()).toBeGreaterThan(k);
+    k = scale();
     const afterZoom = line.getAttribute('x1');
     document.body.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 550, clientY: 350, deltaY: -100 }));
+    all(332);
+    expect(scale()).toBeGreaterThan(k);
     expect(line.getAttribute('x1')).not.toBe(afterZoom);
+    for (let t = 348; t < 1000; t += 16) all(t); // the glide ends
     connect.dispatchEvent(pointer('pointercancel', 500, 350));
     expect(frames.size).toBe(0);
     // With no drag, the wheel outside the chart is not the chart's.
-    const canvas = stage.querySelector<HTMLElement>('.canvas')!;
     const view = canvas.style.transform;
     const outside = new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 550, clientY: 350, deltaY: -100 });
     document.body.dispatchEvent(outside);
