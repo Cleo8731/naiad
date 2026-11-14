@@ -45,7 +45,10 @@ Run `naiad --version`.
 ### A new flowchart
 
 Start from the starter template, `template.mmd` in this skill's folder: a small
-correct file to change. Save the flowchart as a `.mmd` file. A finished file looks
+correct file to change. Save the flowchart as a `.mmd` file. Always write the
+flowchart's description, the `%% @flowchart` block under the header line: in a
+sentence or two, what the whole chart shows and how to read it. It is the first thing
+the user reads, since Naiad shows it while nothing is selected. A finished file looks
 like this:
 
 ```mermaid

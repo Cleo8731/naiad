@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
 import { checkFile, checkFlowchart } from '../src/core/check';
-import { parseDescriptions } from '../src/core/descriptions';
+import { FLOWCHART_ID, getDescriptions, parseDescriptions, setDescription } from '../src/core/descriptions';
 import { reading } from '../src/semantics';
 
 const file = (path: string): string => readFileSync(resolve(path), 'utf8').replace(/\r\n/g, '\n');
@@ -40,8 +40,15 @@ describe('the starter template', () => {
     expect((await reading(template)).ids.sort()).toEqual(['first', 'second']);
     expect(template.match(/-->/g)).toHaveLength(1);
     const blocks = parseDescriptions(template.split('\n'));
-    expect(blocks.map((b) => b.id)).toEqual(['first']);
+    expect(blocks.map((b) => b.id)).toEqual([FLOWCHART_ID, 'first']);
     expect(template.split('\n')).toContain('%% .');
+  });
+
+  test('has a place for the flowchart\'s description, right under the header, where Naiad writes it', () => {
+    const lines = template.split('\n');
+    expect(lines.slice(0, 2)).toEqual(['flowchart TD', `%% @${FLOWCHART_ID}`]);
+    const text = getDescriptions(template).get(FLOWCHART_ID)!;
+    expect(setDescription(setDescription(template, FLOWCHART_ID, ''), FLOWCHART_ID, text)).toBe(template);
   });
 });
 
@@ -97,6 +104,12 @@ describe('what the skill repeats from other files', () => {
     for (const text of ['Check that the pane draws the chart', 'is not proof', 'outside the sandbox']) {
       expect(flat(section(skill, '4. Show'))).toContain(text);
     }
+  });
+
+  test('the skill asks for the flowchart\'s description in a new flowchart', () => {
+    const flat = section(skill, 'A new flowchart').replace(/\s+/g, ' ');
+    expect(flat).toContain('Always write the flowchart\'s description, the `%% @flowchart` block');
+    expect(flat).toContain('flowchart TD %% @flowchart %% '); // the example has one, under the header
   });
 
   test('the skill says to write a chart in everyday words', () => {
