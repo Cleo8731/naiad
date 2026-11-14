@@ -314,4 +314,4 @@ test.each([
   expect(d).toBeTruthy();
   const points = drawnEnds(d!);
   expect((points.end[axis] - points.start[axis]) * sign).toBeGreaterThan(0);
-});
+}, 20_000); // Mermaid's drawing takes 5 to 7 s here when every test file runs at once.

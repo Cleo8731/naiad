@@ -142,5 +142,5 @@ describe('gaps at crossings', () => {
     const hopped = await paths('gaps2');
     expect(hopped.some((d) => /A/.test(d))).toBe(true);
     configureMermaid(false);
-  });
+  }, 20_000); // Two drawings by Mermaid: 5 to 7 s here when every test file runs at once.
 });
