@@ -8,6 +8,7 @@
 mod highlights;
 mod serve;
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -84,9 +85,36 @@ fn print_out(text: &str) {
     let _ = out.flush();
 }
 
-/// The one file watcher; replaced whenever another file is opened.
+/// The window's file watches, one per file it shows (a tab each).
 #[derive(Default)]
-struct Watching(Mutex<Option<Watch>>);
+struct Watching(Mutex<WatchList>);
+
+/// The watches by the path the page named, each with the number `watch_file` gave it.
+#[derive(Default)]
+struct WatchList {
+    last: u64,
+    by_path: HashMap<String, (u64, Watch)>,
+}
+
+impl WatchList {
+    /// Keeps `watch` for `path`, ending the one before for that path, if any; returns
+    /// the new watch's number.
+    fn add(&mut self, path: String, watch: Watch) -> u64 {
+        self.last += 1;
+        self.by_path.insert(path, (self.last, watch));
+        self.last
+    }
+
+    /// Ends the watch of `path` numbered `id`. A later watch of the same path is left
+    /// alone: a stop that arrives after its file was watched again ends nothing.
+    fn remove(&mut self, path: &str, id: u64) -> bool {
+        if self.by_path.get(path).is_some_and(|(n, _)| *n == id) {
+            self.by_path.remove(path);
+            return true;
+        }
+        false
+    }
+}
 
 /// The shell only ever touches flowchart files, whatever the page asks for. On Windows
 /// a ':' inside a name names a hidden part (a stream) of another file
@@ -268,15 +296,23 @@ fn on_disk(target: &Path) -> PathBuf {
     target.to_path_buf()
 }
 
-/// Starts watching a file. Emits "file-changed" with the path whenever it changes on
-/// disk.
+/// Starts watching a file, beside the window's other files. Emits "file-changed" with the
+/// path whenever it changes on disk. Returns the watch's number, for `unwatch_file`.
 #[tauri::command]
-fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<(), String> {
+fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<u64, String> {
     let p = check(&path)?;
+    let named = path.clone();
     let watcher = watch_folder(&p, move || {
-        let _ = app.emit("file-changed", path.clone());
+        let _ = app.emit("file-changed", named.clone());
     })?;
-    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
+    Ok(state.0.lock().map_err(|e| e.to_string())?.add(path, watcher))
+}
+
+/// Ends the watch `watch_file` started on `path` and numbered `id` (its tab closed, or
+/// shows another file).
+#[tauri::command]
+fn unwatch_file(path: String, id: u64, state: State<Watching>) -> Result<(), String> {
+    state.0.lock().map_err(|e| e.to_string())?.remove(&path, id);
     Ok(())
 }
 
@@ -392,10 +428,12 @@ fn write_highlights(path: String, contents: String, expected: Option<String>) ->
     }
 }
 
-/// The window now shows this flowchart (and no longer the one before, if another).
+/// The window now shows these flowcharts, one per tab, and no others.
 #[tauri::command]
-fn view_file(path: String) -> Result<(), String> {
-    highlights::show(Some(&check(&path)?));
+fn view_files(paths: Vec<String>) -> Result<(), String> {
+    let checked = paths.iter().map(|p| check(p)).collect::<Result<Vec<_>, _>>()?;
+    let flowcharts: Vec<&Path> = checked.iter().map(PathBuf::as_path).collect();
+    highlights::show_all(&flowcharts);
     Ok(())
 }
 
@@ -457,9 +495,10 @@ pub fn run() {
             read_file,
             write_file,
             watch_file,
+            unwatch_file,
             read_highlights,
             write_highlights,
-            view_file,
+            view_files,
             open_link
         ])
         .build(context)
@@ -723,6 +762,36 @@ mod tests {
         act();
         std::thread::sleep(std::time::Duration::from_millis(900));
         calls.load(Ordering::SeqCst) - before
+    }
+
+    /// T1.16, tabs: the window watches each of its files at once. A stop names the watch
+    /// it ends, so a stop that arrives after its file was watched again (the tab opened it
+    /// again) leaves the newer watch running.
+    #[test]
+    fn each_file_has_its_own_watch_and_a_stop_ends_only_its_own() {
+        let dir = folder("tabs");
+        let (flow, other) = (dir.join("flow.mmd"), dir.join("other.mmd"));
+        fs::write(&flow, "flowchart TD\n    a\n").unwrap();
+        fs::write(&other, "flowchart TD\n    o\n").unwrap();
+        let (flow_name, other_name) = (flow.to_string_lossy().into_owned(), other.to_string_lossy().into_owned());
+        let mut list = WatchList::default();
+        let (w1, first) = watching(&flow);
+        let (w2, second) = watching(&other);
+        let old = list.add(flow_name.clone(), w1);
+        let theirs = list.add(other_name.clone(), w2);
+        assert!(heard(&first, || fs::write(&flow, "flowchart TD\n    b\n").unwrap()) > 0, "the first file");
+        assert!(heard(&second, || fs::write(&other, "flowchart TD\n    p\n").unwrap()) > 0, "the second, at the same time");
+
+        let (w3, again) = watching(&flow);
+        let new = list.add(flow_name.clone(), w3);
+        assert_eq!(heard(&first, || fs::write(&flow, "flowchart TD\n    c\n").unwrap()), 0, "the watch replaced has ended");
+        assert!(!list.remove(&flow_name, old), "a late stop of the old watch ends nothing");
+        assert!(heard(&again, || fs::write(&flow, "flowchart TD\n    d\n").unwrap()) > 0, "the newer watch runs on");
+        assert!(list.remove(&flow_name, new));
+        assert_eq!(heard(&again, || fs::write(&flow, "flowchart TD\n    e\n").unwrap()), 0, "stopped");
+        assert!(heard(&second, || fs::write(&other, "flowchart TD\n    q\n").unwrap()) > 0, "the other file's watch runs on");
+        assert!(list.remove(&other_name, theirs));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Bug hunt C18: the window opened by a path typed in other letters than the name on

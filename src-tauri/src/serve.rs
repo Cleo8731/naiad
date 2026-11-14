@@ -954,13 +954,13 @@ mod tests {
         let mut ended = false;
         server.after_ping(|| ended = true);
         assert!(!ended, "not yet ten minutes");
-        assert_eq!(shown(), None, "no longer a view of the flowchart");
+        assert!(shown().is_empty(), "no longer a view of the flowchart");
         assert_eq!(fs::read_to_string(&file).unwrap(), "a\n# the agent's\nb\n", "the agent's highlights are kept");
         // Left as they were at the goodbye: deleted.
         show(Some(&flow));
         server.bye();
         server.after_ping(|| {});
-        assert_eq!(shown(), None);
+        assert!(shown().is_empty());
         assert!(!file.exists(), "unchanged since the goodbye: deleted");
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -1007,7 +1007,7 @@ mod tests {
         server.after_ping(|| {});
         BETWEEN.with(|run| *run.borrow_mut() = None);
         let read = page.join().unwrap();
-        assert!(shown().is_some(), "the open page counts as a view");
+        assert!(!shown().is_empty(), "the open page counts as a view");
         assert_eq!(read, super::super::highlights::read(&flow).unwrap(), "the page shows what the file holds");
         super::super::highlights::show(None);
         fs::remove_dir_all(&dir).unwrap();

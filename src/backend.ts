@@ -29,7 +29,10 @@ export interface Backend {
    * otherwise it writes nothing and returns false (an agent saved meanwhile).
    */
   write(path: string, text: string, expected?: string): Promise<boolean>;
-  /** Calls back whenever the file changes on disk. Returns a function that stops it. */
+  /**
+   * Calls back whenever the file changes on disk. Returns a function that stops it. Each
+   * file has a watch of its own, so a window can watch the file of each of its tabs.
+   */
   watch(path: string, onChange: () => void): Promise<() => void>;
   /** The flowchart's highlights file (`.naiad/<name>/highlights.txt`), or null if there is none. */
   readHighlights(path: string): Promise<string | null>;
@@ -41,10 +44,11 @@ export interface Backend {
    */
   writeHighlights(path: string, text: string, expected?: string): Promise<boolean>;
   /**
-   * Says which flowchart this view shows, so that the highlights file is deleted when
-   * the last view of a flowchart closes. In the in-browser version the server does this.
+   * Says which flowcharts this window shows, one per tab, so that a flowchart's
+   * highlights file is deleted when the last view of it closes. In the in-browser
+   * version the server does this.
    */
-  viewing(path: string): void;
+  viewing(paths: string[]): void;
   pickOpen(): Promise<string | null>;
   /**
    * Makes a path from the recent list ready to open, as the file dialog does for a
@@ -93,12 +97,17 @@ async function desktop(): Promise<Backend> {
         window.clearTimeout(timer);
         timer = window.setTimeout(onChange, 80);
       });
-      await invoke('watch_file', { path });
-      return () => { window.clearTimeout(timer); unlisten(); };
+      // The stop names this watch, so that it never ends a later watch of the same file.
+      const id = await invoke<number>('watch_file', { path });
+      return () => {
+        window.clearTimeout(timer);
+        unlisten();
+        void invoke('unwatch_file', { path, id }).catch(() => {});
+      };
     },
     readHighlights: (path) => invoke<string | null>('read_highlights', { path }),
     writeHighlights: (path, text, expected) => invoke<boolean>('write_highlights', { path, contents: text, expected: expected ?? null }),
-    viewing: (path) => { void invoke('view_file', { path }).catch(() => {}); },
+    viewing: (paths) => { void invoke('view_files', { paths }).catch(() => {}); },
     async pickOpen() {
       const picked = await dialog.open({ multiple: false, directory: false, filters: OPEN_FILTERS });
       return typeof picked === 'string' ? picked : null;
@@ -144,8 +153,9 @@ function browser(): Backend {
     if (!res.ok) throw Object.assign(new Error(body.error ?? `Request failed (${res.status})`), { status: res.status });
     return body;
   };
-  // The file the page shows, so that the dev page's server refuses a request meant for
-  // another (dev/bridge.ts). `naiad serve` serves one file only: it is not sent there.
+  // The file a request is for: the dev page's server serves every file the page opened,
+  // one per tab, and refuses one it did not open (dev/bridge.ts). `naiad serve` serves
+  // one file only: it is not sent there.
   const shows = (path: string): Record<string, string> => (served ? {} : { 'x-naiad-path': encodeURIComponent(path) });
   // A write names the text it read by its hash; the server answers 409 if the file's
   // bytes differ, and the write says false.
@@ -166,8 +176,9 @@ function browser(): Backend {
     initialPath: async () => (await call('api/file')).path,
     read: async (path) => (await call('api/file', { headers: shows(path) })).text,
     write: (path, text, expected) => put('api/file', path, text, expected),
-    async watch(_path, onChange) {
-      const es = new EventSource('api/watch');
+    async watch(path, onChange) {
+      // The dev page's server watches each file the page opened; `naiad serve` serves one.
+      const es = new EventSource(served ? 'api/watch' : `api/watch?path=${encodeURIComponent(path)}`);
       es.onmessage = () => onChange();
       // After a break in the connection (the computer slept), look at the file again.
       let broken = false;

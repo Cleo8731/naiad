@@ -8,9 +8,9 @@
 //
 // The views: every window and every `naiad serve` server that shows a flowchart keeps
 // one small file in the temporary folder, `naiad-views/<process id>.txt`, holding the
-// flowchart's full path, and removes it when it stops showing it. A view that stops
-// showing a flowchart deletes its highlights only if no other running program's record
-// names it. When in doubt (a record that cannot be read), the highlights are kept: a
+// full path of each flowchart it shows, one per line (a window shows one per tab), and
+// removes it when it shows none. A view that stops showing a flowchart deletes its
+// highlights only if no other running program's record names it. When in doubt (a record that cannot be read), the highlights are kept: a
 // highlight left over is shown again and goes at the next closing.
 
 use std::fs;
@@ -638,8 +638,9 @@ fn hide(_folder: &Path) {}
 
 // ---- Which flowchart each view shows ------------------------------------------------
 
-/// The flowchart this program shows, as its full path.
-static SHOWN: Mutex<Option<String>> = Mutex::new(None);
+/// The flowcharts this program shows, each as its full path: a window's, one per tab, or
+/// the one of `naiad serve`.
+static SHOWN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn records() -> PathBuf {
     std::env::temp_dir().join("naiad-views")
@@ -658,7 +659,14 @@ fn full(flowchart: &Path) -> String {
 /// otherwise kept, to show at the next opening: highlights an agent wrote after that
 /// are not lost (bug hunt round 5, oF23).
 pub fn show(flowchart: Option<&Path>) {
-    change(flowchart, None);
+    change(flowchart.into_iter().collect(), None);
+}
+
+/// As `show`, for a window with tabs: it now shows these flowcharts and no others. Each
+/// flowchart dropped from the list (its tab closed) is treated as `show` treats the one
+/// it stops showing.
+pub fn show_all(flowcharts: &[&Path]) {
+    change(flowcharts.to_vec(), None);
 }
 
 /// As `show(None)`, once the last page of `naiad serve` has said it closes and gone: its
@@ -667,40 +675,45 @@ pub fn show(flowchart: Option<&Path>) {
 /// at the next opening (bug hunt round 4, F21).
 pub fn stop_showing(left: Option<&[u8]>) {
     match left {
-        Some(left) => change(None, Some(&|now: &[u8]| now == left)),
-        None => change(None, Some(&|_: &[u8]| false)),
+        Some(left) => change(Vec::new(), Some(&|now: &[u8]| now == left)),
+        None => change(Vec::new(), Some(&|_: &[u8]| false)),
     }
 }
 
-/// `show`, the highlights of a flowchart no longer shown deleted only if `delete_if` says
-/// yes to them (`remove`); with no `delete_if`, only if they hold what `SEEN` noted.
-fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
-    let next = flowchart.map(full);
-    let before = match SHOWN.lock() {
-        Ok(mut shown) => std::mem::replace(&mut *shown, next.clone()),
-        Err(_) => return,
-    };
+/// `show_all`, the highlights of a flowchart no longer shown deleted only if `delete_if`
+/// says yes to them (`remove`); with no `delete_if`, only if they hold what `SEEN` noted.
+fn change(flowcharts: Vec<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
+    // Each flowchart once: two paths that differ only in letter case name one file on
+    // Windows.
+    let mut next: Vec<String> = Vec::new();
+    for path in flowcharts.into_iter().map(full) {
+        if !next.iter().any(|n| n.to_lowercase() == path.to_lowercase()) {
+            next.push(path);
+        }
+    }
     let dir = records();
     let me = std::process::id();
     let record = dir.join(format!("{me}.txt"));
-    match &next {
-        Some(path) => {
-            if before.as_deref() != Some(path.as_str()) && fs::create_dir_all(&dir).is_ok() {
-                let tmp = dir.join(format!("{me}.tmp"));
-                if fs::write(&tmp, path).is_ok() && fs::rename(&tmp, &record).is_err() {
-                    let _ = fs::remove_file(&tmp);
-                }
-            }
-        }
-        None => {
-            if before.is_some() {
+    // The record is changed while `SHOWN` is held, so that two changes at once leave it
+    // naming what `SHOWN` holds.
+    let before = {
+        let Ok(mut shown) = SHOWN.lock() else { return };
+        let before = std::mem::replace(&mut *shown, next.clone());
+        if next.is_empty() {
+            if !before.is_empty() {
                 let _ = fs::remove_file(&record);
             }
+        } else if before != next && fs::create_dir_all(&dir).is_ok() {
+            let tmp = dir.join(format!("{me}.tmp"));
+            if fs::write(&tmp, next.join("\n")).is_ok() && fs::rename(&tmp, &record).is_err() {
+                let _ = fs::remove_file(&tmp);
+            }
         }
-    }
-    if let Some(old) = before {
-        let same = next.as_deref().is_some_and(|n| n.to_lowercase() == old.to_lowercase());
-        if !same {
+        before
+    };
+    for old in before {
+        let kept = next.iter().any(|n| n.to_lowercase() == old.to_lowercase());
+        if !kept {
             // What `SEEN` noted is taken and compared with the file in one step
             // (`CHANGING`), so that no read or write notes newer text between the two (bug
             // hunt round 7, F25).
@@ -715,9 +728,9 @@ fn change(flowchart: Option<&Path>, delete_if: Option<&dyn Fn(&[u8]) -> bool>) {
     }
 }
 
-/// The flowchart this program shows, for a test.
+/// The flowcharts this program shows, for a test.
 #[cfg(test)]
-pub(crate) fn shown() -> Option<String> {
+pub(crate) fn shown() -> Vec<String> {
     SHOWN.lock().unwrap().clone()
 }
 
@@ -725,8 +738,9 @@ pub(crate) fn shown() -> Option<String> {
 #[cfg(test)]
 pub(crate) static SHOWING: Mutex<()> = Mutex::new(());
 
-/// Whether a running program other than `me` has a record that names `flowchart`.
-/// Records left by programs that ended without removing theirs (a crash) are removed.
+/// Whether a running program other than `me` has a record that names `flowchart` on one
+/// of its lines. Records left by programs that ended without removing theirs (a crash)
+/// are removed.
 fn shown_elsewhere(dir: &Path, me: u32, flowchart: &str) -> bool {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -741,7 +755,7 @@ fn shown_elsewhere(dir: &Path, me: u32, flowchart: &str) -> bool {
             continue;
         }
         let Ok(text) = fs::read_to_string(entry.path()) else { return true };
-        if text.trim().to_lowercase() != wanted {
+        if !text.lines().any(|line| line.trim().to_lowercase() == wanted) {
             continue;
         }
         if alive(pid) {
@@ -1021,6 +1035,42 @@ mod tests {
         show(None);
         second.borrow_mut().take().expect("the second write ran").join().unwrap();
         assert!(file.exists(), "written after what the going view compares with: kept");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// T1.16, tabs: a window shows the flowchart of each of its tabs. Its record names
+    /// each, one per line; a flowchart dropped from the list (its tab closed) has its
+    /// highlights deleted as a closing window's were, and those still shown are kept.
+    #[test]
+    fn a_window_shows_several_flowcharts_and_a_closed_tabs_highlights_go() {
+        let _showing = SHOWING.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = folder("tabs");
+        let (flow, other) = (dir.join("flow.mmd"), dir.join("other.mmd"));
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        fs::write(&other, "flowchart TD\n").unwrap();
+        let (a, b) = (file_of(&flow).unwrap(), file_of(&other).unwrap());
+        let record = records().join(format!("{}.txt", std::process::id()));
+        let recorded = || fs::read_to_string(&record).ok().map(|t| t.lines().map(str::to_owned).collect::<Vec<_>>());
+
+        show_all(&[&flow, &other, &dir.join("FLOW.mmd")]);
+        assert_eq!(shown(), vec![full(&flow), full(&other)], "each once, whatever its letter case");
+        assert_eq!(recorded(), Some(shown()), "the record names each, one per line");
+        write(&flow, "a\n", None).unwrap();
+        write(&other, "b\n", None).unwrap();
+
+        show_all(&[&other]); // flow's tab closed
+        assert!(!a.exists(), "the closed tab's highlights, as last written: deleted");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "b\n", "the open tab's: kept");
+        assert_eq!(recorded(), Some(vec![full(&other)]));
+
+        show_all(&[&other, &flow]); // flow opened again
+        write(&flow, "c\n", None).unwrap();
+        show_all(&[&flow, &other]); // the same flowcharts in another order
+        assert!(a.exists() && b.exists(), "nothing closed: nothing deleted");
+
+        show(None); // the window closes
+        assert!(!a.exists() && !b.exists(), "every tab's highlights, as last written: deleted");
+        assert_eq!(recorded(), None, "the record goes with the window");
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1307,6 +1357,11 @@ mod tests {
         assert!(shown_elsewhere(&dir, 1, flow), "a running program, the path in another case");
         assert!(!shown_elsewhere(&dir, other, flow), "its own record does not count");
         assert!(!shown_elsewhere(&dir, 1, r"C:\Work\Other.mmd"), "another flowchart");
+        // A window with several tabs (T1.16) names each flowchart on a line of its own.
+        fs::write(dir.join(format!("{other}.txt")), "C:\\Work\\Other.mmd\nc:\\work\\flow.MMD\n").unwrap();
+        assert!(shown_elsewhere(&dir, 1, flow), "the second of two");
+        assert!(shown_elsewhere(&dir, 1, r"C:\Work\Other.mmd"), "the first of two");
+        assert!(!shown_elsewhere(&dir, 1, r"C:\Work\Third.mmd"), "a flowchart on no line");
         fs::remove_dir_all(&dir).unwrap();
     }
 }

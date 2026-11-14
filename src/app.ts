@@ -444,7 +444,7 @@ export class App {
     this.el.area.value = this.text;
     this.chart.resetView();
     this.backend.setWindowTitle(`${basename(path)} - Naiad`);
-    this.backend.viewing(path);
+    this.backend.viewing([path]);
     this.stopWatch = await this.backend.watch(path, () => { void this.diskChanged(); });
     await this.readHighlights();
     await this.queue(() => this.refresh(true));

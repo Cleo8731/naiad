@@ -115,6 +115,27 @@ describe('the hash is FNV-1a, 64 bits', () => {
   });
 });
 
+describe('the dev page watches each file by its name (T1.16, tabs)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('the dev page\'s stream names the file; a page from naiad serve, which serves one file, names none', async () => {
+    for (const [dev, url] of [[true, 'api/watch?path=C%3A%5Cw%5Cflow%20one.mmd'], [false, 'api/watch']] as const) {
+      const urls: string[] = [];
+      vi.stubEnv('DEV', dev);
+      vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
+      vi.stubGlobal('EventSource', class { constructor(u: string) { urls.push(u); } close() {} });
+      const backend = await createBackend();
+      await backend.watch('C:\\w\\flow one.mmd', () => {});
+      expect(urls).toEqual([url]);
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe('a page from naiad serve says when it closes (bug hunt round 3: oF5)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -53,10 +53,14 @@ async function bridge(files: Record<string, string | Buffer> = {}, served = 'flo
     const res = await fetch(base + route, { method: init.method ?? 'GET', body: init.body, headers });
     return { status: res.status, body: await res.json() };
   };
-  /** What the page's stream of changes receives while `act` runs (`/api/watch`). */
-  const heard = (act: () => void) => new Promise<string>((resolve) => {
+  /**
+   * What the page's stream of changes receives while `act` runs (`/api/watch`): the
+   * stream of the file `watched`, or, when none is named, of the file opened last.
+   */
+  const heard = (act: () => void, watched?: string) => new Promise<string>((resolve) => {
     let got = '';
-    const req = http.get(`${base}/watch`, { headers: { 'x-naiad': '1' } }, (res) => {
+    const query = watched === undefined ? '' : `?path=${encodeURIComponent(watched)}`;
+    const req = http.get(`${base}/watch${query}`, { headers: { 'x-naiad': '1' } }, (res) => {
       res.on('data', (c) => { got += c; });
       setTimeout(act, 300);
       setTimeout(() => { req.destroy(); resolve(got); }, 1200);
@@ -180,21 +184,18 @@ describe('a save keeps the name the file has on disk (bug hunt C24)', () => {
   });
 });
 
-describe('the dev page writes only the file it shows (bug hunt S21: C14)', () => {
-  it('C14: after another view opens another file, a save from the first view is refused and both files stay', async () => {
+describe('the dev page writes only the file a request names (bug hunt S21: C14)', () => {
+  // Before tabs (T1.16) the server served one file at a time, so a save from a view still
+  // showing the file before was refused; now each request names its file and goes to it.
+  it('C14: after another view opens another file, a save from the first view writes the first file and leaves the other', async () => {
     const b = await bridge();
     const first = (await b.call('/file')).body.path as string;
     expect(first).toBe(b.file);
-    const before = b.read(b.file);
     expect((await b.call('/open', { method: 'POST', body: b.other })).status).toBe(200); // the second view
-    const save = await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    undone\n', shows: first });
-    expect(save.status).toBe(400);
-    expect(save.body.error).toMatch(/another file/);
+    const save = await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    kept\n', shows: first });
+    expect(save.status).toBe(200);
+    expect(b.read(b.file)).toBe('flowchart TD\n    kept\n');
     expect(b.read(b.other)).toBe('flowchart LR\n    o\n');
-    expect(b.read(b.file)).toBe(before);
-    expect((await b.call('/file', { shows: first })).status).toBe(400);
-    expect((await b.call('/highlights', { method: 'PUT', body: 'a\n', shows: first })).status).toBe(400);
-    expect(fs.existsSync(path.join(b.dir, '.naiad'))).toBe(false);
   });
 
   it('a save that names no file is refused; one naming the file served is written', async () => {
@@ -227,6 +228,55 @@ describe('the dev page writes only the file it shows (bug hunt S21: C14)', () =>
     expect((await put('')).status).toBe(409);
     expect((await put('', fnv1a64(Buffer.from('a\n')))).status).toBe(200);
     expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+describe('the dev page serves every file it opened, each named in its requests (T1.16, tabs)', () => {
+  it('two files opened are each read and written by their names', async () => {
+    const b = await bridge();
+    expect((await b.call('/open', { method: 'POST', body: b.other })).status).toBe(200);
+    expect((await b.call('/file', { shows: b.file })).body).toEqual({ path: b.file, text: 'flowchart TD\n    a --> b\n' });
+    expect((await b.call('/file', { shows: b.other })).body).toEqual({ path: b.other, text: 'flowchart LR\n    o\n' });
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    f\n', shows: b.file })).status).toBe(200);
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart LR\n    g\n', shows: b.other })).status).toBe(200);
+    expect(b.read(b.file)).toBe('flowchart TD\n    f\n');
+    expect(b.read(b.other)).toBe('flowchart LR\n    g\n');
+  });
+
+  it('each file\'s highlights are kept beside it', async () => {
+    const b = await bridge();
+    await b.call('/open', { method: 'POST', body: b.other });
+    expect((await b.call('/highlights', { method: 'PUT', body: 'a\n', shows: b.file })).status).toBe(200);
+    expect((await b.call('/highlights', { method: 'PUT', body: 'o\n', shows: b.other })).status).toBe(200);
+    expect(fs.readFileSync(path.join(b.dir, '.naiad', 'flow.mmd', 'highlights.txt'), 'utf8')).toBe('a\n');
+    expect(fs.readFileSync(path.join(b.dir, '.naiad', 'other.mmd', 'highlights.txt'), 'utf8')).toBe('o\n');
+    expect((await b.call('/highlights', { shows: b.file })).body.text).toBe('a\n');
+  });
+
+  it('a file the page never opened is neither read, written nor watched', async () => {
+    const b = await bridge({ 'third.mmd': 'flowchart TD\n    t\n' });
+    const third = path.join(b.dir, 'third.mmd');
+    expect((await b.call('/file', { shows: third })).status).toBe(400);
+    expect((await b.call('/file', { method: 'PUT', body: 'flowchart TD\n    x\n', shows: third })).status).toBe(400);
+    expect((await b.call('/highlights', { method: 'PUT', body: 'a\n', shows: third })).status).toBe(400);
+    const stream = await fetch(`http://127.0.0.1:${b.port}/api/watch?path=${encodeURIComponent(third)}`, { headers: { 'x-naiad': '1' } });
+    expect(stream.status).toBe(400);
+    expect(b.read(third)).toBe('flowchart TD\n    t\n');
+    expect(fs.existsSync(path.join(b.dir, '.naiad'))).toBe(false);
+  });
+
+  it('each file\'s changes are told on its own stream', async () => {
+    const b = await bridge();
+    await b.call('/open', { method: 'POST', body: b.other });
+    expect(await b.heard(() => fs.writeFileSync(b.file, 'flowchart TD\n    a --> c\n'), b.file)).toContain('data: changed');
+    expect(await b.heard(() => fs.writeFileSync(b.other, 'flowchart LR\n    p\n'), b.file)).not.toContain('data: changed');
+    expect(await b.heard(() => fs.writeFileSync(b.other, 'flowchart LR\n    q\n'), b.other)).toContain('data: changed');
+  });
+
+  it('a request that names no file, as after a reload, is given the file opened last', async () => {
+    const b = await bridge();
+    await b.call('/open', { method: 'POST', body: b.other });
+    expect((await b.call('/file')).body.path).toBe(b.other);
   });
 });
 

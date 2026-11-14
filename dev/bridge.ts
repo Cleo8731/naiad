@@ -1,6 +1,6 @@
-// Browser-mode stand-in for the desktop shell: lets the page read, write and watch one
-// flowchart file through the Vite dev server. Development only (`npm run dev`); the
-// desktop app uses the Rust commands in src-tauri/src/lib.rs instead.
+// Browser-mode stand-in for the desktop shell: lets the page read, write and watch the
+// flowchart files it opened, one per tab, through the Vite dev server. Development only
+// (`npm run dev`); the desktop app uses the Rust commands in src-tauri/src/lib.rs instead.
 //
 // It serves requests from this machine only, touches only flowchart files
 // (.mmd, .mermaid), and requires a custom header on writes so that no
@@ -91,77 +91,101 @@ function onDisk(target: string): string {
   return same.length === 1 ? path.join(path.dirname(target), same[0]) : target;
 }
 
+/** A file's watch, and the pages listening for its changes. */
+interface Watched {
+  listeners: Set<ServerResponse>;
+  close(): void;
+}
+
+/**
+ * Watches `file`'s folder, not the file: editors often save by replacing the file. Every
+ * folder above it is watched too: when one of them is made again (it was deleted or
+ * renamed away), the watches below it are made again and the page is told, as the desktop
+ * shell does (src-tauri/src/lib.rs, `watch_folder`; bug hunt round 3, C35, oC3).
+ */
+function watchFile(file: string): Watched {
+  const listeners = new Set<ServerResponse>();
+  let watchers: fs.FSWatcher[] = [];
+  let timer: NodeJS.Timeout | null = null;
+  let again: NodeJS.Timeout | null = null;
+  const tell = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { for (const res of listeners) res.write('data: changed\n\n'); }, 60);
+  };
+  /** `told`: tell the page once the file's folder is watched again. */
+  const watch = (told = false) => {
+    for (const w of watchers) w.close();
+    watchers = [];
+    // The folders from the file's own up to the root.
+    const chain: string[] = [];
+    for (let d = path.dirname(file); chain[chain.length - 1] !== d; d = path.dirname(d)) chain.push(d);
+    // In each folder, the one name that matters: the file's, or the folder below.
+    // Letter case set aside, as Windows does: a path typed in other letters than the
+    // name on disk, or a file renamed to other letters, is still the file (bug hunt C18).
+    // A name matched by mistake costs one read that finds nothing changed.
+    const names = [file, ...chain].map((p) => path.basename(p).toLowerCase());
+    let whole = true;
+    chain.forEach((folder, level) => {
+      try {
+        const w = fs.watch(folder, (event, changed) => {
+          if (changed && changed.toLowerCase() !== names[level]) return;
+          if (level === 0) return tell();
+          // A folder below made, deleted or renamed: take the watches again, a moment
+          // later, so that a burst of events makes them once.
+          if (event !== 'rename') return;
+          if (again) clearTimeout(again);
+          again = setTimeout(() => watch(true), 30);
+        });
+        // A folder deleted while watched: its watch ends, and the folder above sees it made again.
+        w.on('error', () => w.close());
+        watchers.push(w);
+      } catch {
+        if (level === 0) whole = false;
+      }
+    });
+    if (told && whole) tell();
+  };
+  watch();
+  return {
+    listeners,
+    close() {
+      for (const w of watchers) w.close();
+      if (again) clearTimeout(again);
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
 export function fileBridge(): Plugin {
   return {
     name: 'naiad-file-bridge',
     apply: 'serve',
     configureServer(server) {
-      let current = path.resolve(process.env.NAIAD_FILE ?? 'examples/sample.mmd');
-      if (!ALLOWED.has(path.extname(current).toLowerCase())) throw new Error('Only .mmd and .mermaid files can be opened.');
-      const listeners = new Set<ServerResponse>();
-      let watchers: fs.FSWatcher[] = [];
-      let timer: NodeJS.Timeout | null = null;
-      let again: NodeJS.Timeout | null = null;
-      const tell = () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => { for (const res of listeners) res.write('data: changed\n\n'); }, 60);
-      };
-
-      /**
-       * Watch the file's folder, not the file: editors often save by replacing the file.
-       * Watch every folder above it too: when one of them is made again (it was deleted
-       * or renamed away), the watches below it are made again and the page is told, as
-       * the desktop shell does (src-tauri/src/lib.rs, `watch_folder`; bug hunt round 3,
-       * C35, oC3). `told`: tell the page once the file's folder is watched again.
-       */
-      const watch = (told = false) => {
-        for (const w of watchers) w.close();
-        watchers = [];
-        // The folders from the file's own up to the root.
-        const chain: string[] = [];
-        for (let d = path.dirname(current); chain[chain.length - 1] !== d; d = path.dirname(d)) chain.push(d);
-        // In each folder, the one name that matters: the file's, or the folder below.
-        // Letter case set aside, as Windows does: a path typed in other letters than the
-        // name on disk, or a file renamed to other letters, is still the file (bug hunt C18).
-        // A name matched by mistake costs one read that finds nothing changed.
-        const names = [current, ...chain].map((p) => path.basename(p).toLowerCase());
-        let whole = true;
-        chain.forEach((folder, level) => {
-          try {
-            const w = fs.watch(folder, (event, changed) => {
-              if (changed && changed.toLowerCase() !== names[level]) return;
-              if (level === 0) return tell();
-              // A folder below made, deleted or renamed: take the watches again, a moment
-              // later, so that a burst of events makes them once.
-              if (event !== 'rename') return;
-              if (again) clearTimeout(again);
-              again = setTimeout(() => watch(true), 30);
-            });
-            // A folder deleted while watched: its watch ends, and the folder above sees it made again.
-            w.on('error', () => w.close());
-            watchers.push(w);
-          } catch {
-            if (level === 0) whole = false;
-          }
-        });
-        if (told && whole) tell();
-      };
-      watch();
+      // The file opened last: the one a page that names none is given, as after a reload.
+      let last = path.resolve(process.env.NAIAD_FILE ?? 'examples/sample.mmd');
+      if (!ALLOWED.has(path.extname(last).toLowerCase())) throw new Error('Only .mmd and .mermaid files can be opened.');
+      // Every file a page of this server opened, one per tab (T1.16), each watched from
+      // its opening until the server stops; no other file is read, written or watched.
+      const opened = new Map<string, Watched>();
       server.httpServer?.on('close', () => {
-        for (const w of watchers) w.close();
-        if (again) clearTimeout(again);
+        for (const file of opened.values()) file.close();
       });
+      opened.set(last, watchFile(last));
 
-      // Open in one view changes the file for every view of this server, so the page names
-      // the file it shows (header x-naiad-path) and a page still showing another is
-      // refused (bug hunt C14). `required`: a write must name it.
-      const otherFile = (req: IncomingMessage, required: boolean): string | null => {
+      // A request names the file it is for (header x-naiad-path), so that a save from a
+      // view still showing one file never lands in another that a second view opened (bug
+      // hunt C14). The file named must be one opened; `required`: a write must name it.
+      const fileOf = (req: IncomingMessage, required: boolean): { file: string } | { error: string } => {
         const named = req.headers['x-naiad-path'];
-        if (typeof named !== 'string') return required ? 'The page did not say which file it shows. Reload this page.' : null;
-        let shows: string;
-        try { shows = path.resolve(decodeURIComponent(named)); } catch { shows = ''; }
-        if (shows === current) return null;
-        return `This page shows another file than the one the development server now serves (${path.basename(current)}, opened in another view). Reload this page.`;
+        if (typeof named !== 'string') return required ? { error: 'The page did not say which file it shows. Reload this page.' } : { file: last };
+        let plain: string;
+        try { plain = decodeURIComponent(named); } catch { plain = ''; }
+        return openedFile(plain);
+      };
+      const openedFile = (named: string): { file: string } | { error: string } => {
+        const file = named === '' ? '' : path.resolve(named);
+        if (opened.has(file)) return { file };
+        return { error: 'This page asks for a file the development server has not opened. Reload this page.' };
       };
 
       server.middlewares.use('/api', async (req, res) => {
@@ -178,9 +202,12 @@ export function fileBridge(): Plugin {
           if (guarded && req.headers['x-naiad'] !== '1') return send(403, { error: 'missing header' });
 
           const route = `${req.method} ${url}`;
+          // The file a request for the file or its highlights is for.
+          let current = '';
           if (['GET /file', 'PUT /file', 'GET /highlights', 'PUT /highlights'].includes(route)) {
-            const other = otherFile(req, req.method === 'PUT');
-            if (other) return send(400, { error: other });
+            const named = fileOf(req, req.method === 'PUT');
+            if ('error' in named) return send(400, { error: named.error });
+            current = named.file;
           }
           if (url === '/file' && req.method === 'GET') {
             if (!fs.existsSync(current)) return send(404, { error: 'not found', path: current });
@@ -259,9 +286,9 @@ export function fileBridge(): Plugin {
             const next = path.resolve((await readBody(req)).trim());
             if (!ALLOWED.has(path.extname(next).toLowerCase())) return send(400, { error: 'Only .mmd and .mermaid files can be opened.' });
             if (!fs.existsSync(next)) return send(404, { error: `No file at ${next}` });
-            current = next;
-            watch();
-            return send(200, { path: current });
+            if (!opened.has(next)) opened.set(next, watchFile(next));
+            last = next;
+            return send(200, { path: next });
           }
           // Which of the recent list's paths name a flowchart file that is there (T1.15),
           // as the desktop shell's `existing_files`: other files are never looked at.
@@ -275,7 +302,13 @@ export function fileBridge(): Plugin {
             });
             return send(200, { exists });
           }
+          // The changes of the file named by `?path=` (a page with tabs listens to each),
+          // or, when none is named, of the file opened last.
           if (url === '/watch' && req.method === 'GET') {
+            const asked = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('path');
+            const named = asked === null ? { file: last } : openedFile(asked);
+            if ('error' in named) return send(400, { error: named.error });
+            const { listeners } = opened.get(named.file)!;
             res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
             res.write('retry: 1000\n\n');
             listeners.add(res);
