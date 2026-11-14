@@ -3,8 +3,9 @@
 Naiad is a Windows desktop app that shows and changes a flowchart kept in one plain
 Mermaid text file, for one person and the AI agents that work on the same file.
 
-The chart shows each node's short title. Click a node and a sidebar opens with its full
-description, which the file keeps beside the node as Mermaid comments. In other Mermaid
+The chart shows each node's short title. Click a node and the sidebar shows its full
+description, which the file keeps beside the node as Mermaid comments. With nothing
+selected, the sidebar shows a description of the whole flowchart, kept the same way. In other Mermaid
 tools a node holds only its label, so detail either crowds the chart or lives in a
 second document. With Naiad the file stays the only copy, opens in any Mermaid tool, and
 you, an agent or Naiad can change it.
@@ -31,7 +32,8 @@ flowchart TD
 - A change made in Naiad rewrites only the lines it needs, and Mermaid's own parser
   checks it before it is applied.
 
-A description is a run of Mermaid comments that starts with `%% @` and the node's id.
+A description is a run of Mermaid comments that starts with `%% @` and the node's id;
+the whole flowchart's description starts with `%% @flowchart`.
 The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
 
 ## Install
@@ -48,6 +50,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 | To | Do |
 |---|---|
 | Read a description | Click a node |
+| Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
 | Add a node | **+ Node**, or double-click empty space |
 | Rename | Double-click a node, or press Enter / F2 |
 | Connect two nodes | Point at a node and drag the dot beside it to another node, or Shift-click the second node |

@@ -8,7 +8,7 @@ import { applyChecked, type Op } from '../src/verify';
 import { snapshot } from '../src/semantics';
 import { EditError } from '../src/core/edits';
 import { parseDoc } from '../src/core/scan';
-import { getDescriptions } from '../src/core/descriptions';
+import { FLOWCHART_ID, getDescriptions } from '../src/core/descriptions';
 import { fixtures } from './fixtures';
 
 beforeAll(() => mermaid.initialize({ startOnLoad: false }));
@@ -21,6 +21,9 @@ async function opsFor(text: string): Promise<Op[]> {
     { kind: 'addNode', title: 'New node', parent: null },
     { kind: 'addNode', title: 'Odd "title" (here) [x] end', parent: null },
     { kind: 'setDirection', dir: 'LR' }, { kind: 'setDirection', dir: 'TD' },
+    // The flowchart's description (T1.13).
+    { kind: 'setDescription', id: FLOWCHART_ID, description: 'The whole flowchart.\n\nIn two paragraphs.' },
+    { kind: 'setDescription', id: FLOWCHART_ID, description: '' },
   ];
   if (nodes.length > 1) ops.push({ kind: 'addEdge', from: nodes[0], to: nodes[nodes.length - 1] }, { kind: 'addEdge', from: nodes[1], to: nodes[1] });
   for (const id of nodes) {

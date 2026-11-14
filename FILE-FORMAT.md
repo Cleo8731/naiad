@@ -3,7 +3,8 @@
 For anyone, person or AI agent, who edits a Naiad file by hand. A Naiad file is an
 ordinary Mermaid flowchart saved as `.mmd` (or `.mermaid`). It opens
 unchanged in every Mermaid tool. Naiad adds one convention on top: **description
-blocks**, written as Mermaid comments, which hold each node's full description.
+blocks**, written as Mermaid comments, which hold each node's full description, and
+one for the whole flowchart.
 
 The text file is the only copy of the flowchart. Naiad keeps no other data about it: no
 positions, no second copy. The one file Naiad may write beside it holds highlights, which
@@ -86,11 +87,14 @@ Rules:
    `%% \    @something`), so it is not taken for an empty line or for the start of
    another block.
 6. A block may sit anywhere a comment may: on its own lines, at any indent. Naiad adds
-   new blocks at the end of the file, after every line already there (blank lines
-   too), with one empty line before the block unless the file already ends with one.
+   a node's new block at the end of the file, after every line already there (blank
+   lines too), with one empty line before the block unless the file already ends with
+   one. The flowchart's description goes under the header line instead
+   ([The flowchart's description](#the-flowcharts-description)).
 7. If two blocks name the same id, the first one is used.
-8. A block whose id matches no node is kept as it is and shown nowhere, and Naiad never
-   gives its id to a node or group it adds.
+8. A block whose id matches no node (other than `@flowchart`, the flowchart's
+   description) is kept as it is and shown nowhere, and Naiad never gives its id to a
+   node or group it adds.
 9. A `%%` comment that follows no `%% @id` line is an ordinary comment; Naiad leaves it
    alone. `%%{ ... }%%` directives are not description lines. Nor is a `%%` line inside
    the front matter: Mermaid reads it as part of that YAML, not as a comment, and Naiad
@@ -115,6 +119,34 @@ Mermaid without error, and `check` does not report it. There, and inside
 `accDescr { ... }`, a line holding only `%%` is part of the text: Naiad neither warns
 about it nor changes it, and no edit is made that would change an accessible title or
 description.
+
+## The flowchart's description
+
+The flowchart as a whole can have a description too: what it shows and how to read it.
+It is a description block named `@flowchart`, and every rule of a node's block applies
+to it.
+
+```mermaid
+flowchart TD
+%% @flowchart
+%% How a day's data gets from the warehouse to a shipped model.
+%% .
+%% Each step has its own description.
+    collect[Collect data] --> clean{Clean?}
+```
+
+- Naiad shows it in the sidebar while no node, arrow or group is selected. The
+  toolbar's **About** button shows or hides it.
+- Mermaid never takes `flowchart` as a node's id, so the name cannot clash with a node.
+  Mermaid does take it as a group's id (`subgraph flowchart`): do not give a group that
+  id, since a `@flowchart` block is always the flowchart's description.
+- It may sit anywhere a block may; the first `@flowchart` block is used (point 7).
+  Naiad writes a new one under the header line (`flowchart TD`), below any ordinary
+  `%%` comment lines right under it, so no comment joins it. When the header line holds
+  statements too (`flowchart TD; a --> b`), Naiad adds the block at the end of the file
+  instead, as it does a node's.
+- Naiad 0.2 and earlier keep the block as it is and show it nowhere; their `naiad check`
+  reports it as naming no node.
 
 ## What Naiad changes in a file, and what it never does
 
@@ -365,7 +397,8 @@ naiad fix flow.mmd
   could not be checked.
 - It reports: text Mermaid's flowchart parser rejects; a line holding nothing but `%%`;
   a comment after a statement on the same line; a description block whose id matches
-  no node or group; a second description block for one id; a line Naiad's scanner
+  no node or group (`@flowchart`, the flowchart's description, excepted); a second
+  description block for one id; a line Naiad's scanner
   cannot read; a flowchart past Mermaid's limit of 50,000 characters. It reports
   nothing about style.
 - `naiad fix` first puts right what cannot change the flowchart (see "What Naiad
@@ -382,6 +415,9 @@ naiad fix flow.mmd
 - Give every node a short, stable id (letters, digits, `_`); the id ties a node to its
   description block. If you rename an id, rename its `%% @id` line too.
 - Put long text in a description block, never in the title.
+- Describe the whole flowchart in a `%% @flowchart` block under the header line, when
+  a reader needs to know what the chart shows or how to read it
+  ([The flowchart's description](#the-flowcharts-description)).
 - Write each paragraph of a description as one line; do not wrap it.
 - Write an empty description line as `%% .`.
 - Leave an empty line between a description block and an ordinary `%%` comment under

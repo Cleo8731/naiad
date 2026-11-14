@@ -7,7 +7,13 @@
 //   %% A line holding only "." is an empty line.
 
 import { matchLines } from './endings';
-import { frontMatterLines } from './scan';
+import { frontMatterLines, parseDoc } from './scan';
+
+/**
+ * The name of the flowchart's description block, `%% @flowchart` (D1.4, T1.13): the
+ * description of the whole flowchart. Mermaid never takes `flowchart` as a node's id.
+ */
+export const FLOWCHART_ID = 'flowchart';
 
 const HEADER_RE = /^\s*%%\s*@(\S+)\s*$/;
 // `s`: a line may hold U+2028 or U+2029, which `.` would not match; Mermaid reads them
@@ -126,13 +132,19 @@ function rewriteBlock(old: string[], desc: string, indent: string): string[] {
   return [old[0], ...body.slice(0, from), ...middle, ...body.slice(to)];
 }
 
-/** Sets, replaces or (for an empty description) removes a node's description block. */
+/**
+ * Sets, replaces or (for an empty description) removes a node's description block, or
+ * the flowchart's (`FLOWCHART_ID`).
+ */
 export function setDescription(text: string, id: string, description: string): string {
   const lines = text.split('\n');
   // Empty lines at the end go; the last line keeps the spaces at its end (A40).
   const lf = description.replace(/\r\n?/g, '\n');
   const desc = lf.trim() === '' ? '' : lf.replace(/^\n+/, '').replace(/(?:\n\s*)+$/, '');
   const block = parseDescriptions(lines).find((b) => b.id === id);
+  // A new description of the flowchart is written under the header line, when that line
+  // holds only the header (`parseDoc` finds no header in any other line).
+  const header = id === FLOWCHART_ID ? parseDoc(text).header : -1;
 
   if (block) {
     const indent = /^\s*/.exec(lines[block.start])![0];
@@ -151,6 +163,16 @@ export function setDescription(text: string, id: string, description: string): s
     return lines.join('\n');
   }
   if (desc === '') return text;
+
+  if (header >= 0) {
+    // Below the ordinary comments right under the header, if any: a comment written
+    // under the block would join it. So no empty line is added, and taking the block out
+    // again gives the file back as it was.
+    let at = header + 1;
+    while (at < lines.length && joinsBlock(lines[at])) at++;
+    lines.splice(at, 0, ...blockLines(id, desc, ''));
+    return lines.join('\n');
+  }
 
   // No block yet: add one at the end of the file, after every line already there (blank
   // lines included), with one empty line before it unless a blank line is there already.

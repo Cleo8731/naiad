@@ -6,7 +6,8 @@ description: Make or change a flowchart as a Naiad file, a plain Mermaid flowcha
 # Naiad flowcharts
 
 A Naiad file is an ordinary Mermaid flowchart with one convention on top: a node's
-full description sits in the same file as Mermaid comments (a **description block**).
+full description sits in the same file as Mermaid comments (a **description block**),
+and so can a description of the whole flowchart.
 The file is the only copy of the flowchart and opens in every Mermaid tool. Naiad is the
 desktop app the user reads and edits it in; it redraws the chart whenever the file
 changes on disk.
@@ -49,6 +50,8 @@ like this:
 
 ```mermaid
 flowchart TD
+%% @flowchart
+%% How a day's data gets from the warehouse to a trained model.
     collect[Collect data] --> clean{Clean?}
     clean -- yes --> train[Train model]
     clean -- no --> fix[Fix the data]
@@ -81,8 +84,9 @@ flowchart TD
   double quotes, in any shape: `id["Title with (punctuation)"]`,
   `id{"Sure (really)?"}`. Other punctuation needs no quotes. Inside a quoted title, a
   double quote is written `#quot;`.
-- Only a node has a description. A group has a title, an arrow a label, and neither
-  has a description block. Not every node needs one.
+- A node can have a description, and so can the whole flowchart (`@flowchart`, under
+  Description blocks). A group has a title, an arrow a label, and neither has a
+  description block. Not every node needs one.
 - Write titles, arrow labels and descriptions for the user, in everyday words: say
   what the part does and why, explain a technical term the first time it appears, and
   spell out abbreviations. A longer description is fine when it is clearer. The ste
@@ -121,6 +125,12 @@ flowchart TD
    them.
 
 Put new description blocks at the end of the flowchart, after one empty line.
+
+The flowchart's own description, what the whole chart shows and how to read it, is a
+block named `@flowchart`, with the same rules. Write it right under the header line
+(`flowchart TD`), below any `%%` comment lines right under the header. Naiad shows it
+in the sidebar when nothing is selected. Never give a group the id `flowchart`:
+Mermaid accepts it, but `@flowchart` always means the whole flowchart.
 
 ### Forms the user can change from the chart
 

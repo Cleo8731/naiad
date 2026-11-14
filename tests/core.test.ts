@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseDoc, tokenizeStatements, nodeLabel } from '../src/core/scan';
-import { getDescriptions, setDescription } from '../src/core/descriptions';
+import { FLOWCHART_ID, getDescriptions, setDescription } from '../src/core/descriptions';
 import * as E from '../src/core/edits';
 import { fixtures, sample } from './fixtures';
 
@@ -191,6 +191,56 @@ describe('description blocks', () => {
 
   test('tolerates a hand-typed bare %% as an empty line', () => {
     expect(getDescriptions('flowchart TD\n A\n%% @A\n%% one\n%%\n%% two\n').get('A')).toBe('one\n\ntwo');
+  });
+});
+
+describe("the flowchart's description: a block named @flowchart (T1.13)", () => {
+  const put = (text: string, desc: string) => setDescription(text, FLOWCHART_ID, desc);
+
+  test('a new one is written right under the header line', () => {
+    expect(put('flowchart TD\n  a --> b\n', 'About it.')).toBe('flowchart TD\n%% @flowchart\n%% About it.\n  a --> b\n');
+    expect(put('graph LR\n  a --> b\n', 'One.\n\nTwo.')).toBe('graph LR\n%% @flowchart\n%% One.\n%% .\n%% Two.\n  a --> b\n');
+    expect(put('---\ntitle: Jobs\n---\nflowchart TD\n  a\n', 'X')).toBe('---\ntitle: Jobs\n---\nflowchart TD\n%% @flowchart\n%% X\n  a\n');
+    expect(put('%%{init: {"theme": "dark"}}%%\n%% a note\n\nflowchart TD\n  a\n', 'X'))
+      .toBe('%%{init: {"theme": "dark"}}%%\n%% a note\n\nflowchart TD\n%% @flowchart\n%% X\n  a\n');
+    expect(put('flowchart TD', 'X'), 'no final newline, as before').toBe('flowchart TD\n%% @flowchart\n%% X');
+    expect(getDescriptions(put(sample, 'The whole pipeline.')).get(FLOWCHART_ID)).toBe('The whole pipeline.');
+  });
+
+  test('comments right under the header stay above it, and out of it', () => {
+    const before = 'flowchart TD\n%% a note\n  %% another\n  a --> b\n';
+    const out = put(before, 'About.');
+    expect(out).toBe('flowchart TD\n%% a note\n  %% another\n%% @flowchart\n%% About.\n  a --> b\n');
+    expect(getDescriptions(out).get(FLOWCHART_ID)).toBe('About.');
+    expect(put(out, 'Changed.')).toBe(out.replace('About.', 'Changed.'));
+    expect(put(out, '')).toBe(before);
+    // A comment after an empty line is not right under the header.
+    expect(put('flowchart TD\n\n%% note\n  a\n', 'X')).toBe('flowchart TD\n%% @flowchart\n%% X\n\n%% note\n  a\n');
+  });
+
+  test("a node's block under the header stays that node's", () => {
+    const before = 'flowchart TD\n%% @a\n%% A.\n  a\n';
+    const out = put(before, 'About.');
+    expect(out).toBe('flowchart TD\n%% @flowchart\n%% About.\n%% @a\n%% A.\n  a\n');
+    expect([...getDescriptions(out)]).toEqual([[FLOWCHART_ID, 'About.'], ['a', 'A.']]);
+    expect(put(out, '')).toBe(before);
+  });
+
+  test('one an agent wrote elsewhere is changed where it is', () => {
+    const before = 'flowchart TD\n  a --> b\n\n%% @a\n%% A.\n\n%% @flowchart\n%% Old words.\n%% Kept line.\n';
+    expect(put(before, 'New words.\nKept line.')).toBe(before.replace('Old words.', 'New words.'));
+    expect(put(before, '')).toBe('flowchart TD\n  a --> b\n\n%% @a\n%% A.\n');
+  });
+
+  test('emptying a new one gives the file back as it was', () => {
+    for (const before of ['flowchart TD\n  a --> b\n', 'graph LR\n\n  a\n', '---\ntitle: Jobs\n---\nflowchart TD\n  a\n',
+      'flowchart TD\n%% note\n  a\n', 'flowchart TD\n\n%% note\n  a\n', 'flowchart TD', sample]) {
+      expect(put(put(before, 'X\n\nY'), ''), JSON.stringify(before)).toBe(before);
+    }
+  });
+
+  test("a header line that holds more than the header: the block goes at the end, as a node's does", () => {
+    expect(put('flowchart TD; a --> b\n', 'X')).toBe('flowchart TD; a --> b\n\n%% @flowchart\n%% X\n');
   });
 });
 

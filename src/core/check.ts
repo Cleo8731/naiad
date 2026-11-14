@@ -2,7 +2,7 @@
 // and the way to put it right. No browser code and no Mermaid import here: whoever runs
 // it hands in a reader, which is Mermaid's own parser (src/cli.ts in the app).
 
-import { parseDescriptions } from './descriptions';
+import { FLOWCHART_ID, parseDescriptions } from './descriptions';
 import { plainText, withEndingsOf } from './endings';
 import { parseDoc, usedIds, type LineKind } from './scan';
 
@@ -287,7 +287,8 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
       continue;
     }
     seen.set(b.id, b.start);
-    if (!known.has(b.id)) {
+    // `@flowchart` is the flowchart's own description (T1.13), not a node's.
+    if (!known.has(b.id) && b.id !== FLOWCHART_ID) {
       add(b.start, 'description-without-node', `This description block names "${b.id}", and the flowchart has no node with that id, so it is shown nowhere. The line after "%% @" is a node's id exactly as written in the flowchart, not its title.`);
     }
   }

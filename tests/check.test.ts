@@ -349,6 +349,12 @@ describe('what breaks the Naiad file format', () => {
     expect(await check('flowchart TD\n  subgraph g [Group]\n    A --> B\n  end\n%% @g\n%% text\n')).toEqual([]);
   });
 
+  test("the flowchart's description, @flowchart, is not reported as naming no node (T1.13)", async () => {
+    expect(await check('flowchart TD\n%% @flowchart\n%% About.\n  A --> B\n')).toEqual([]);
+    const found = await check('flowchart TD\n%% @flowchart\n%% one\n  A --> B\n%% @flowchart\n%% two\n');
+    expect(brief(found)).toEqual(['5 second-description']);
+  });
+
   test('two description blocks for one id', async () => {
     const found = await check('flowchart TD\n  A --> B\n%% @A\n%% one\n\n%% @A\n%% two\n');
     expect(brief(found)).toEqual(['6 second-description']);

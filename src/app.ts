@@ -4,11 +4,11 @@
 
 import type { Backend } from './backend';
 import { Chart, configureMermaid, type Target } from './chart';
-import { getDescriptions } from './core/descriptions';
+import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
-import { allRefs, nodeLabel, parseDoc, type Doc } from './core/scan';
+import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
@@ -74,6 +74,16 @@ function clip(text: string): string {
   return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
+/**
+ * The title in the flowchart's front matter (`title: Jobs`, quotes taken off), or '' for
+ * none: the flowchart's name in the sidebar (T1.13).
+ */
+function frontMatterTitle(text: string): string {
+  const yaml = FRONT_MATTER_RE.exec(text)?.[2] ?? '';
+  const value = /^title:[^\S\n]*(.*?)\s*$/m.exec(yaml)?.[1] ?? '';
+  return /^(["']).*\1$/.test(value) ? value.slice(1, -1) : value;
+}
+
 function remember(key: string, value?: string): string | null {
   try {
     if (value === undefined) return localStorage.getItem(key);
@@ -117,6 +127,12 @@ export class App {
    * starts, never in the file (Q114).
    */
   private viewing = false;
+  /**
+   * The About button (D1.4, T1.13): with nothing selected, the sidebar shows the
+   * flowchart's description, so closing an item leaves the sidebar open. Kept by the app
+   * across starts, as the mode is (Q114).
+   */
+  private about = true;
 
   private chart!: Chart;
   private sidebar!: Sidebar;
@@ -124,7 +140,7 @@ export class App {
     name: HTMLElement; status: HTMLElement; area: HTMLTextAreaElement; notices: HTMLElement; stage: HTMLElement;
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement;
+    highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
   };
 
   constructor(private root: HTMLElement, private backend: Backend) {}
@@ -152,6 +168,7 @@ export class App {
         <button data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-pressed="false">Highlight</button>
         <button data-act="fit" title="Fit the chart to the window">Fit</button>
         <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">Syntax</button>
+        <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
         <button data-act="view" title="View mode: read the chart without changing it (press again to edit)" aria-pressed="false">View</button>
       </header>
       <main>
@@ -175,7 +192,7 @@ export class App {
       empty: q('.empty'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
-      clear: q('[data-act="clear"]'), view: q('[data-act="view"]'),
+      clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
@@ -199,6 +216,7 @@ export class App {
     });
     this.sidebar = new Sidebar(this.root.querySelector<HTMLElement>('.sidebar')!, {
       close: () => this.select(null),
+      hideAbout: () => this.setAbout(false),
       setTitle: async (id, title) => (await this.edit({ kind: 'setTitle', id, title })) !== null,
       setDescription: (id, description) => this.writeDescription(id, description),
       setShape: (id, shape) => { void this.edit({ kind: 'setShape', id, shape }); },
@@ -230,6 +248,8 @@ export class App {
     if (remember('syntaxpane') === 'shown') this.toggleText(true);
     // Naiad opens in the mode it was last left in (Q114).
     if (remember('mode') === 'view') this.showViewing(true);
+    // The flowchart's description shows unless the person hid it (T1.13).
+    if (remember('about') === 'hidden') this.showAbout(false);
     // A notice's details wrap to another height when the window's width changes.
     window.addEventListener('resize', () => this.padUnderNotices());
     const width = Number(remember('textpane-width'));
@@ -328,13 +348,20 @@ export class App {
    */
   private async writeDescription(id: string, text: string): Promise<void> {
     if (await this.edit({ kind: 'setDescription', id, description: text })) return;
-    const here = () => this.selection?.kind === 'node' && this.selection.id === id;
+    // The flowchart's description (T1.13) is in the sidebar while nothing is selected and
+    // About is on; turning back to it turns About on.
+    const whole = id === FLOWCHART_ID;
+    const here = () => (whole ? this.selection === null && this.about : this.selection?.kind === 'node' && this.selection.id === id);
+    const there = () => whole || !!this.snap?.nodes[id];
     if (!here()) {
-      const title = nodeLabel(this.doc, id)?.title ?? id;
-      if (!this.snap?.nodes[id]) return;
-      if (await this.backend.confirm(`The description you were writing for “${title}” could not be saved. Lose it?`)) return;
-      if (!this.snap?.nodes[id]) return;
-      if (!here()) this.select({ kind: 'node', id });
+      const title = whole ? 'the flowchart' : `“${nodeLabel(this.doc, id)?.title ?? id}”`;
+      if (!there()) return;
+      if (await this.backend.confirm(`The description you were writing for ${title} could not be saved. Lose it?`)) return;
+      if (!there()) return;
+      if (!here()) {
+        if (whole) { this.select(null); this.showAbout(true); }
+        else this.select({ kind: 'node', id });
+      }
     }
     this.sidebar.resumeDescription(id, text);
   }
@@ -854,10 +881,10 @@ export class App {
     // A description being written goes into the file as the panel turns to another item
     // or none, as Done would (bug hunt round 3, C36). A node's id stays its own, so the
     // edit is right even though it runs after the panel has changed.
+    // With nothing selected, the panel is the flowchart's description while About is on.
     const draft = this.sidebar.draft();
-    if (draft && !(target?.kind === 'node' && target.id === draft.id)) {
-      void this.writeDescription(draft.id, draft.text);
-    }
+    const next = target ? (target.kind === 'node' ? target.id : null) : this.about ? FLOWCHART_ID : null;
+    if (draft && draft.id !== next) void this.writeDescription(draft.id, draft.text);
     // So is a title, label or group title typed and not in the file (Q90).
     const was = this.selection;
     const typed = was && !sameTarget(was, target) ? this.sidebar.typed() : null;
@@ -890,7 +917,20 @@ export class App {
 
   // ------------------------------------------------------------------ painting
 
+  /** What the sidebar shows: the item selected, or else the flowchart's description while About is on. */
   private view(): View | null {
+    return this.itemView() ?? this.aboutView();
+  }
+
+  private aboutView(): View | null {
+    if (!this.about || this.path === null) return null;
+    return {
+      kind: 'about', file: this.path, name: frontMatterTitle(this.text) || basename(this.path),
+      description: getDescriptions(this.text).get(FLOWCHART_ID) ?? '',
+    };
+  }
+
+  private itemView(): View | null {
     const s = this.selection;
     const snap = this.snap;
     if (!s || !snap) return null;
@@ -1047,6 +1087,25 @@ export class App {
     this.toastTimer = window.setTimeout(() => { this.el.toast.hidden = true; }, 6500);
   }
 
+  /**
+   * The About button and the × of the flowchart's description (T1.13). A description of
+   * the flowchart being written goes into the file as its panel goes, as an item's does
+   * when the panel turns away from it (C36).
+   */
+  private setAbout(on: boolean): void {
+    if (on === this.about) return;
+    const draft = this.sidebar.draft();
+    if (!on && draft?.id === FLOWCHART_ID) void this.writeDescription(draft.id, draft.text);
+    this.showAbout(on);
+  }
+
+  private showAbout(on: boolean): void {
+    this.about = on;
+    this.el.about.setAttribute('aria-pressed', String(on));
+    remember('about', on ? 'shown' : 'hidden');
+    this.paint();
+  }
+
   private toggleText(show?: boolean): void {
     const visible = show ?? this.el.pane.hidden;
     this.el.pane.hidden = !visible;
@@ -1070,6 +1129,7 @@ export class App {
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
+      if (act === 'about') this.setAbout(!this.about);
     });
     this.el.dir.addEventListener('change', () => { void this.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
 

@@ -1,10 +1,12 @@
 // The sidebar: opens when a node, arrow or group is clicked. For a node it shows the
 // title with the full description underneath; both can be edited there, except in View
-// mode, where the panel shows them as text.
+// mode, where the panel shows them as text. With nothing selected and About on, it shows
+// the flowchart's description (T1.13), so closing an item leaves the sidebar open.
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { SHAPES } from './core/scan';
+import { FLOWCHART_ID } from './core/descriptions';
 import type { ArrowKind, LinkParts } from './core/edits';
 
 export interface NodeView {
@@ -19,7 +21,13 @@ export interface EdgeView {
   fromId: string; toId: string; ends: { id: string; title: string }[];
 }
 export interface SubView { kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number }
-export type View = NodeView | EdgeView | SubView;
+/**
+ * The flowchart's description, under any item (T1.13): `file` is the file's path, so
+ * another file gets a panel of its own; `name` is the front matter's title, else the
+ * file's name.
+ */
+export interface AboutView { kind: 'about'; file: string; name: string; description: string }
+export type View = NodeView | EdgeView | SubView | AboutView;
 
 /**
  * The edits of the panel's text boxes resolve true when the change is in the file, so a
@@ -27,6 +35,8 @@ export type View = NodeView | EdgeView | SubView;
  */
 export interface SidebarActions {
   close(): void;
+  /** The × of the flowchart's description: turns About off. */
+  hideAbout(): void;
   setTitle(id: string, title: string): Promise<boolean>;
   /** Writes the description; the promise, if any, ends when the write has ended. */
   setDescription(id: string, description: string): Promise<void> | void;
@@ -58,7 +68,10 @@ export const SWATCHES: Swatch[] = [
   { name: 'Purple', fill: '#e5dbff', stroke: '#7048e8' },
   { name: 'Grey', fill: '#e9ecef', stroke: '#868e96' },
 ];
-/** A description being written: its node, its text, and what the app calls once the text is in the file. */
+/**
+ * A description being written: its node's id (`FLOWCHART_ID` for the flowchart's), its
+ * text, and what the app calls once the text is in the file.
+ */
 export interface Draft { id: string; text: string; written(): void }
 
 /**
@@ -176,7 +189,7 @@ export class Sidebar {
    * (round 5, C42). What was typed into the box since then is kept instead.
    */
   resumeDescription(id: string, text: string): void {
-    if (this.key === `node:${id}`) this.resume?.(text);
+    if (id === FLOWCHART_ID ? this.key.startsWith('about:') : this.key === `node:${id}`) this.resume?.(text);
   }
 
   /**
@@ -212,7 +225,7 @@ export class Sidebar {
     }
     // The panel is built again only for another item: a change on disk (a group renamed,
     // say) updates it in place, so a description being written is kept (bug hunt C17).
-    const key = `${view.kind}:${view.kind === 'edge' ? view.index : view.id}`;
+    const key = `${view.kind}:${view.kind === 'edge' ? view.index : view.kind === 'about' ? view.file : view.id}`;
     if (key !== this.key) {
       this.built++;
       this.key = key;
@@ -231,6 +244,16 @@ export class Sidebar {
       h('span', { class: 'kind' }, kindLabel),
       h('code', { class: 'id', title: 'The id used in the file' }, idText),
       h('button', { class: 'ghost close', title: 'Close (Esc)', 'aria-label': 'Close', click: () => this.actions.close() }, '×'));
+  }
+
+  /** The head of the flowchart's description: its × turns About off. */
+  private aboutHeader(): HTMLElement {
+    return h('div', { class: 'side-head' },
+      h('span', { class: 'kind' }, 'About this flowchart'),
+      h('button', {
+        class: 'ghost close', title: "Hide the flowchart's description (About)", 'aria-label': "Hide the flowchart's description",
+        click: () => this.actions.hideAbout(),
+      }, '×'));
   }
 
   /**
@@ -339,17 +362,36 @@ export class Sidebar {
     if (this.viewing) return this.buildRead(view);
     if (view.kind === 'node') return this.buildNode(view);
     if (view.kind === 'edge') return this.buildEdge(view);
+    if (view.kind === 'about') return this.buildAbout();
     return this.buildSub(view);
   }
 
-  private buildNode(view: NodeView): HTMLElement[] {
-    const { id } = view;
-    const a = this.actions;
-    const title = this.textBox('title', 'Title', 'title', (v) => (v as NodeView).title, (value) => a.setTitle(id, value));
+  /** The flowchart's name, read only (it is the front matter's title or the file's name). */
+  private aboutName(): HTMLElement {
+    const name = h('h2', { class: 'read-title' });
+    this.sync.push((v) => { name.textContent = (v as AboutView).name; });
+    return name;
+  }
 
+  private buildAbout(): HTMLElement[] {
+    return [
+      this.aboutHeader(),
+      this.aboutName(),
+      this.description(FLOWCHART_ID, (v) => (v as AboutView).description,
+        'Describe the whole flowchart: what it shows and how to read it. Markdown works: **bold**, lists, `code`, links.'),
+    ];
+  }
+
+  /**
+   * A description shown as Markdown with Edit, written in a box with Done and Cancel: a
+   * node's, or the flowchart's (`id` is `FLOWCHART_ID`). What is typed and not yet written
+   * is the panel's `draft()`.
+   */
+  private description(id: string, read: (v: View) => string, placeholder: string): HTMLElement {
+    const a = this.actions;
     const body = h('div', { class: 'desc-body' });
     const area = h('textarea', {
-      class: 'desc-edit', placeholder: 'Describe this step. Markdown works: **bold**, lists, `code`, links.', spellcheck: 'true',
+      class: 'desc-edit', placeholder, spellcheck: 'true',
       keydown: (e) => {
         const ke = e as KeyboardEvent;
         if (ke.key === 'Enter' && (ke.ctrlKey || ke.metaKey)) { e.preventDefault(); finish(true); }
@@ -410,12 +452,20 @@ export class Sidebar {
       started = current; // what the file holds: the box is not written yet
     };
     this.sync.push((v) => {
-      current = (v as NodeView).description;
+      current = read(v);
       // An untouched description being edited follows the file; one being typed in keeps what is typed.
       if (this.editingDescription && area.value === started && current !== started) area.value = started = current;
       paint();
     });
+    return h('div', { class: 'desc' },
+      h('div', { class: 'desc-head' }, h('span', {}, 'Description'), editBtn, cancelBtn, doneBtn),
+      body, area);
+  }
 
+  private buildNode(view: NodeView): HTMLElement[] {
+    const { id } = view;
+    const a = this.actions;
+    const title = this.textBox('title', 'Title', 'title', (v) => (v as NodeView).title, (value) => a.setTitle(id, value));
     const shape = this.select(
       () => PICKABLE_SHAPES.map((t) => option(t, SHAPES.find((s) => s.type === t)!.label)),
       (v) => (v as NodeView).shape, (value) => a.setShape(id, value));
@@ -426,9 +476,7 @@ export class Sidebar {
     return [
       this.header('Node', id),
       title,
-      h('div', { class: 'desc' },
-        h('div', { class: 'desc-head' }, h('span', {}, 'Description'), editBtn, cancelBtn, doneBtn),
-        body, area),
+      this.description(id, (v) => (v as NodeView).description, 'Describe this step. Markdown works: **bold**, lists, `code`, links.'),
       h('div', { class: 'props' },
         this.row('Shape', shape),
         this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s))),
@@ -497,27 +545,31 @@ export class Sidebar {
 
   /**
    * The panel in View mode: a node's title and description, an arrow's ends and label, a
-   * group's title and size, as text that follows the file. No field or button changes the
-   * flowchart; links in a description still open.
+   * group's title and size, the flowchart's name and description, as text that follows
+   * the file. No field or button changes the flowchart; links in a description still open.
    */
   private buildRead(view: View): HTMLElement[] {
     const title = h('h2', { class: 'read-title' });
-    if (view.kind === 'node') {
+    // A node's description, or the flowchart's, as text.
+    const described = (read: (v: View) => string): HTMLElement => {
       const body = h('div', { class: 'desc-body' });
       let shown: string | null = null;
       this.sync.push((v) => {
-        const n = v as NodeView;
-        title.textContent = n.title || n.id;
-        if (n.description === shown) return; // a selection being read stays
-        shown = n.description;
+        const text = read(v);
+        if (text === shown) return; // a selection being read stays
+        shown = text;
         if (shown.trim()) body.innerHTML = renderMarkdown(shown);
         else body.replaceChildren(h('p', { class: 'empty' }, 'No description.'));
       });
-      return [
-        this.header('Node', view.id),
-        title,
-        h('div', { class: 'desc' }, h('div', { class: 'desc-head' }, h('span', {}, 'Description')), body),
-      ];
+      return h('div', { class: 'desc' }, h('div', { class: 'desc-head' }, h('span', {}, 'Description')), body);
+    };
+    if (view.kind === 'about') return [this.aboutHeader(), this.aboutName(), described((v) => (v as AboutView).description)];
+    if (view.kind === 'node') {
+      this.sync.push((v) => {
+        const n = v as NodeView;
+        title.textContent = n.title || n.id;
+      });
+      return [this.header('Node', view.id), title, described((v) => (v as NodeView).description)];
     }
     if (view.kind === 'edge') {
       const head = this.header('Arrow', `#${view.index}`);

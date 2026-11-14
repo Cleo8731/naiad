@@ -271,7 +271,9 @@ describe('what stays in View', () => {
     chartEvents.last!.onSelect({ kind: 'node', id: 'collect' });
     expect(q<HTMLElement>('.sidebar')!.hidden).toBe(false);
     press('Escape');
-    expect(q<HTMLElement>('.sidebar')!.hidden).toBe(true);
+    // The flowchart's description is under it (T1.13), so the sidebar stays.
+    expect(q<HTMLElement>('.sidebar')!.hidden).toBe(false);
+    expect(q('.sidebar .side-head .kind')!.textContent).toBe('About this flowchart');
     expect(notice()).toBeNull();
   });
 });
