@@ -83,6 +83,10 @@ flowchart TD
   double quote is written `#quot;`.
 - Only a node has a description. A group has a title, an arrow a label, and neither
   has a description block. Not every node needs one.
+- Write titles, arrow labels and descriptions for the user, in everyday words: say
+  what the part does and why, explain a technical term the first time it appears, and
+  spell out abbreviations. A longer description is fine when it is clearer. The ste
+  skill (Standard Technical English), where it is installed, is the full guide.
 
 ### Description blocks
 

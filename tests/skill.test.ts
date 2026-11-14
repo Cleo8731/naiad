@@ -99,6 +99,10 @@ describe('what the skill repeats from other files', () => {
     }
   });
 
+  test('the skill says to write a chart in everyday words', () => {
+    expect(section(skill, 'Titles and ids').replace(/\s+/g, ' ')).toContain('everyday words');
+  });
+
   test('the highlights file is the same in the skill and FILE-FORMAT.md', () => {
     for (const text of ['.naiad/flow.mmd/highlights.txt', '\ncollect\nclean\ncollect --> clean\n```']) {
       expect(skill).toContain(text);
