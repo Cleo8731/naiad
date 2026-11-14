@@ -121,6 +121,14 @@ fn initial_file() -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
+/// Which of these paths name a flowchart file that is there: the recent list greys out
+/// the ones that are not (T1.15). A path `check` refuses counts as not there, and is
+/// never looked at.
+#[tauri::command]
+fn existing_files(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| check(p).map(|p| p.is_file()).unwrap_or(false)).collect()
+}
+
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
     let p = check(&path)?;
@@ -445,6 +453,7 @@ pub fn run() {
             cli_job,
             cli_done,
             initial_file,
+            existing_files,
             read_file,
             write_file,
             watch_file,
@@ -618,6 +627,22 @@ mod tests {
         assert!(check("notes.markdown").is_err());
         assert!(check(r"C:\a\notes.txt").is_err());
         assert!(check(r"C:\a\flow").is_err());
+    }
+
+    /// The recent list's check (T1.15): a flowchart file that is there, yes; one that is
+    /// not, a folder, or a file of another kind, no.
+    #[test]
+    fn existing_files_finds_only_flowchart_files() {
+        let dir = folder("existing");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD\n").unwrap();
+        let notes = dir.join("notes.txt");
+        fs::write(&notes, "notes").unwrap();
+        fs::create_dir(dir.join("box.mmd")).unwrap();
+        let paths = [flow.clone(), dir.join("gone.mmd"), notes, dir.join("box.mmd")]
+            .map(|p| p.to_string_lossy().into_owned());
+        assert_eq!(existing_files(paths.to_vec()), [true, false, false, false]);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Bug hunt S9 (E2): a path naming a stream of another file is refused, and so

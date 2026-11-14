@@ -46,6 +46,14 @@ export interface Backend {
    */
   viewing(path: string): void;
   pickOpen(): Promise<string | null>;
+  /**
+   * Makes a path from the recent list ready to open, as the file dialog does for a
+   * path picked in it, and returns the path to open (T1.15). The dev page's server
+   * then serves that file.
+   */
+  choose(path: string): Promise<string>;
+  /** Which of these paths name a flowchart file that is there (the recent list, T1.15). */
+  existing(paths: string[]): Promise<boolean[]>;
   pickSave(suggestedName: string): Promise<string | null>;
   openLink(url: string): void;
   setWindowTitle(title: string): void;
@@ -95,6 +103,8 @@ async function desktop(): Promise<Backend> {
       const picked = await dialog.open({ multiple: false, directory: false, filters: OPEN_FILTERS });
       return typeof picked === 'string' ? picked : null;
     },
+    choose: async (path) => path,
+    existing: (paths) => invoke<boolean[]>('existing_files', { paths }),
     pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: NEW_FILTERS }),
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
@@ -181,6 +191,8 @@ function browser(): Backend {
       if (!typed) return null;
       return (await call('api/open', { method: 'POST', body: typed })).path;
     },
+    choose: async (path) => (await call('api/open', { method: 'POST', body: path })).path,
+    existing: async (paths) => (await call('api/exists', { method: 'POST', body: JSON.stringify(paths) })).exists,
     pickSave: async () => null,
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
     setWindowTitle: (title) => { document.title = title; },

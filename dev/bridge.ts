@@ -263,6 +263,18 @@ export function fileBridge(): Plugin {
             watch();
             return send(200, { path: current });
           }
+          // Which of the recent list's paths name a flowchart file that is there (T1.15),
+          // as the desktop shell's `existing_files`: other files are never looked at.
+          if (url === '/exists' && req.method === 'POST') {
+            let asked: unknown;
+            try { asked = JSON.parse(await readBody(req)); } catch { asked = null; }
+            if (!Array.isArray(asked)) return send(400, { error: 'A list of paths is wanted.' });
+            const exists = asked.map((p) => {
+              if (typeof p !== 'string' || !ALLOWED.has(path.extname(p).toLowerCase())) return false;
+              try { return fs.statSync(p).isFile(); } catch { return false; }
+            });
+            return send(200, { exists });
+          }
           if (url === '/watch' && req.method === 'GET') {
             res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
             res.write('retry: 1000\n\n');

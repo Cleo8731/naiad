@@ -10,6 +10,7 @@ import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
 import { ICONS } from './icons';
+import { RecentPane } from './recent';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
@@ -159,14 +160,17 @@ export class App {
     empty: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
-    wheel: HTMLButtonElement;
+    wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
   };
+  /** The recent list's pane (T1.15); none in `naiad serve`'s page, which shows one file only. */
+  private recent: RecentPane | null = null;
 
   constructor(private root: HTMLElement, private backend: Backend) {}
 
   async init(): Promise<void> {
     this.root.innerHTML = `
       <header class="bar">
+        <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
         <button data-act="open" title="Open a file (Ctrl+O)">Open</button>
         <button data-act="new" title="Start a new flowchart file">New</button>
         <div class="file">
@@ -192,6 +196,7 @@ export class App {
         <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
       </header>
       <main>
+        <nav class="recent" aria-label="Recent files" hidden></nav>
         <section class="textpane" hidden>
           <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The flowchart's Mermaid syntax"></textarea>
         </section>
@@ -213,12 +218,12 @@ export class App {
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
-      wheel: q('[data-act="wheel"]'),
+      wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
     };
     if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for.
-      this.root.querySelectorAll('[data-act="open"]').forEach((b) => b.remove());
+      this.root.querySelectorAll('[data-act="open"], [data-act="recent"], nav.recent').forEach((b) => b.remove());
       this.el.empty.innerHTML = '<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>';
     }
 
@@ -277,6 +282,19 @@ export class App {
     window.addEventListener('resize', () => this.padUnderNotices());
     const width = Number(remember('textpane-width'));
     if (width >= 220) this.el.pane.style.width = `${width}px`;
+    // The recent list (T1.15), wherever Open is: hidden at the first start, then as left.
+    const nav = this.root.querySelector<HTMLElement>('nav.recent');
+    if (nav) {
+      this.recent = new RecentPane(nav, {
+        open: (path) => { void this.openRecent(path); },
+        existing: (paths) => this.backend.existing(paths),
+        load: () => remember('recent'),
+        save: (value) => { remember('recent', value); },
+      });
+      if (remember('recentpane') === 'shown') this.toggleRecent(true);
+      // Another window opened a file: its list is this one's too.
+      window.addEventListener('storage', (e) => { if (e.key === 'recent' || e.key === null) this.recent?.reload(); });
+    }
 
     const first = await this.backend.initialPath().catch(() => null);
     if (first) await this.open(first);
@@ -413,6 +431,7 @@ export class App {
     if (!(await this.leave(`Open ${basename(path)}`))) return;
     this.stopWatch?.();
     this.path = path;
+    this.recent?.opened(path);
     this.displaced = false;
     this.text = this.saved = plainText(raw);
     this.undoStack = [];
@@ -585,6 +604,16 @@ export class App {
     } catch (e) {
       this.toast(errorText(e));
     }
+  }
+
+  /** Opens a file from the recent list, as Open does; one that cannot be read stays listed, greyed (Q137). */
+  private async openRecent(path: string): Promise<void> {
+    try {
+      await this.open(await this.backend.choose(path));
+    } catch (e) {
+      this.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
+    }
+    this.recent?.update();
   }
 
   private async newFile(): Promise<void> {
@@ -1144,6 +1173,15 @@ export class App {
     this.paint();
   }
 
+  private toggleRecent(show?: boolean): void {
+    if (!this.recent) return;
+    const visible = show ?? !this.recent.visible;
+    this.recent.show(visible);
+    this.el.recentToggle.setAttribute('aria-pressed', String(visible));
+    this.el.recentToggle.title = visible ? 'Hide recent files' : 'Show recent files';
+    remember('recentpane', visible ? 'shown' : 'hidden');
+  }
+
   private toggleText(show?: boolean): void {
     const visible = show ?? this.el.pane.hidden;
     this.el.pane.hidden = !visible;
@@ -1164,6 +1202,7 @@ export class App {
       if (act === 'redo') void this.history(false);
       if (act === 'fit') this.chart.fit();
       if (act === 'syntax') this.toggleText();
+      if (act === 'recent') this.toggleRecent();
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);

@@ -45,10 +45,12 @@ export class FakeDisk {
   highlights = new Map<string, string>();
   /** Called after a read of the highlights has taken its copy, before it resolves. */
   afterHighlightsRead: ((path: string) => void) | null = null;
+  /** Which way Naiad runs: 'browser' is the dev page; 'served' is `naiad serve`'s page. */
+  kind: Backend['kind'] = 'browser';
 
   backend(): Backend {
     return {
-      kind: 'browser',
+      kind: this.kind,
       cliJob: async () => null,
       cliDone: async () => {},
       initialPath: async () => null,
@@ -85,6 +87,8 @@ export class FakeDisk {
       },
       viewing: () => {},
       pickOpen: async () => null,
+      choose: async (path) => path,
+      existing: async (paths) => paths.map((p) => this.files.has(p)),
       pickSave: async () => null,
       openLink: () => {},
       setWindowTitle: () => {},

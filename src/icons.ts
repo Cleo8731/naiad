@@ -1,5 +1,5 @@
 /**
- * The toolbar's icons: Lucide's (lucide.dev, release 1.73.0), the set Obsidian uses,
+ * The window's icons: Lucide's (lucide.dev, release 1.73.0), the set Obsidian uses,
  * copied unchanged into `icons/` with Lucide's licence, `icons/LICENSE` (Q131 and Q132,
  * 2026-11-14). Each is drawn inline in its button, so its lines take the button's text
  * colour in light and dark; the button's `aria-label` says what it does, so the drawing
@@ -13,6 +13,8 @@ import codeXml from './icons/code-xml.svg?raw';
 import highlighter from './icons/highlighter.svg?raw';
 import touchpad from './icons/touchpad.svg?raw';
 import mouse from './icons/mouse.svg?raw';
+import panelLeft from './icons/panel-left.svg?raw';
+import x from './icons/x.svg?raw';
 
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
@@ -31,4 +33,8 @@ export const ICONS = {
   /** The Touchpad and Mouse switch (D1.5) shows the mode it is in. */
   touchpad: icon('touchpad', touchpad),
   mouse: icon('mouse', mouse),
+  /** Shows and hides the recent list's pane (T1.15), at the toolbar's left end. */
+  recent: icon('recent', panelLeft),
+  /** Takes an entry off the recent list. */
+  close: icon('close', x),
 } as const;

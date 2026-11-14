@@ -49,6 +49,7 @@ command to your PATH. Then open a file with **Open**, or start one with **New**.
 
 | To | Do |
 |---|---|
+| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. Naiad remembers whether the list is shown. A page from `naiad serve` has no list |
 | Read a description | Click a node |
 | Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
 | Add a node | **+ Node**, or double-click empty space |
@@ -147,8 +148,11 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
-- Whether the Syntax pane is shown, its width, whether View mode is on, and Touchpad or
-  Mouse mode, in the window's own storage.
+- Whether the Syntax pane is shown, its width, whether View mode is on, Touchpad or
+  Mouse mode, and whether the recent files are shown, in the window's own storage.
+- The full paths of the last 50 files you opened, for the recent files, in the same
+  storage (`src/recent.ts`). While the list is shown, Naiad checks that each listed
+  file is still there; it reads none of them until you click one.
 - Naiad makes no network requests of its own. An image in a description that points to
   a web address is loaded from there when the description is shown, and a link in a
   description opens in your browser.
@@ -190,5 +194,5 @@ Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 ## Licence
 
 [MIT](LICENSE). The bundled Nunito font is under the
-[SIL Open Font License 1.1](src/fonts/OFL.txt). The toolbar's icons are from
+[SIL Open Font License 1.1](src/fonts/OFL.txt). The window's icons are from
 [Lucide](https://lucide.dev), under the [ISC License](src/icons/LICENSE).
