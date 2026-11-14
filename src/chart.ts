@@ -261,6 +261,9 @@ export class Chart {
   private viewing = false;
   private snap: Snap | null = null;
   private fitted = false;
+  /** A fit asked for while the chart had no width (hidden while another tab is shown,
+   * T1.16), so it is fitted as soon as it is shown. */
+  private fitWaiting = false;
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
   private manual = false;
   private moved = false;
@@ -640,6 +643,7 @@ export class Chart {
   fit(): void {
     this.stopGlide();
     const r = this.stage.getBoundingClientRect();
+    this.fitWaiting = !!this.size.w && !r.width;
     if (!this.size.w || !r.width) return;
     const pad = 48;
     const k = Math.min(1.15, (r.width - pad) / this.size.w, (r.height - pad) / this.size.h);
@@ -832,9 +836,17 @@ export class Chart {
     document.addEventListener('keydown', this.onKeyDown);
 
     // When a side panel opens or closes, keep the chart centred and the selection in view.
+    // A hidden chart (another tab shown, T1.16) has no width: its view stays as it was
+    // left, and on showing it moves only to keep the centre if the width changed meanwhile.
     let width = stage.clientWidth;
+    let shown = width > 0;
     this.observer = new ResizeObserver(() => {
       const next = stage.clientWidth;
+      const showing = !shown;
+      shown = next > 0;
+      if (!next) return;
+      if (this.fitWaiting) { width = next; this.fit(); return; }
+      if (showing && (next === width || !width)) { width = next; return; }
       this.view.x += (next - width) / 2;
       width = next;
       this.apply();
