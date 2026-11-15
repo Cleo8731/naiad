@@ -4,6 +4,7 @@
 import mermaid from 'mermaid';
 import { forMermaid, type Snap } from './semantics';
 import { parseDoc } from './core/scan';
+import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
 
 export type Target =
@@ -43,6 +44,7 @@ async function fontLoaded(): Promise<void> {
 }
 
 export function configureMermaid(dark: boolean): void {
+  placeLabelsNearSource();
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
