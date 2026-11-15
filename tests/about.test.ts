@@ -157,7 +157,7 @@ describe('View mode', () => {
   it('shows it as text, with no Edit; About stays in the toolbar', async () => {
     await start(`${BASE}\n%% @flowchart\n%% Read me.\n`);
     q<HTMLButtonElement>('[data-act="view"]')!.click();
-    await vi.waitFor(() => expect(q('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(q('[data-act="view"]')!.textContent!.trim()).toBe('View mode'));
     expect(kind()).toBe('About this flowchart');
     expect(body()).toBe('Read me.');
     expect(button('Edit')).toBeNull();

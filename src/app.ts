@@ -1,6 +1,8 @@
-// The window (its layout: the design handoff, T4.9, 2026-11-15): the rail on the left,
-// the tabs row, the recent list's pane, the Syntax pane and the sidebar with their grips,
-// the Undo island and the floating pill on the shown tab's chart; the choices made for
+// The window (its layout: the design handoff, T4.9, 2026-11-15): the rail on the left, in
+// three sections (the user, 2026-11-15, answering Q158 and Q159), the tabs row, the
+// recent list's pane or the Syntax pane (never both: the same answer) and the sidebar
+// with their grips, the Undo island and the floating pill on the shown tab's chart; the
+// choices made for
 // the whole window (View mode, About, the Touchpad and Mouse switch, the Highlight
 // switch, the Syntax pane, Appearance, the palette, the Syntax font, the panes' widths),
 // the windows laid over it (Customize, Settings), the keyboard, and closing. Each open
@@ -29,6 +31,8 @@ const VIEW_TIP = {
   editing: 'Edit mode. Click for View mode, to read the chart without changing it',
   viewing: 'View mode: the chart cannot be changed. Click for Edit mode',
 };
+/** The mode button's name on the rail, shown on pointing: the mode Naiad is in (Q158's answer). */
+const VIEW_LABEL = { editing: 'Edit mode', viewing: 'View mode' };
 /** The four directions of a chart: the file's word, its name, and its arrow's icon (T4.9). */
 const DIRS = [['TD', 'Top to bottom', 'down'], ['LR', 'Left to right', 'right'], ['BT', 'Bottom to top', 'up'], ['RL', 'Right to left', 'left']] as const;
 /**
@@ -143,18 +147,27 @@ export class App {
   constructor(private root: HTMLElement, private backend: Backend) {}
 
   async init(): Promise<void> {
-    // The rail (the design handoff, T4.9): the mark, then Recent files, Syntax and About;
-    // Customize and Settings at its foot. Beside it, the tabs row, the only row above the
-    // chart, then the recent list's pane, the Syntax pane and the tabs' views.
+    // The rail (the design handoff, T4.9), in three sections (the user, 2026-11-15,
+    // answering Q158 and Q159): at its top the mark, then Recent files, Syntax and About;
+    // at its middle the Touchpad and Mouse switch and the mode button, each named by the
+    // mode it is in; at its foot Customize and Settings. Beside it, the tabs row, the only
+    // row above the chart, then the recent list's pane, the Syntax pane and the tabs' views.
     this.root.innerHTML = `
       <nav class="rail" aria-label="Naiad">
-        <span class="mark" aria-hidden="true"></span>
-        <button data-act="recent" title="Show recent files" aria-pressed="false">${ICONS.recent}<span class="rlabel">Recent files</span></button>
-        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">${ICONS.syntax}<span class="rlabel">Syntax</span></button>
-        <button data-act="about" title="About: show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">${ICONS.about}<span class="rlabel">About</span></button>
-        <div class="spacer"></div>
-        <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
-        <button data-act="settings" title="Settings">${ICONS.settings}<span class="rlabel">Settings</span></button>
+        <div class="rail-top">
+          <span class="mark" aria-hidden="true"></span>
+          <button data-act="recent" title="Show recent files" aria-pressed="false">${ICONS.recent}<span class="rlabel">Recent files</span></button>
+          <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">${ICONS.syntax}<span class="rlabel">Syntax</span></button>
+          <button data-act="about" title="About: show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">${ICONS.about}<span class="rlabel">About</span></button>
+        </div>
+        <div class="rail-mid">
+          <button data-act="wheel" title="${WHEEL_TIP.mouse}">${ICONS.mouse}<span class="rlabel">${WHEEL_LABEL.mouse}</span></button>
+          <button data-act="view" title="${VIEW_TIP.editing}">${ICONS.edit}<span class="rlabel">${VIEW_LABEL.editing}</span></button>
+        </div>
+        <div class="rail-foot">
+          <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
+          <button data-act="settings" title="Settings">${ICONS.settings}<span class="rlabel">Settings</span></button>
+        </div>
       </nav>
       <div class="column">
         <header class="bar top">
@@ -179,7 +192,9 @@ export class App {
       <div class="toast" role="status" hidden></div>`;
     // The chart's tools (T4.9), laid over the shown tab's chart (`show`): Undo and Redo in
     // an island at its top left, with Clear beside it while anything is highlighted; and
-    // the floating pill at its foot. In View mode the island and the pill's first part go.
+    // the floating pill at its foot: the add-node button, a plus alone (Q158's answer),
+    // the direction button, Fit and Highlight. In View mode the island and the pill's
+    // first part go.
     const tools = document.createElement('div');
     tools.innerHTML = `
       <div class="island-row">
@@ -191,7 +206,7 @@ export class App {
       </div>
       <div class="pill" role="toolbar" aria-label="The chart's tools">
         <div class="pill-edit">
-          <button class="add" data-act="add" title="Add a node (or double-click empty space)">${ICONS.plus}<span>Node</span></button>
+          <button class="add" data-act="add" title="Add a node (or double-click empty space)" aria-label="Add a node">${ICONS.plus}</button>
           <span class="divider"></span>
           <div class="dir-wrap">
             <button class="icon" data-act="dir" aria-haspopup="menu" aria-expanded="false"></button>
@@ -202,10 +217,7 @@ export class App {
           <span class="divider"></span>
         </div>
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
-        <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-        <span class="divider"></span>
-        <button class="icon mode" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.edit}</button>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
@@ -692,19 +704,19 @@ export class App {
   private setWheelMode(mode: WheelMode): void {
     this.wheelMode = mode;
     for (const tab of this.tabs) tab.chart.setWheelMode(mode);
-    this.el.wheel.innerHTML = ICONS[mode];
+    this.el.wheel.innerHTML = `${ICONS[mode]}<span class="rlabel">${WHEEL_LABEL[mode]}</span>`;
     this.el.wheel.title = WHEEL_TIP[mode];
-    this.el.wheel.setAttribute('aria-label', WHEEL_LABEL[mode]);
   }
 
   private showViewing(on: boolean): void {
     this.viewing = on;
     for (const tab of this.tabs) tab.showViewing(on);
-    this.el.view.setAttribute('aria-pressed', String(on));
-    this.el.view.innerHTML = on ? ICONS.read : ICONS.edit;
-    this.el.view.title = on ? VIEW_TIP.viewing : VIEW_TIP.editing;
-    // The pill keeps Fit, the Touchpad and Mouse switch, Highlight and the mode button;
-    // the island goes too (`Tab.paintBar`).
+    // The mode button is named by the mode, so it is never "pressed" (Q158's answer).
+    const mode = on ? 'viewing' : 'editing';
+    this.el.view.innerHTML = `${on ? ICONS.read : ICONS.edit}<span class="rlabel">${VIEW_LABEL[mode]}</span>`;
+    this.el.view.title = VIEW_TIP[mode];
+    // The pill keeps Fit and Highlight, and the island goes (`Tab.paintBar`); the rail's
+    // middle stays.
     this.el.pillEdit.hidden = on;
     if (on) this.showDirMenu(false);
     if (!on) this.endViewNotice();
@@ -929,19 +941,38 @@ export class App {
     if (!w.open) w.showModal();
   }
 
+  /**
+   * Whether the person wants the Syntax pane open: set by the Syntax button (and a
+   * notice's Show syntax), kept between runs. The recent list's pane and the Syntax pane
+   * are never open together (the user, 2026-11-15, Q158's answer): while the recent
+   * list's pane is open the Syntax pane gives way to it, and it comes back when that pane
+   * closes (`paintSyntax`).
+   */
+  private syntaxChosen = false;
+
   private toggleRecent(show?: boolean): void {
     if (!this.recent) return;
     const visible = show ?? !this.recent.visible;
     this.recent.show(visible);
     this.el.recentToggle.setAttribute('aria-pressed', String(visible));
     this.el.recentToggle.title = visible ? 'Hide recent files' : 'Show recent files';
+    this.paintSyntax();
   }
 
   private toggleText(show?: boolean): void {
-    const visible = show ?? this.el.pane.hidden;
+    const visible = show ?? this.el.pane.hidden !== false;
+    this.syntaxChosen = visible;
+    remember('syntaxpane', visible ? 'shown' : 'hidden');
+    // Opening the Syntax pane closes the recent list's pane: one or the other.
+    if (visible && this.recent?.visible) this.toggleRecent(false);
+    else this.paintSyntax();
+  }
+
+  /** Shows the Syntax pane if the person chose it and the recent list's pane is closed. */
+  private paintSyntax(): void {
+    const visible = this.syntaxChosen && !this.recent?.visible;
     this.el.pane.hidden = !visible;
     this.el.textToggle.setAttribute('aria-pressed', String(visible));
-    remember('syntaxpane', visible ? 'shown' : 'hidden');
     // A notice's Show syntax button is there only while the pane is hidden.
     for (const tab of this.tabs) tab.paintNotices();
   }

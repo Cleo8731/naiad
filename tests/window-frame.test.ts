@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 // The window's frame after the design handoff (T4.9, the user, 2026-11-15), on the real
-// App with the chart stood in for (app-harness.ts): the left rail with the mark, Recent
-// files, Syntax and About, and Customize and Settings at its foot; the tabs row alone
-// above the chart; the Undo island and the floating pill on the shown tab's chart; the
-// three panes and their grips; no saved state shown, and failures as notices; the
+// App with the chart stood in for (app-harness.ts): the left rail in three sections (the
+// mark, Recent files, Syntax and About; the Touchpad and Mouse switch and the mode
+// button; Customize and Settings: the user's answer to Q158 and Q159, 2026-11-15); the
+// tabs row alone above the chart; the Undo island and the floating pill on the shown
+// tab's chart; the three panes and their grips, the recent list's pane and the Syntax
+// pane never open together; no saved state shown, and failures as notices; the
 // Customize window's Appearance, Theme and Syntax font; and `naiad serve`'s page.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -89,18 +91,26 @@ describe('the window\'s frame (T4.9)', () => {
     expect(q('.status')!.matches('.sr-only')).toBe(true);
   });
 
-  test('the rail: the mark, Recent files, Syntax and About; Customize and Settings at its foot; each icon with its name', async () => {
+  test('the rail in three sections: the mark, Recent files, Syntax and About; Touchpad or Mouse and the mode; Customize and Settings', async () => {
     await start();
-    const kids = [...rail().children];
-    expect(kids[0].matches('.mark')).toBe(true);
-    expect(kids[0].getAttribute('aria-hidden')).toBe('true');
-    const buttons = [...rail().querySelectorAll('button')];
-    expect(buttons.map((b) => [b.dataset.act, b.querySelector('.rlabel')!.textContent, b.querySelector('svg')!.getAttribute('data-icon')])).toEqual([
-      ['recent', 'Recent files', 'recent'], ['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about'],
-      ['customize', 'Customize', 'customize'], ['settings', 'Settings', 'settings'],
-    ]);
-    expect(button('customize').previousElementSibling!.matches('.spacer')).toBe(true);
-    for (const b of buttons) expect(b.getAttribute('aria-label'), b.dataset.act).toBeNull(); // its name says it
+    expect([...rail().children].map((c) => c.className)).toEqual(['rail-top', 'rail-mid', 'rail-foot']);
+    const mark = q('.rail-top')!.firstElementChild!;
+    expect(mark.matches('.mark')).toBe(true);
+    expect(mark.getAttribute('aria-hidden')).toBe('true');
+    const section = (sel: string) => [...q(sel)!.querySelectorAll('button')]
+      .map((b) => [b.dataset.act, b.querySelector('.rlabel')!.textContent, b.querySelector('svg')!.getAttribute('data-icon')]);
+    expect(section('.rail-top')).toEqual([['recent', 'Recent files', 'recent'], ['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about']]);
+    expect(section('.rail-mid')).toEqual([['wheel', 'Mouse mode', 'mouse'], ['view', 'Edit mode', 'edit']]);
+    expect(section('.rail-foot')).toEqual([['customize', 'Customize', 'customize'], ['settings', 'Settings', 'settings']]);
+    for (const b of rail().querySelectorAll('button')) expect(b.getAttribute('aria-label'), b.dataset.act).toBeNull(); // its name says it
+    // Neither the switch nor the mode button is left in the pill.
+    for (const act of ['wheel', 'view']) expect(q(`.pill [data-act="${act}"]`), act).toBeNull();
+  });
+
+  test('the rail\'s middle sits at its middle: the top and the foot take equal shares of the height', () => {
+    expect(rule('.rail')).toMatch(/display:\s*grid/);
+    expect(rule('.rail')).toMatch(/grid-template-rows:\s*1fr auto 1fr/);
+    expect(rules.find((r) => r.sel === '.rail-foot')?.body).toMatch(/justify-content:\s*flex-end/);
   });
 
   test('a rail button\'s name shows under the pointer only, over the content; the rail itself stays 48 px', () => {
@@ -119,7 +129,20 @@ describe('the window\'s frame (T4.9)', () => {
     expect(button('recent').getAttribute('aria-pressed')).toBe('false');
     button('recent').click();
     expect(button('recent').getAttribute('aria-pressed')).toBe('true');
+    expect(button('syntax').getAttribute('aria-pressed')).toBe('false'); // one pane or the other
     expect(button('about').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('the Touchpad and Mouse switch and the mode button show the mode they are in, by icon and name, never pressed', async () => {
+    await start();
+    expect(button('view').getAttribute('aria-pressed')).toBeNull();
+    button('view').click();
+    await vi.waitFor(() => expect(button('view').textContent!.trim()).toBe('View mode'));
+    expect(button('view').getAttribute('aria-pressed')).toBeNull();
+    expect(button('wheel').getAttribute('aria-pressed')).toBeNull();
+    button('wheel').click();
+    expect(button('wheel').textContent!.trim()).toBe('Touchpad mode');
+    expect(iconOf('wheel')).toBe('touchpad');
   });
 
   test('the Syntax pane has its head, "Mermaid syntax"', async () => {
@@ -174,6 +197,58 @@ describe('the three panes and their grips (T4.9)', () => {
   });
 });
 
+describe('the recent list\'s pane or the Syntax pane, never both (the user, 2026-11-15, Q158\'s answer)', () => {
+  const syntaxPane = () => q<HTMLElement>('.textpane')!;
+  const recentPane = () => q<HTMLElement>('nav.recent')!;
+  const pressed = (act: string) => button(act).getAttribute('aria-pressed') === 'true';
+
+  test('opening the recent list\'s pane hides the Syntax pane; closing it brings the Syntax pane back', async () => {
+    await start();
+    button('syntax').click();
+    button('recent').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
+    expect([pressed('recent'), pressed('syntax')]).toEqual([true, false]);
+    button('recent').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+    expect([pressed('recent'), pressed('syntax')]).toEqual([false, true]);
+  });
+
+  test('Syntax, clicked while the recent list\'s pane is open, closes that pane and shows the Syntax pane', async () => {
+    await start();
+    button('recent').click();
+    button('syntax').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+    expect([pressed('recent'), pressed('syntax')]).toEqual([false, true]);
+    button('syntax').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
+  });
+
+  test('with the Syntax pane closed, the recent list\'s pane opens and closes alone', async () => {
+    await start();
+    button('recent').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
+    button('recent').click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
+  });
+
+  test('a blank tab shows the recent list\'s pane in place of the Syntax pane, which comes back on a flowchart\'s tab', async () => {
+    const ui = await start();
+    button('syntax').click();
+    q<HTMLButtonElement>('[data-act="newtab"]')!.click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
+    ui.showTab('a.mmd');
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+  });
+
+  test('the Syntax pane, left open under the recent list\'s pane, is open at the next start', async () => {
+    await start();
+    button('syntax').click();
+    button('recent').click();
+    await restart();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+  });
+});
+
 describe('the Undo island and the floating pill (T4.9)', () => {
   test('Undo and Redo in an island at the shown chart\'s top left', async () => {
     await start();
@@ -183,13 +258,17 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     expect(button('clear').parentElement).toBe(island.parentElement); // Clear sits beside the island
   });
 
-  test('the pill: + Node, the direction, Fit, Touchpad or Mouse, Highlight, then the mode button', async () => {
+  test('the pill: the add-node button, the direction, Fit and Highlight', async () => {
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const items = [...pill.querySelectorAll<HTMLElement>(':scope > *, .pill-edit > *')].filter((e) => !e.matches('.pill-edit, .dir-menu'));
-    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'wheel', 'highlight', '|', 'view']);
-    expect(button('add').textContent!.trim()).toBe('Node');
+    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'highlight']);
+    // The add-node button is a plus alone (the user, 2026-11-15, Q158's answer).
+    expect(button('add').textContent!.trim()).toBe('');
+    expect(button('add').getAttribute('aria-label')).toBe('Add a node');
+    expect(button('add').title).toBe('Add a node (or double-click empty space)');
     expect(iconOf('add')).toBe('plus');
+    expect(rule('.add')).toMatch(/border-radius:\s*50%/);
     expect(iconOf('fit')).toBe('fit');
     expect(button('fit').getAttribute('aria-label')).toBe('Fit');
   });
@@ -241,20 +320,22 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     await start();
     const view = button('view');
     expect(iconOf('view')).toBe('edit');
+    expect(view.textContent!.trim()).toBe('Edit mode');
     expect(view.title).toBe('Edit mode. Click for View mode, to read the chart without changing it');
     view.click();
-    await vi.waitFor(() => expect(view.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(view.textContent!.trim()).toBe('View mode'));
     expect(iconOf('view')).toBe('read');
     expect(view.title).toBe('View mode: the chart cannot be changed. Click for Edit mode');
   });
 
-  test('View mode: the pill keeps Fit, Touchpad or Mouse, Highlight and the mode button; the island goes', async () => {
+  test('View mode: the pill keeps Fit and Highlight; the island goes; the rail\'s middle stays', async () => {
     localStorage.setItem('mode', 'view');
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const left = [...pill.querySelectorAll<HTMLElement>('button[data-act]')].filter(visible).map((b) => b.dataset.act);
-    expect(left).toEqual(['fit', 'wheel', 'highlight', 'view']);
+    expect(left).toEqual(['fit', 'highlight']);
     expect(visible(shownArea().querySelector('.island'))).toBe(false);
+    expect([visible(button('wheel')), visible(button('view'))]).toEqual([true, true]);
   });
 
   test('Clear shows the count of highlights, beside the island', async () => {
@@ -319,7 +400,7 @@ describe('the blank tab (T4.9)', () => {
 test('naiad serve\'s page, which shows one file: the rail without Recent files and Settings, and no tabs row', async () => {
   await start('served');
   expect(visible(rail())).toBe(true);
-  expect([...rail().querySelectorAll('button')].map((b) => b.dataset.act)).toEqual(['syntax', 'about', 'customize']);
+  expect([...rail().querySelectorAll('button')].map((b) => b.dataset.act)).toEqual(['syntax', 'about', 'wheel', 'view', 'customize']);
   for (const sel of ['header.top', 'nav.recent']) expect(q(sel), sel).toBeNull();
 });
 

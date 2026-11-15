@@ -2,8 +2,10 @@
 // The window's icons (T4.7, Q131 and Q132; the design handoff, T4.9): Undo and Redo in
 // the island, the pill's tools and the rail's buttons show Lucide's icons, each with a
 // name that says what it does. The mode button shows the mode Naiad is in (T4.9, in
-// place of Q131's "where a click goes"). And the icon files copied into src/icons/ are
-// plain drawings with their licence beside them.
+// place of Q131's "where a click goes"); since the user's answer to Q158 (2026-11-15) it
+// is on the rail's middle with the Touchpad and Mouse switch, and the add-node button is
+// a plus alone. And the icon files copied into src/icons/ are plain drawings with their
+// licence beside them.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,10 +29,10 @@ beforeEach(() => localStorage.clear());
 afterEach(() => { stopApps(); localStorage.clear(); });
 
 describe('the icons (T4.7, T4.9)', () => {
-  it('Undo, Redo, Fit, Highlight and the mode button show an icon only, and say what they do', async () => {
+  it('Undo, Redo, Fit and Highlight show an icon only, and say what they do', async () => {
     await start();
     const expected: Record<string, [string, string]> = {
-      undo: ['Undo', 'undo'], redo: ['Redo', 'redo'], fit: ['Fit', 'fit'], highlight: ['Highlight', 'highlight'], view: ['View mode', 'edit'],
+      undo: ['Undo', 'undo'], redo: ['Redo', 'redo'], fit: ['Fit', 'fit'], highlight: ['Highlight', 'highlight'],
     };
     for (const [act, [label, icon]] of Object.entries(expected)) {
       const b = button(act);
@@ -43,12 +45,16 @@ describe('the icons (T4.7, T4.9)', () => {
     }
   });
 
-  it('the rail\'s buttons and + Node show an icon and a word', async () => {
+  it('the rail\'s buttons show an icon and a word; the add-node button a plus alone, named for screen readers', async () => {
     await start();
-    for (const [act, word, icon] of [['add', 'Node', 'plus'], ['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about']]) {
+    for (const [act, word, icon] of [['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about'], ['wheel', 'Mouse mode', 'mouse'], ['view', 'Edit mode', 'edit']]) {
       expect(button(act).textContent!.trim(), act).toBe(word);
       expect(iconOf(act), act).toBe(icon);
     }
+    expect(button('add').textContent!.trim()).toBe('');
+    expect(button('add').getAttribute('aria-label')).toBe('Add a node');
+    expect(iconOf('add')).toBe('plus');
+    expect(button('add').querySelector('svg')!.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('the mode button shows the mode: the pencil while editing, the book in View mode', async () => {
@@ -56,19 +62,19 @@ describe('the icons (T4.7, T4.9)', () => {
     expect(iconOf('view')).toBe('edit');
     expect(button('view').title).toMatch(/^Edit mode\. Click for View mode/);
     button('view').click();
-    await vi.waitFor(() => expect(button('view').getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(button('view').textContent!.trim()).toBe('View mode'));
     expect(iconOf('view')).toBe('read');
     expect(button('view').title).toMatch(/^View mode: the chart cannot be changed\. Click for Edit mode/);
-    expect(button('view').getAttribute('aria-label')).toBe('View mode');
+    expect(button('view').getAttribute('aria-label')).toBeNull(); // its name, on the rail, says it
     button('view').click();
-    await vi.waitFor(() => expect(button('view').getAttribute('aria-pressed')).toBe('false'));
+    await vi.waitFor(() => expect(button('view').textContent!.trim()).toBe('Edit mode'));
     expect(iconOf('view')).toBe('edit');
   });
 
   it('a start in View mode, remembered from the last run, shows the book', async () => {
     localStorage.setItem('mode', 'view');
     await start();
-    expect(button('view').getAttribute('aria-pressed')).toBe('true');
+    expect(button('view').textContent!.trim()).toBe('View mode');
     expect(iconOf('view')).toBe('read');
   });
 });

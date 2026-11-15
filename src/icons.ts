@@ -77,6 +77,6 @@ export const ICONS = {
   trash: icon('trash', trash),
   /** Takes an entry off the recent list; closes a tab (T1.16) and a window. */
   close: icon('close', x),
-  /** Opens a blank tab, at the tab strip's end (T1.16); + Node in the pill. */
+  /** Opens a blank tab, at the tab strip's end (T1.16); the add-node button in the pill. */
   plus: icon('plus', plus),
 } as const;

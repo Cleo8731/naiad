@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // The Touchpad and Mouse button (D1.5, T1.14), on the real App with the chart stood in
 // for (app-harness.ts): Mouse at the first start (the user, 2026-11-14, T1.18), a click
-// switches, and the app keeps the person's choice between runs. What each mode does to
-// a wheel event: trackpad.test.ts.
+// switches, and the app keeps the person's choice between runs. Since the user's answer
+// to Q158 and Q159 (2026-11-15) it is the first button of the rail's middle, named by
+// the mode it is in. What each mode does to a wheel event: trackpad.test.ts.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { chartWheel, FakeDisk, startApp, stopApps } from './app-harness';
 
@@ -21,11 +22,12 @@ describe('the Touchpad and Mouse button', () => {
   beforeEach(() => { localStorage.clear(); chartWheel.mode = null; });
   afterEach(() => { stopApps(); localStorage.clear(); });
 
-  test('starts in Mouse mode the first time, its icon and label saying so', async () => {
+  test('starts in Mouse mode the first time, its icon and name saying so, on the rail\'s middle', async () => {
     await start();
     expect(chartWheel.mode).toBe('mouse');
     expect(icon()).toBe('mouse');
-    expect(button().getAttribute('aria-label')).toBe('Mouse mode');
+    expect(button().textContent!.trim()).toBe('Mouse mode');
+    expect(button().parentElement!.matches('.rail-mid')).toBe(true);
     expect(button().title).toMatch(/^Mouse mode: the wheel zooms/);
     // Nothing is kept until the person chooses.
     expect(localStorage.getItem('wheelmode')).toBeNull();
@@ -36,7 +38,7 @@ describe('the Touchpad and Mouse button', () => {
     button().click();
     expect(chartWheel.mode).toBe('touchpad');
     expect(icon()).toBe('touchpad');
-    expect(button().getAttribute('aria-label')).toBe('Touchpad mode');
+    expect(button().textContent!.trim()).toBe('Touchpad mode');
     expect(button().title).toMatch(/^Touchpad mode: two fingers move the chart, a pinch zooms\. Click for Mouse mode/);
     expect(localStorage.getItem('wheelmode')).toBe('touchpad');
     button().click();
@@ -61,8 +63,8 @@ describe('the Touchpad and Mouse button', () => {
   test('the button stays in View mode, where moving around the chart is still wanted', async () => {
     await start();
     document.querySelector<HTMLButtonElement>('[data-act="view"]')!.click();
-    await vi.waitFor(() => expect(document.querySelector('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
-    expect(button().hidden).toBe(false);
+    await vi.waitFor(() => expect(document.querySelector('[data-act="view"]')!.textContent!.trim()).toBe('View mode'));
+    expect(button().closest('[hidden]')).toBeNull();
     button().click();
     expect(chartWheel.mode).toBe('touchpad');
   });

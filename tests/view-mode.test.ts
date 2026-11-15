@@ -37,28 +37,29 @@ const press = (key: string, more: KeyboardEventInit = {}) => {
   document.body.dispatchEvent(e);
   return e;
 };
-/** Whether a control shows: neither it nor a part that holds it (the island, the pill's first part: T4.9) is hidden. */
+/** Whether a control shows: neither it nor a part that holds it (the island, the pill's first part: T4.9) is hidden.
+ * The Touchpad and Mouse switch and the mode button are on the rail's middle (Q158's answer, 2026-11-15). */
 const shows = (act: string) => !q<HTMLElement>(`[data-act="${act}"]`)!.closest('[hidden]');
 
 async function toView() {
   viewButton().click();
-  await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('true'));
+  await vi.waitFor(() => expect(viewButton().textContent!.trim()).toBe('View mode'));
 }
 
 beforeEach(() => localStorage.clear());
 afterEach(() => { stopApps(); localStorage.clear(); });
 
 describe('the View button (Q115) and the mode remembered (Q114)', () => {
-  it('switches to View: pressed, the edit controls gone, the Syntax pane read-only', async () => {
+  it('switches to View: the button named View mode, the edit controls gone, the Syntax pane read-only', async () => {
     const { ui } = await start();
-    expect(viewButton().getAttribute('aria-pressed')).toBe('false');
+    expect(viewButton().textContent!.trim()).toBe('Edit mode');
     expect(ui.area().readOnly).toBe(false);
     await toView();
     for (const act of ['add', 'undo', 'redo', 'dir']) expect(shows(act), act).toBe(false);
     for (const act of ['highlight', 'fit', 'wheel', 'syntax', 'view']) expect(shows(act), act).toBe(true);
     expect(ui.area().readOnly).toBe(true);
     viewButton().click();
-    await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('false'));
+    await vi.waitFor(() => expect(viewButton().textContent!.trim()).toBe('Edit mode'));
     expect(shows('add')).toBe(true);
     expect(shows('undo')).toBe(true);
     expect(ui.area().readOnly).toBe(false);
@@ -69,14 +70,14 @@ describe('the View button (Q115) and the mode remembered (Q114)', () => {
     await toView();
     stopApps();
     const again = await startApp(disk, FILE);
-    expect(viewButton().getAttribute('aria-pressed')).toBe('true');
+    expect(viewButton().textContent!.trim()).toBe('View mode');
     expect(again.area().readOnly).toBe(true);
     expect(shows('add')).toBe(false);
     viewButton().click();
-    await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('false'));
+    await vi.waitFor(() => expect(viewButton().textContent!.trim()).toBe('Edit mode'));
     stopApps();
     await startApp(disk, FILE);
-    expect(viewButton().getAttribute('aria-pressed')).toBe('false');
+    expect(viewButton().textContent!.trim()).toBe('Edit mode');
     expect(disk.files.get(FILE)).toBe(BASE);
     expect(disk.writes).toEqual([]);
   });
@@ -157,7 +158,7 @@ describe('in View, an edit tried changes nothing and a notice says why (D4.3)', 
     chartEvents.last!.onBlocked();
     const edit = [...document.querySelectorAll<HTMLButtonElement>('.notice.info button')].find((b) => b.textContent === 'Edit')!;
     edit.click();
-    await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('false'));
+    await vi.waitFor(() => expect(viewButton().textContent!.trim()).toBe('Edit mode'));
     expect(notice()).toBeNull();
     expect(ui.area().readOnly).toBe(false);
   });
@@ -252,7 +253,7 @@ describe('what was typed in the sidebar is written before View starts (C36, Q90)
     await sleep(400);
     viewButton().click();
     await vi.waitFor(() => expect(ui.toast()).toMatch(/The title you were typing was not saved, so Naiad stays in Edit mode\./));
-    expect(viewButton().getAttribute('aria-pressed')).toBe('false');
+    expect(viewButton().textContent!.trim()).toBe('Edit mode');
     expect(q<HTMLInputElement>('.sidebar input.title')!.value).toBe('Collect everything');
     expect(disk.files.get(FILE)).not.toContain('Collect everything');
   });

@@ -87,7 +87,7 @@ describe('while Naiad waits on one tab, another is changed', () => {
     check.release();
     await vi.waitFor(() => expect(disk.files.get(A)).toContain('A description'));
     expect(disk.files.get(B)).toContain('B description');
-    await vi.waitFor(() => expect(document.querySelector('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(document.querySelector('[data-act="view"]')!.textContent!.trim()).toBe('View mode'));
   });
 
   it('a browser page asks before it goes while About is writing a description (bug hunt H6)', async () => {

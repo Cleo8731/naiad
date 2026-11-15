@@ -273,7 +273,7 @@ describe('the recent list\'s pane', () => {
   test('it stays in View mode, where opening another file changes nothing', async () => {
     await start();
     q<HTMLButtonElement>('[data-act="view"]')!.click();
-    await vi.waitFor(() => expect(q('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(q('[data-act="view"]')!.textContent!.trim()).toBe('View mode'));
     expect(toggle().hidden).toBe(false);
     toggle().click();
     expect(pane().hidden).toBe(false);

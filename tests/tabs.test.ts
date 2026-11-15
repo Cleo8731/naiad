@@ -58,8 +58,10 @@ describe('the tab strip', () => {
   test('the chart\'s tools lie over the shown tab\'s chart, under the tabs row (T4.9)', async () => {
     await start();
     const area = shownView().querySelector('.chartarea')!;
-    expect(area.contains(q('[data-act="view"]'))).toBe(true);
     expect(area.contains(q('[data-act="add"]'))).toBe(true);
+    // The mode button and the Touchpad and Mouse switch are on the rail (Q158's answer).
+    expect(q('.rail-mid')!.contains(q('[data-act="view"]'))).toBe(true);
+    expect(q('.rail-mid')!.contains(q('[data-act="wheel"]'))).toBe(true);
     expect(area.contains(q('[data-act="undo"]'))).toBe(true);
     // Under the tabs row: the recent list's pane, the Syntax pane, the chart and the sidebar.
     expect(strip().parentElement!.nextElementSibling).toBe(q('main'));
@@ -177,7 +179,8 @@ describe('the tab strip', () => {
     // No tabs row: the rail, then the chart with its tools (T4.9).
     expect(q('header.top')).toBeNull();
     expect(q('.rail')!.contains(q('[data-act="syntax"]'))).toBe(true);
-    expect(shownView().querySelector('.chartarea')!.contains(q('[data-act="view"]'))).toBe(true);
+    expect(shownView().querySelector('.chartarea')!.contains(q('[data-act="add"]'))).toBe(true);
+    expect(q('.rail')!.contains(q('[data-act="view"]'))).toBe(true);
     expect(ui.area().value).toBe(TEXT);
     expect(ui.status()).toBe('Saved');
   });
@@ -301,7 +304,7 @@ describe('what each tab keeps, and what the window keeps', () => {
     await ui.app.open(B);
     q<HTMLButtonElement>('[data-act="highlight"]')!.click();
     q<HTMLButtonElement>('[data-act="view"]')!.click();
-    await vi.waitFor(() => expect(q('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() => expect(q('[data-act="view"]')!.textContent!.trim()).toBe('View mode'));
     ui.showTab('a.mmd');
     expect(ui.area().readOnly).toBe(true);
     expect(q('[data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('true');

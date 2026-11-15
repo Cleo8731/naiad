@@ -228,14 +228,18 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 
 /* ---- the rail (48 px): each button is its icon; the one under the pointer widens over
-   the window to show its name. A switch that is on keeps the soft accent square. */
+   the window to show its name. A switch that is on keeps the soft accent square. Three
+   sections (the user, 2026-11-15, answering Q158 and Q159): the top and the foot take
+   equal shares of the height, so the middle sits at the rail's middle. */
 .rail {
-  position: relative; z-index: 12; width: 48px; flex: none; display: flex; flex-direction: column;
-  align-items: flex-start; gap: 4px; padding: 12px 7px 10px; overflow: visible; user-select: none;
+  position: relative; z-index: 12; width: 48px; flex: none; display: grid;
+  grid-template-rows: 1fr auto 1fr; grid-template-columns: minmax(0, 1fr);
+  padding: 12px 7px 10px; overflow: visible; user-select: none;
   background: var(--panel); border-right: 1px solid var(--line);
 }
+.rail-top, .rail-mid, .rail-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 0; }
+.rail-foot { justify-content: flex-end; }
 .rail .mark { width: 24px; height: 24px; margin: 0 5px 12px; }
-.rail .spacer { flex: 1; }
 .rail button {
   display: flex; align-items: center; gap: 10px; flex: none; height: 34px; max-width: 34px; padding: 0 8px;
   border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted);
@@ -385,7 +389,7 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .clear:hover:not(:disabled) { border-color: var(--highlight-ink); }
 
 /* The pill: centred at the chart's foot. In a chart narrower than the pill it wraps onto
-   a second row, so no control is cut off (Q158, recommended). */
+   a second row, so no control is cut off (Q158's fallback, kept). */
 .pill {
   position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 7; width: fit-content; margin: 0 auto;
   display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; padding: 5px;
@@ -393,15 +397,13 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 .pill-edit { display: contents; }
 .divider { flex: none; width: 1px; height: 22px; margin: 0 4px; background: var(--line); }
+/* The add-node button: a plus alone in a round accent button (Q158's answer). */
 .add {
-  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px;
-  border: 0; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 50%; background: var(--accent); color: var(--on-accent);
 }
 .add svg { width: 18px; height: 18px; display: block; }
 .add:hover:not(:disabled) { background: var(--accent-press); }
-/* The mode button shows the mode Naiad is in, so it has no "on" look of its own. */
-.pill button.icon.mode, .pill button.icon.mode[aria-pressed="true"] { background: var(--field); color: var(--accent); }
-.pill button.icon.mode:hover { background: var(--accent-soft); color: var(--accent); }
 /* The direction button's menu opens above it; a strip under the menu keeps the pointer
    over it while it crosses the gap. */
 .dir-wrap { position: relative; display: flex; }
