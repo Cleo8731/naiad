@@ -61,11 +61,16 @@ button.danger { color: var(--bad); }
 button.danger:hover { border-color: var(--bad); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ---- top bar */
+/* ---- the window's two rows (the user, 2026-11-14): the top row holds the recent list's
+   button and the tabs; the toolbar is the row beneath, over the chart. */
 .bar {
-  display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px; flex: none;
+  display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px; flex: none;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
+.bar.top { gap: 4px; padding: 0 6px; }
+/* The toolbar shares the window's width with the recent list's pane: in a narrow window
+   it scrolls sideways rather than cut its last buttons off. */
+.bar.tools { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .bar .status { margin-left: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .bar .status[data-state="bad"] { color: var(--bad); }
 .bar .spacer { flex: 1; }
@@ -85,14 +90,14 @@ button.danger:hover { border-color: var(--bad); }
 
 main { position: relative; flex: 1; display: flex; min-height: 0; }
 
-/* ---- tabs (T1.16): the strip of open files above the chart; one tab is shown at a time.
-   The shown tab has the soft accent square. A tab's × shows on the shown tab, and on
-   another while the pointer is over it, as the recent list's × does. */
+/* ---- tabs (T1.16): the strip of open files, in the top row after the recent list's
+   button; one tab is shown at a time. The shown tab has the soft accent square. A tab's ×
+   shows on the shown tab, and on another while the pointer is over it, as the recent
+   list's × does. */
 .work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tabs {
-  display: flex; align-items: center; gap: 2px; height: 36px; padding: 0 6px; flex: none;
-  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; user-select: none;
-  background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; height: 100%; padding: 0 2px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
 }
 .tab {
   position: relative; display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 28px;
@@ -119,7 +124,7 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 .tabs button.icon svg { width: 16px; height: 16px; display: block; }
 .tabs button.icon:hover { background: var(--accent-soft); border-color: transparent; color: var(--text); }
-/* Under the strip: the Syntax pane, then the shown tab's chart, sidebar and notices. */
+/* Under the toolbar: the Syntax pane, then the shown tab's chart, sidebar and notices. */
 .body { position: relative; flex: 1; display: flex; min-height: 0; }
 .tabview { display: contents; }
 

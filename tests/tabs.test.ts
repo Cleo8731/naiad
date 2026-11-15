@@ -49,10 +49,24 @@ describe('the tab strip', () => {
     expect(strip().lastElementChild).toBe(plus());
     expect(plus().getAttribute('aria-label')).toBe('New tab');
     expect(plus().querySelector('svg')!.getAttribute('data-icon')).toBe('plus');
-    // Right of the recent list's pane, above the Syntax pane, the chart and the sidebar.
-    expect(strip().parentElement!.previousElementSibling).toBe(q('nav.recent'));
-    expect(strip().nextElementSibling!.contains(q('.textpane'))).toBe(true);
-    expect(strip().nextElementSibling!.contains(q('.stage'))).toBe(true);
+    // In the window's top row, right after the recent list's button (the user, 2026-11-14).
+    const top = strip().parentElement!;
+    expect(top).toBe(q('#app')!.firstElementChild);
+    expect(top.firstElementChild).toBe(q('[data-act="recent"]'));
+    expect(top.children).toHaveLength(2);
+  });
+
+  test('the toolbar is the row beneath the tabs, over the chart, right of the recent list\'s pane (the user, 2026-11-14)', async () => {
+    await start();
+    const tools = q<HTMLElement>('[data-act="view"]')!.closest('.bar')!;
+    expect(tools).not.toBe(strip().parentElement);
+    expect(tools.querySelector('.status')).not.toBeNull();
+    expect(tools.querySelector('[data-act="add"]')).not.toBeNull();
+    // Above the Syntax pane, the chart and the sidebar.
+    expect(tools.nextElementSibling).toBe(q('.body'));
+    expect(q('.body')!.contains(q('.textpane'))).toBe(true);
+    expect(q('.body')!.contains(q('.stage'))).toBe(true);
+    expect(tools.parentElement!.previousElementSibling).toBe(q('nav.recent'));
   });
 
   test('the toolbar keeps the shown tab\'s saved state, and neither the file\'s name nor Open and New (Q140)', async () => {
@@ -148,8 +162,8 @@ describe('the tab strip', () => {
 
   test('the recent list marks the shown tab\'s file, and nothing for a blank tab', async () => {
     const ui = await start();
-    q<HTMLButtonElement>('.bar [data-act="recent"]')!.click();
     await ui.app.open(B);
+    q<HTMLButtonElement>('.bar [data-act="recent"]')!.click();
     expect(q('nav.recent li.current .rname')!.textContent).toBe('b.mmd');
     ui.showTab('a.mmd');
     expect(q('nav.recent li.current .rname')!.textContent).toBe('a.mmd');
@@ -160,6 +174,9 @@ describe('the tab strip', () => {
   test('naiad serve\'s page shows its one file with no strip', async () => {
     const ui = await start('served');
     expect(q('.tabs')).toBeNull();
+    // Only the toolbar: the top row held the tabs and the recent list's button.
+    expect(document.querySelectorAll('.bar')).toHaveLength(1);
+    expect(q('#app')!.firstElementChild!.contains(q('[data-act="view"]'))).toBe(true);
     expect(ui.area().value).toBe(TEXT);
     expect(ui.status()).toBe('Saved');
   });

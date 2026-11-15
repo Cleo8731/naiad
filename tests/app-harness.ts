@@ -146,8 +146,8 @@ export function stopApps(): void {
   for (const [type, fn] of listeners.splice(0)) window.removeEventListener(type, fn);
 }
 
-/** Builds the page the way main.ts does, with the fake disk, and opens `path`. */
-export async function startApp(disk: FakeDisk, path: string) {
+/** Builds the page the way main.ts does, with the fake disk, and opens `path` (none: the window as it starts with no file). */
+export async function startApp(disk: FakeDisk, path: string | null) {
   // jsdom lacks this.
   (window as unknown as { matchMedia: unknown }).matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   mermaid.initialize({ startOnLoad: false });
@@ -166,7 +166,7 @@ export async function startApp(disk: FakeDisk, path: string) {
   } finally {
     window.addEventListener = add;
   }
-  await app.open(path);
+  if (path !== null) await app.open(path);
   const q = <T extends Element>(s: string) => document.querySelector<T>(s)!;
   const tabs = () => [...document.querySelectorAll<HTMLElement>('.tabs .tab')];
   const tabNamed = (name: string) => tabs().find((t) => t.querySelector('.tname')!.textContent === name);

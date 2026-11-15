@@ -23,7 +23,8 @@ const VIEW_TIP = {
 };
 /**
  * The Touchpad and Mouse switch (D1.5, the user's option): its icon and label show the
- * mode it is in, and its tooltip what a click changes. Touchpad at the first start.
+ * mode it is in, and its tooltip what a click changes. Mouse at the first start (the
+ * user, 2026-11-14).
  */
 const WHEEL_TIP: Record<WheelMode, string> = {
   touchpad: 'Touchpad mode: two fingers move the chart, a pinch zooms. Click for Mouse mode, where the wheel zooms',
@@ -90,33 +91,37 @@ export class App {
   constructor(private root: HTMLElement, private backend: Backend) {}
 
   async init(): Promise<void> {
+    // The top row: the recent list's button, then the tabs. The toolbar is the row beneath
+    // them, over the chart, right of the recent list's pane (the user, 2026-11-14).
     this.root.innerHTML = `
-      <header class="bar">
+      <header class="bar top">
         <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
-        <span class="status"></span>
-        <div class="spacer"></div>
-        <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
-        <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
-        <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
-        <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
-          <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
-          <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
-        </select>
-        <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
-             Highlight stays where it is and a second click on it never lands on Clear. -->
-        <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
-        <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-        <button data-act="fit" title="Fit the chart to the window">Fit</button>
-        <button class="icon" data-act="wheel" title="${WHEEL_TIP.touchpad}" aria-label="${WHEEL_LABEL.touchpad}">${ICONS.touchpad}</button>
-        <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
-        <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
-        <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
+        <div class="tabs" role="tablist" aria-label="Open flowcharts">
+          <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
+        </div>
       </header>
       <main>
         <nav class="recent" aria-label="Recent files" hidden></nav>
         <div class="work">
-          <div class="tabs" role="tablist" aria-label="Open flowcharts">
-            <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
+          <div class="bar tools">
+            <span class="status"></span>
+            <div class="spacer"></div>
+            <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
+            <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
+            <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
+            <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
+              <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
+              <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
+            </select>
+            <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
+                 Highlight stays where it is and a second click on it never lands on Clear. -->
+            <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
+            <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
+            <button data-act="fit" title="Fit the chart to the window">Fit</button>
+            <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
+            <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
+            <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
+            <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
           </div>
           <div class="body">
             <section class="textpane" hidden></section>
@@ -135,7 +140,8 @@ export class App {
     };
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for.
-      this.root.querySelectorAll('[data-act="recent"], nav.recent, .tabs').forEach((b) => b.remove());
+      // Its top row held only the tabs and the recent list's button.
+      this.root.querySelectorAll('header.top, nav.recent').forEach((b) => b.remove());
       this.el.strip = null;
     }
 
@@ -156,15 +162,18 @@ export class App {
     if (remember('syntaxpane') === 'shown') this.toggleText(true);
     // Naiad opens in the mode it was last left in (Q114).
     if (remember('mode') === 'view') this.showViewing(true);
-    // Touchpad or Mouse mode, as last chosen; Touchpad at the first start (D1.5).
-    this.setWheelMode(remember('wheel') === 'mouse' ? 'mouse' : 'touchpad');
+    // Touchpad or Mouse mode, as the person last chose; Mouse until they choose (the
+    // user, 2026-11-14). The old name, "wheel", held Touchpad written at every start,
+    // chosen or not, so it is not read.
+    this.setWheelMode(remember('wheelmode') === 'touchpad' ? 'touchpad' : 'mouse');
     // The flowchart's description shows unless the person hid it (T1.13).
     if (remember('about') === 'hidden') this.showAbout(false);
     // A notice's details wrap to another height when the window's width changes.
     window.addEventListener('resize', () => this.tab.padUnderNotices());
     const width = Number(remember('textpane-width'));
     if (width >= 220) this.el.pane.style.width = `${width}px`;
-    // The recent list (T1.15), wherever Open is: hidden at the first start, then as left.
+    // The recent list (T1.15), wherever Open is. Whether its pane shows follows the shown
+    // tab (`recentFollows`), set once the file to open at start, if any, is open.
     const nav = this.root.querySelector<HTMLElement>('nav.recent');
     if (nav) {
       this.recent = new RecentPane(nav, {
@@ -173,13 +182,13 @@ export class App {
         load: () => remember('recent'),
         save: (value) => { remember('recent', value); },
       });
-      if (remember('recentpane') === 'shown') this.toggleRecent(true);
       // Another window opened a file: its list is this one's too.
       window.addEventListener('storage', (e) => { if (e.key === 'recent' || e.key === null) this.recent?.reload(); });
     }
 
     const path = await this.backend.initialPath().catch(() => null);
     if (path) await this.open(path);
+    this.recentFollows(this.tab);
 
     // The shown tab's highlights file is looked at once a second (and at once when the
     // view comes back into sight), so an agent's highlights show without Naiad watching
@@ -261,7 +270,25 @@ export class App {
     this.parts.get(tab)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     this.backend.setWindowTitle(tab.file ? `${basename(tab.file)} - Naiad` : 'Naiad');
     this.recent?.mark(tab.file);
+    this.recentFollows(tab);
     tab.show();
+  }
+
+  /**
+   * Whether the recent list's pane shows follows the shown tab (the user, 2026-11-14):
+   * shown on a new blank tab, hidden once a flowchart opens; going from a blank tab to a
+   * flowchart's, or back, does the same. Between two tabs of one kind it stays as the
+   * person left it, and its button shows and hides it at any time.
+   */
+  private paneFor: 'blank' | 'file' | null = null;
+
+  /** Sets the recent list's pane for the shown tab: on a change of kind, or `always` (a new blank tab, a flowchart opened). */
+  private recentFollows(tab: Tab, always = false): void {
+    if (!this.recent || tab !== this.tab) return;
+    const kind = tab.file ? 'file' : 'blank';
+    if (kind === this.paneFor && !always) return;
+    this.paneFor = kind;
+    this.toggleRecent(kind === 'blank');
   }
 
   /** The + (Q140): a blank tab after the shown one, shown. */
@@ -269,6 +296,7 @@ export class App {
     const tab = this.makeTab();
     this.place(tab, this.tab);
     this.show(tab);
+    this.recentFollows(tab, true);
   }
 
   /** Closing a tab with its × (Q143): at once when nothing would be lost; otherwise Naiad shows it and asks. */
@@ -298,9 +326,11 @@ export class App {
     p.item.remove();
     p.view.remove();
     p.area.remove();
-    if (!this.tabs.length) this.place(this.makeTab());
+    const last = !this.tabs.length;
+    if (last) this.place(this.makeTab());
     if (tab === this.tab) this.show(this.tabs[Math.min(at, this.tabs.length - 1)]);
     else this.paintStrip();
+    if (last) this.recentFollows(this.tab, true); // a new blank tab
     // The shell deletes the highlights file of a flowchart no view shows: the closed tab's
     // file is kept in the window's list until its highlight writes are done, so none lands
     // after the delete (bug hunt H5).
@@ -417,6 +447,12 @@ export class App {
   }
 
   private async openNow(path: string): Promise<void> {
+    await this.openInTab(path);
+    // A flowchart opened, or its tab shown: the recent list's pane goes (the user, 2026-11-14).
+    if (this.tab.file !== null && samePath(this.tab.file, path)) this.recentFollows(this.tab, true);
+  }
+
+  private async openInTab(path: string): Promise<void> {
     const from = this.tab;
     const there = this.tabs.find((t) => t.file !== null && samePath(t.file, path));
     if (there) {
@@ -481,8 +517,8 @@ export class App {
     this.showViewing(on);
   }
 
-  /** Touchpad or Mouse mode (D1.5): the person's choice, kept by the app between runs. */
-  private wheelMode: WheelMode = 'touchpad';
+  /** Touchpad or Mouse mode (D1.5): the person's choice, kept by the app between runs; Mouse until they choose. */
+  private wheelMode: WheelMode = 'mouse';
 
   private setWheelMode(mode: WheelMode): void {
     this.wheelMode = mode;
@@ -490,7 +526,6 @@ export class App {
     this.el.wheel.innerHTML = ICONS[mode];
     this.el.wheel.title = WHEEL_TIP[mode];
     this.el.wheel.setAttribute('aria-label', WHEEL_LABEL[mode]);
-    remember('wheel', mode);
   }
 
   private showViewing(on: boolean): void {
@@ -598,7 +633,6 @@ export class App {
     this.recent.show(visible);
     this.el.recentToggle.setAttribute('aria-pressed', String(visible));
     this.el.recentToggle.title = visible ? 'Hide recent files' : 'Show recent files';
-    remember('recentpane', visible ? 'shown' : 'hidden');
   }
 
   private toggleText(show?: boolean): void {
@@ -628,7 +662,12 @@ export class App {
       if (act === 'clear') void this.tab.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
       if (act === 'about') this.setAbout(!this.about);
-      if (act === 'wheel') this.setWheelMode(this.wheelMode === 'touchpad' ? 'mouse' : 'touchpad');
+      if (act === 'wheel') {
+        // Kept only when the person chooses, so the first start's mode can change later.
+        const mode = this.wheelMode === 'touchpad' ? 'mouse' : 'touchpad';
+        this.setWheelMode(mode);
+        remember('wheelmode', mode);
+      }
     });
     this.el.dir.addEventListener('change', () => { void this.tab.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
 
