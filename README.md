@@ -43,13 +43,15 @@ No installer is published yet. To use Naiad now, make the installer yourself
 `src-tauri/target/release/bundle/nsis/Naiad_0.3.0_x64-setup.exe` (2.8 MB). It installs
 Naiad for your Windows user in `%LOCALAPPDATA%\Naiad`, registers it for `.mmd` and
 `.mermaid` files, so a double-click on a `.mmd` file opens it, and adds the `naiad`
-command to your PATH. Then open a file with **Open**, or start one with **New**.
+command to your PATH. Then open a file with **Open a file**, or start one with **New
+flowchart**.
 
 ## Using it
 
 | To | Do |
 |---|---|
-| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. Naiad remembers whether the list is shown. A page from `naiad serve` has no list |
+| Open several flowcharts | Each file opens in its own tab, in the strip above the chart. The **+** at the strip's end opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
+| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. Naiad remembers whether the list is shown. A page from `naiad serve` has no list |
 | Read a description | Click a node |
 | Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
 | Add a node | **+ Node**, or double-click empty space |
@@ -139,7 +141,7 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 
 ## What Naiad reads and keeps
 
-- The file you open: read again whenever it changes on disk, and written only as
+- Each file you open: read again whenever it changes on disk, and written only as
   [FILE-FORMAT.md](FILE-FORMAT.md#what-naiad-changes-in-a-file-and-what-it-never-does)
   describes.
 - Highlights: `.naiad/<file name>/highlights.txt` in the flowchart's folder, with
@@ -169,6 +171,9 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
   [FILE-FORMAT.md](FILE-FORMAT.md#mermaid-syntax-naiad-can-edit-from-the-chart).
 - Mermaid places the boxes. The file keeps no positions, so a node cannot be moved by
   hand.
+- The tabs are not opened again when Naiad starts again; **Recent files** lists their
+  files. A double-click on a `.mmd` file while Naiad is open opens a second window,
+  not a tab in the open one.
 
 ## Building from source
 
