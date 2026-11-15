@@ -5,41 +5,28 @@
   font-family: Nunito; font-style: normal; font-weight: 200 1000; font-display: block;
   src: url('./fonts/nunito-latin.woff2') format('woff2');
 }
+/* The colours, each as light-dark(light, dark). Appearance (T4.8) sets `data-theme` on
+   the page's root to light or dark; without it, the computer's setting decides (System). */
 :root {
   color-scheme: light dark;
-  --bg: #f4f5f7;
-  --panel: #ffffff;
-  --line: #dde1e7;
-  --text: #1c2026;
-  --muted: #667085;
-  --accent: #3b5bdb;
-  --accent-soft: #e6ebff;
-  --on-accent: #ffffff;
-  --bad: #c92a2a;
-  --warn-bg: #fff4d6;
-  --warn-text: #6b4a00;
-  --dot: #d5d9e0;
-  --hl: #f59f00;
+  --bg: light-dark(#f4f5f7, #16181c);
+  --panel: light-dark(#ffffff, #1e2126);
+  --line: light-dark(#dde1e7, #30353d);
+  --text: light-dark(#1c2026, #e8eaed);
+  --muted: light-dark(#667085, #98a1b0);
+  --accent: light-dark(#3b5bdb, #8da2fb);
+  --accent-soft: light-dark(#e6ebff, #252d4d);
+  --on-accent: light-dark(#ffffff, #10131a);
+  --bad: light-dark(#c92a2a, #ff8787);
+  --warn-bg: light-dark(#fff4d6, #362d12);
+  --warn-text: light-dark(#6b4a00, #f0d48a);
+  --dot: light-dark(#d5d9e0, #2a2e35);
+  --hl: light-dark(#f59f00, #fcc419);
   --ui: Nunito, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181c;
-    --panel: #1e2126;
-    --line: #30353d;
-    --text: #e8eaed;
-    --muted: #98a1b0;
-    --accent: #8da2fb;
-    --accent-soft: #252d4d;
-    --on-accent: #10131a;
-    --bad: #ff8787;
-    --warn-bg: #362d12;
-    --warn-text: #f0d48a;
-    --dot: #2a2e35;
-    --hl: #fcc419;
-  }
-}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -61,15 +48,15 @@ button.danger { color: var(--bad); }
 button.danger:hover { border-color: var(--bad); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ---- the window's two rows (the user, 2026-11-14): the top row holds the recent list's
-   button and the tabs; the toolbar is the row beneath, over the chart. */
+/* ---- the window's two rows (the user, 2026-11-14): the top row holds the tabs; the
+   toolbar is the row beneath, across the whole window, over the recent list's pane and
+   the chart (T1.21). */
 .bar {
   display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px; flex: none;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
 .bar.top { gap: 4px; padding: 0 6px; }
-/* The toolbar shares the window's width with the recent list's pane: in a narrow window
-   it scrolls sideways rather than cut its last buttons off. */
+/* In a narrow window the toolbar scrolls sideways rather than cut its last buttons off. */
 .bar.tools { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .bar .status { margin-left: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .bar .status[data-state="bad"] { color: var(--bad); }
@@ -87,14 +74,20 @@ button.danger:hover { border-color: var(--bad); }
 .bar button.icon[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
 .bar button.icon[data-act="view"][aria-pressed="true"] { background: transparent; color: var(--muted); }
 .bar button.icon:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--text); }
+/* The caret button (T1.21), the toolbar's last: it points up while the top row shows and
+   turns upside down while it is hidden; at once when Windows' animation effects are off. */
+.bar button.caret { margin-left: 2px; }
+.bar button.caret svg { transition: transform 160ms ease; }
+.bar button.caret[aria-expanded="false"] svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .bar button.caret svg { transition: none; }
+}
 
 main { position: relative; flex: 1; display: flex; min-height: 0; }
 
-/* ---- tabs (T1.16): the strip of open files, in the top row after the recent list's
-   button; one tab is shown at a time. The shown tab has the soft accent square. A tab's ×
-   shows on the shown tab, and on another while the pointer is over it, as the recent
-   list's × does. */
-.work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* ---- tabs (T1.16): the strip of open files, the top row; one tab is shown at a time.
+   The shown tab has the soft accent square. A tab's × shows on the shown tab, and on
+   another while the pointer is over it, as the recent list's × does. */
 .tabs {
   display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; height: 100%; padding: 0 2px;
   overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
@@ -139,12 +132,26 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
   font: 12.5px/1.6 var(--mono); tab-size: 4; white-space: pre;
 }
 
-/* ---- the recent list's pane (T1.15): the files opened before, on the window's far left.
-   A name wraps rather than being cut off; the × shows on hover; a file not found is faded. */
+/* ---- the recent list's pane (T1.15): the files opened before, on the window's left,
+   under the toolbar (T1.21). A name wraps rather than being cut off; the × shows on
+   hover; a file not found is faded. The list scrolls in its own part; the pane's foot,
+   Customize and Settings, stays under it (the user, 2026-11-14). */
 .recent {
-  width: 220px; flex: none; display: flex; flex-direction: column; overflow-y: auto; user-select: none;
-  padding: 10px 8px 12px; background: var(--panel); border-right: 1px solid var(--line);
+  width: 220px; flex: none; display: flex; flex-direction: column; user-select: none;
+  background: var(--panel); border-right: 1px solid var(--line);
 }
+.recent .rlist {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin;
+  padding: 10px 8px 12px;
+}
+.recent .pane-foot { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; border-top: 1px solid var(--line); }
+/* Its buttons have no outline (the user, 2026-11-14): the soft square under the pointer only. */
+.recent .pane-foot button {
+  display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 8px;
+  border: 0; border-radius: 7px; background: transparent; color: var(--muted); text-align: left;
+}
+.recent .pane-foot button svg { width: 18px; height: 18px; flex: none; display: block; }
+.recent .pane-foot button:hover { background: var(--accent-soft); color: var(--text); }
 .recent h2 { margin: 2px 8px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .recent li { position: relative; border-radius: 7px; }
@@ -306,6 +313,35 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
 .side-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
 .side-foot .hint { flex: 1 1 100%; }
+
+/* ---- the windows laid over Naiad's (T1.21, T4.8): Customize and Settings. The dialog
+   fills the screen as the dimmed area; its box holds the window's rows. */
+dialog.overlay-window {
+  width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.28);
+}
+dialog.overlay-window::backdrop { background: rgb(0 0 0 / 0.35); }
+.ow-box { display: flex; flex-direction: column; gap: 14px; padding: 12px 16px 18px; }
+.ow-head { display: flex; align-items: center; gap: 8px; }
+.ow-head h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 700; }
+.ow-close {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 7px; background: transparent; color: var(--muted);
+}
+.ow-close svg { width: 16px; height: 16px; display: block; }
+.ow-close:hover { background: var(--accent-soft); color: var(--text); }
+.ow-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ow-row > span { font-weight: 600; }
+.ow-note { margin: 0; color: var(--muted); font-size: 12.5px; }
+/* A choice of a few, side by side: the chosen one raised. Real radio buttons, so the
+   arrow keys move between them. */
+.segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.segmented label { position: relative; padding: 4px 12px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.segmented label:hover { color: var(--text); }
+.segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.segmented label:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); }
+.segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: min(620px, 90vw); padding: 10px 14px;

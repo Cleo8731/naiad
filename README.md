@@ -50,8 +50,9 @@ flowchart**.
 
 | To | Do |
 |---|---|
-| Open several flowcharts | Each file opens in its own tab, in the window's top row; the toolbar is the row beneath it. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
-| Open a file you opened before | The **Recent files** button, a panel, at the left end of the top row, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. A page from `naiad serve` has no list |
+| Open several flowcharts | Each file opens in its own tab, in the window's top row; the toolbar is the row beneath it. The arrow at the right end of the toolbar hides the top row, for more room for the chart, and turns upside down; click it again to show the tabs. Naiad remembers your choice. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
+| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first, in a pane under the toolbar: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. A page from `naiad serve` has no list |
+| Choose light or dark | **Customize**, at the bottom of the recent files pane, opens a window with **Light**, **Dark** and **System**. System, the choice until you pick another, follows the light or dark setting of your computer. The window closes with its ×, Escape, or a click outside it. A page from `naiad serve` follows your computer's setting |
 | Read a description | Click a node |
 | Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
 | Add a node | **+ Node**, or double-click empty space |
@@ -152,7 +153,8 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
 - Whether the Syntax pane is shown, its width, whether View mode and **About** are on,
-  and Touchpad or Mouse mode once you choose one, in the window's own storage.
+  whether the top row is hidden, Touchpad or Mouse mode once you choose one, and Light,
+  Dark or System once you choose one, in the window's own storage.
 - The full paths of the last 50 files you opened, for the recent files, in the same
   storage (`src/recent.ts`). While the list is shown, Naiad checks that each listed
   file is still there; it reads none of them until you click one.

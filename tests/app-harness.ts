@@ -13,6 +13,9 @@ export const chartTiming = { drawDelay: 0 };
 /** The events the app gave the last stand-in chart (a click on an item, say). */
 export const chartEvents: { last: import('../src/chart').ChartEvents | null } = { last: null };
 
+/** Whether the app last set Mermaid up to draw dark (`configureMermaid`), or null before any. */
+export const chartTheme: { dark: boolean | null } = { dark: null };
+
 /** The wheel mode the app last gave the chart (`setWheelMode`), or null before any. */
 export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { mode: null };
 
@@ -27,7 +30,7 @@ export const charts: {
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
-  configureMermaid: () => {},
+  configureMermaid: (dark: boolean) => { chartTheme.dark = dark; },
   Chart: class {
     drawn: string[] = [];
     sidebarShown: boolean[] = [];
@@ -76,6 +79,8 @@ export class FakeDisk {
   /** The window's files, as last recorded (`Backend.viewing`), and its title. */
   viewed: string[] = [];
   title = '';
+  /** The title bar's theme, as last set (`Backend.setTheme`; null: the computer's), or undefined before any. */
+  theme: 'light' | 'dark' | null | undefined = undefined;
   /** Called as Naiad asks, before the answer (to see what the window shows then). */
   onAsk: ((message: string) => void) | null = null;
 
@@ -123,6 +128,7 @@ export class FakeDisk {
       pickSave: async () => null,
       openLink: () => {},
       setWindowTitle: (title) => { this.title = title; },
+      setTheme: (theme) => { this.theme = theme; },
       confirm: async (message) => { this.asked.push(message); this.onAsk?.(message); return this.answer; },
       guardClose: (canClose) => { this.closeGuard = canClose; },
     };

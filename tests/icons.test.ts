@@ -83,12 +83,12 @@ describe('the icon files (Q132)', () => {
     expect(licence).toContain('Cole Bemis');
   });
 
-  it('are plain drawings: only svg, path and rect, no script, no event handler, no link', () => {
+  it('are plain drawings: only svg, path, rect and circle, no script, no event handler, no link', () => {
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {
       const svg = readFileSync(join(ICON_DIR, f), 'utf8');
       const tags = [...svg.matchAll(/<([a-zA-Z][\w-]*)/g)].map((m) => m[1]);
-      expect(tags.every((t) => ['svg', 'path', 'rect'].includes(t)), `${f}: ${tags.join(',')}`).toBe(true);
+      expect(tags.every((t) => ['svg', 'path', 'rect', 'circle'].includes(t)), `${f}: ${tags.join(',')}`).toBe(true);
       expect(/\son[a-z]+\s*=|href|<script/i.test(svg), f).toBe(false);
       expect(svg).toContain('stroke="currentColor"');
     }

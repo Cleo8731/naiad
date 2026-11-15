@@ -49,24 +49,24 @@ describe('the tab strip', () => {
     expect(strip().lastElementChild).toBe(plus());
     expect(plus().getAttribute('aria-label')).toBe('New tab');
     expect(plus().querySelector('svg')!.getAttribute('data-icon')).toBe('plus');
-    // In the window's top row, right after the recent list's button (the user, 2026-11-14).
+    // The window's top row holds the tab strip alone (the user, 2026-11-14, T1.18 and T1.21).
     const top = strip().parentElement!;
     expect(top).toBe(q('#app')!.firstElementChild);
-    expect(top.firstElementChild).toBe(q('[data-act="recent"]'));
-    expect(top.children).toHaveLength(2);
+    expect(top.children).toHaveLength(1);
   });
 
-  test('the toolbar is the row beneath the tabs, over the chart, right of the recent list\'s pane (the user, 2026-11-14)', async () => {
+  test('the toolbar is the row beneath the tabs, over the chart and the recent list\'s pane (the user, 2026-11-14, T1.21)', async () => {
     await start();
     const tools = q<HTMLElement>('[data-act="view"]')!.closest('.bar')!;
     expect(tools).not.toBe(strip().parentElement);
     expect(tools.querySelector('.status')).not.toBeNull();
     expect(tools.querySelector('[data-act="add"]')).not.toBeNull();
-    // Above the Syntax pane, the chart and the sidebar.
-    expect(tools.nextElementSibling).toBe(q('.body'));
+    // Above the recent list's pane, the Syntax pane, the chart and the sidebar.
+    expect(tools.previousElementSibling).toBe(strip().parentElement);
+    expect(tools.nextElementSibling).toBe(q('main'));
+    expect(q('main')!.contains(q('nav.recent'))).toBe(true);
     expect(q('.body')!.contains(q('.textpane'))).toBe(true);
     expect(q('.body')!.contains(q('.stage'))).toBe(true);
-    expect(tools.parentElement!.previousElementSibling).toBe(q('nav.recent'));
   });
 
   test('the toolbar keeps the shown tab\'s saved state, and neither the file\'s name nor Open and New (Q140)', async () => {

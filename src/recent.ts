@@ -67,7 +67,11 @@ export interface RecentHooks {
   save(value: string): void;
 }
 
-/** The pane: the list, the shown tab's file marked, the files not found greyed. */
+/**
+ * The pane: the list, the shown tab's file marked, the files not found greyed. The list
+ * is drawn in its own part of the pane (`el`), which scrolls alone; the pane's foot,
+ * under it, is the window's (T1.21).
+ */
 export class RecentPane {
   private list: string[];
   private current: string | null = null;
@@ -77,17 +81,17 @@ export class RecentPane {
   /** Counts the checks, so that only the latest one's answer is drawn. */
   private checks = 0;
 
-  constructor(private el: HTMLElement, private hooks: RecentHooks) {
+  constructor(private pane: HTMLElement, private el: HTMLElement, private hooks: RecentHooks) {
     this.list = readRecent(hooks.load());
   }
 
   get visible(): boolean {
-    return !this.el.hidden;
+    return !this.pane.hidden;
   }
 
   /** Shows or hides the pane; shown, it looks again at which files are there. */
   show(visible: boolean): void {
-    this.el.hidden = !visible;
+    this.pane.hidden = !visible;
     this.update();
   }
 

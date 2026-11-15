@@ -1,13 +1,16 @@
-// The window: the toolbar, the tab strip, the recent list, the choices made for the whole
-// window (View mode, About, the Touchpad and Mouse switch, the Highlight switch, the
-// Syntax pane), the keyboard, and closing. Each open file is a tab (src/tab.ts), which
-// keeps its text, its chart, its sidebar and its Syntax pane's text, and saves it. One
-// tab is shown at a time; the others keep everything as it was (T1.16).
+// The window: the toolbar, the tab strip, the recent list and the pane's foot, the
+// choices made for the whole window (View mode, About, the Touchpad and Mouse switch,
+// the Highlight switch, the Syntax pane, the top row hidden or shown, Appearance), the
+// windows laid over it (Customize, Settings), the keyboard, and closing. Each open file
+// is a tab (src/tab.ts), which keeps its text, its chart, its sidebar and its Syntax
+// pane's text, and saves it. One tab is shown at a time; the others keep everything as
+// it was (T1.16).
 
 import type { Backend } from './backend';
 import { configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
 import { ICONS } from './icons';
+import { customizeWindow, isDark, readAppearance, settingsWindow, type Appearance } from './overlays';
 import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
 import { basename, errorText, Tab, type TabWindow } from './tab';
@@ -33,6 +36,10 @@ const WHEEL_TIP: Record<WheelMode, string> = {
 const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mouse: 'Mouse mode' };
 /** A blank tab's name (Q140). */
 const BLANK_NAME = 'New tab';
+/** The caret button's tooltip (T1.21): what a click does. */
+const TOPROW_TIP = { shown: 'Hide the tabs, for more room for the chart', hidden: 'Show the tabs' };
+/** The windows laid over Naiad's, opened from the pane's foot (T1.21, T4.8). */
+type WindowName = 'customize' | 'settings';
 
 function remember(key: string, value?: string): string | null {
   try {
@@ -81,7 +88,7 @@ export class App {
     status: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
-    wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
+    wheel: HTMLButtonElement; recentToggle: HTMLButtonElement; topToggle: HTMLButtonElement;
     /** The tab strip and its +; none in `naiad serve`'s page, which shows one file. */
     strip: HTMLElement | null; plus: HTMLButtonElement; body: HTMLElement;
   };
@@ -91,41 +98,49 @@ export class App {
   constructor(private root: HTMLElement, private backend: Backend) {}
 
   async init(): Promise<void> {
-    // The top row: the recent list's button, then the tabs. The toolbar is the row beneath
-    // them, over the chart, right of the recent list's pane (the user, 2026-11-14).
+    // The top row: the tabs, hidden and shown by the caret button at the toolbar's right
+    // end. The toolbar is the row beneath, across the whole window; its first button shows
+    // and hides the recent list's pane, which runs under it, beside the Syntax pane, the
+    // chart and the sidebar. The pane's foot holds Customize and Settings, apart from the
+    // list, which scrolls alone (the user, 2026-11-14, T1.21).
     this.root.innerHTML = `
-      <header class="bar top">
-        <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
+      <header class="bar top" id="toprow">
         <div class="tabs" role="tablist" aria-label="Open flowcharts">
           <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
         </div>
       </header>
+      <div class="bar tools">
+        <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
+        <span class="status"></span>
+        <div class="spacer"></div>
+        <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
+        <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
+        <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
+        <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
+          <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
+          <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
+        </select>
+        <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
+             Highlight stays where it is and a second click on it never lands on Clear. -->
+        <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
+        <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
+        <button data-act="fit" title="Fit the chart to the window">Fit</button>
+        <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
+        <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
+        <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
+        <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
+        <button class="icon caret" data-act="tabrow" title="${TOPROW_TIP.shown}" aria-label="Tabs" aria-controls="toprow" aria-expanded="true">${ICONS.caret}</button>
+      </div>
       <main>
-        <nav class="recent" aria-label="Recent files" hidden></nav>
-        <div class="work">
-          <div class="bar tools">
-            <span class="status"></span>
-            <div class="spacer"></div>
-            <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
-            <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
-            <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
-            <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
-              <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
-              <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
-            </select>
-            <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
-                 Highlight stays where it is and a second click on it never lands on Clear. -->
-            <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
-            <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-            <button data-act="fit" title="Fit the chart to the window">Fit</button>
-            <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
-            <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
-            <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
-            <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
+        <nav class="recent" aria-label="Recent files" hidden>
+          <div class="rlist"></div>
+          <div class="pane-foot">
+            <button data-act="customize">${ICONS.customize}<span>Customize</span></button>
+            <button data-act="settings">${ICONS.settings}<span>Settings</span></button>
           </div>
-          <div class="body">
-            <section class="textpane" hidden></section>
-          </div>
+        </nav>
+        <div class="body">
+          <section class="textpane" hidden></section>
         </div>
       </main>
       <div class="toast" role="status" hidden></div>`;
@@ -135,22 +150,21 @@ export class App {
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
-      wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
+      wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'), topToggle: q('[data-act="tabrow"]'),
       strip: q('.tabs'), plus: q('[data-act="newtab"]'), body: q('.body'),
     };
     if (this.backend.kind === 'served') {
-      // The in-browser version shows the one file it was started for.
-      // Its top row held only the tabs and the recent list's button.
-      this.root.querySelectorAll('header.top, nav.recent').forEach((b) => b.remove());
+      // The in-browser version shows the one file it was started for: no tabs, so no
+      // top row and no caret button; no recent list, so no pane and no button for it.
+      this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="tabrow"]').forEach((b) => b.remove());
       this.el.strip = null;
     }
 
-    const dark = window.matchMedia('(prefers-color-scheme: dark)');
-    configureMermaid(dark.matches);
-    dark.addEventListener('change', () => {
-      configureMermaid(dark.matches);
-      for (const tab of this.tabs) void tab.redraw(); // a hidden tab draws when it is shown
-    });
+    // Appearance (T4.8): Light, Dark, or System, which follows the computer's setting.
+    this.system = window.matchMedia('(prefers-color-scheme: dark)');
+    this.appearance = readAppearance(remember('appearance'));
+    this.applyAppearance();
+    this.system.addEventListener('change', () => this.applyAppearance());
 
     // A window with no file open holds one blank tab (Q140).
     const first = this.makeTab();
@@ -168,6 +182,8 @@ export class App {
     this.setWheelMode(remember('wheelmode') === 'touchpad' ? 'touchpad' : 'mouse');
     // The flowchart's description shows unless the person hid it (T1.13).
     if (remember('about') === 'hidden') this.showAbout(false);
+    // The top row shows unless the person hid it with the caret button (T1.21).
+    if (remember('toprow') === 'hidden') this.showTopRow(false);
     // A notice's details wrap to another height when the window's width changes.
     window.addEventListener('resize', () => this.tab.padUnderNotices());
     const width = Number(remember('textpane-width'));
@@ -176,7 +192,7 @@ export class App {
     // tab (`recentFollows`), set once the file to open at start, if any, is open.
     const nav = this.root.querySelector<HTMLElement>('nav.recent');
     if (nav) {
-      this.recent = new RecentPane(nav, {
+      this.recent = new RecentPane(nav, nav.querySelector<HTMLElement>('.rlist')!, {
         open: (path) => { void this.openRecent(path); },
         existing: (paths) => this.backend.existing(paths),
         load: () => remember('recent'),
@@ -627,6 +643,67 @@ export class App {
     for (const tab of this.tabs) tab.paint();
   }
 
+  /** The caret button (T1.21): hides the top row, for more room, and shows it again; kept between runs. */
+  private showTopRow(show: boolean): void {
+    const top = this.root.querySelector<HTMLElement>('header.top');
+    if (!top) return;
+    top.hidden = !show;
+    this.el.topToggle.setAttribute('aria-expanded', String(show));
+    this.el.topToggle.title = show ? TOPROW_TIP.shown : TOPROW_TIP.hidden;
+    remember('toprow', show ? 'shown' : 'hidden');
+  }
+
+  /** Appearance (T4.8): the person's choice, kept by the app between runs; System until they choose. */
+  private appearance: Appearance = 'system';
+  /** The computer's light or dark setting. */
+  private system!: MediaQueryList;
+  /** Whether Mermaid is set up to draw dark; null before the first setting. */
+  private dark: boolean | null = null;
+  /** The Appearance the title bar was last given; none before the first. */
+  private titleBar: Appearance | null = null;
+
+  private setAppearance(choice: Appearance): void {
+    this.appearance = choice;
+    remember('appearance', choice);
+    this.applyAppearance();
+  }
+
+  /**
+   * Draws the window, the title bar and the chart as Appearance says: the page's colours
+   * through `data-theme` on the page's root (none: the computer's setting; `style.css`),
+   * and, when light turns to dark or back, Mermaid set up again and every tab drawn again
+   * (a hidden tab draws when it is shown).
+   */
+  private applyAppearance(): void {
+    const root = document.documentElement;
+    if (this.appearance === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', this.appearance);
+    if (this.titleBar !== this.appearance) {
+      this.titleBar = this.appearance;
+      this.backend.setTheme(this.appearance === 'system' ? null : this.appearance);
+    }
+    const dark = isDark(this.appearance, this.system.matches);
+    if (dark === this.dark) return;
+    this.dark = dark;
+    configureMermaid(dark);
+    for (const tab of this.tabs) void tab.redraw();
+  }
+
+  /** The windows over Naiad's, each made the first time it is opened (T1.21, T4.8). */
+  private windows = new Map<WindowName, HTMLDialogElement>();
+
+  private openWindow(name: WindowName): void {
+    let w = this.windows.get(name);
+    if (!w) {
+      w = name === 'customize'
+        ? customizeWindow({ appearance: () => this.appearance, setAppearance: (choice) => this.setAppearance(choice) })
+        : settingsWindow();
+      this.root.append(w);
+      this.windows.set(name, w);
+    }
+    if (!w.open) w.showModal();
+  }
+
   private toggleRecent(show?: boolean): void {
     if (!this.recent) return;
     const visible = show ?? !this.recent.visible;
@@ -658,6 +735,8 @@ export class App {
       if (act === 'fit') this.tab.chart.fit();
       if (act === 'syntax') this.toggleText();
       if (act === 'recent') this.toggleRecent();
+      if (act === 'tabrow') this.showTopRow(this.el.topToggle.getAttribute('aria-expanded') === 'false');
+      if (act === 'customize' || act === 'settings') this.openWindow(act);
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.tab.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
@@ -686,8 +765,9 @@ export class App {
       this.el.pane.addEventListener('pointerup', up, { once: true });
     });
 
-    // The keys act on the shown tab only.
+    // The keys act on the shown tab only, and not while a window lies over Naiad's (T1.21).
     window.addEventListener('keydown', (e) => {
+      if (this.root.querySelector('dialog[open]')) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && key === 's') { e.preventDefault(); void this.tab.save(true); return; }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The recent list's pane (T1.15, stage 1 of D1.6), on the real App with the chart stood
-// in for (app-harness.ts): its button at the top row's left end; shown on a blank tab
+// in for (app-harness.ts): its button at the toolbar's left end (T1.21); shown on a blank tab
 // and hidden once a flowchart opens, not kept between runs (the user, 2026-11-14,
 // T1.18); each file opened goes on top; a click opens an entry in the
 // shown tab when it is blank, otherwise in a new tab, and shows a file already open
@@ -40,9 +40,9 @@ beforeEach(() => localStorage.clear());
 afterEach(() => { stopApps(); localStorage.clear(); });
 
 describe('the recent list\'s pane', () => {
-  test('its button is the top row\'s first, an icon that says what it does; the pane is hidden with a flowchart open', async () => {
+  test('its button is the toolbar\'s first (T1.21), an icon that says what it does; the pane is hidden with a flowchart open', async () => {
     await start();
-    expect(q('.bar')!.firstElementChild).toBe(toggle());
+    expect(q('.bar.tools')!.firstElementChild).toBe(toggle());
     expect(toggle().classList.contains('icon')).toBe(true);
     expect(toggle().querySelector('svg')!.getAttribute('data-icon')).toBe('recent');
     expect(toggle().getAttribute('aria-label')).toBe('Recent files');

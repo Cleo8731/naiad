@@ -16,6 +16,9 @@ import mouse from './icons/mouse.svg?raw';
 import panelLeft from './icons/panel-left.svg?raw';
 import x from './icons/x.svg?raw';
 import plus from './icons/plus.svg?raw';
+import paintbrush from './icons/paintbrush.svg?raw';
+import settings from './icons/settings.svg?raw';
+import chevronUp from './icons/chevron-up.svg?raw';
 
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
@@ -34,8 +37,14 @@ export const ICONS = {
   /** The Touchpad and Mouse switch (D1.5) shows the mode it is in. */
   touchpad: icon('touchpad', touchpad),
   mouse: icon('mouse', mouse),
-  /** Shows and hides the recent list's pane (T1.15), at the toolbar's left end. */
+  /** Shows and hides the recent list's pane (T1.15), at the toolbar's left end (T1.21). */
   recent: icon('recent', panelLeft),
+  /** Opens the Customize window, from the pane's foot (T1.21, T4.8). */
+  customize: icon('customize', paintbrush),
+  /** Opens the Settings window, from the pane's foot (T1.21). */
+  settings: icon('settings', settings),
+  /** The caret button, at the toolbar's right end: hides and shows the top row (T1.21). */
+  caret: icon('caret', chevronUp),
   /** Takes an entry off the recent list; closes a tab (T1.16). */
   close: icon('close', x),
   /** Opens a blank tab, at the tab strip's end (T1.16). */

@@ -61,6 +61,11 @@ export interface Backend {
   pickSave(suggestedName: string): Promise<string | null>;
   openLink(url: string): void;
   setWindowTitle(title: string): void;
+  /**
+   * The title bar's light or dark, as Appearance says (T4.8); null follows the computer's
+   * setting. Only the desktop app has a title bar of its own.
+   */
+  setTheme(theme: 'light' | 'dark' | null): void;
   /** Asks the person a yes-or-no question; true for yes. */
   confirm(message: string): Promise<boolean>;
   /**
@@ -117,6 +122,7 @@ async function desktop(): Promise<Backend> {
     pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: NEW_FILTERS }),
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
+    setTheme: (theme) => { void getCurrentWindow().setTheme(theme).catch(() => {}); },
     confirm: (message) => dialog.ask(message, { title: 'Naiad', kind: 'warning' }),
     guardClose(canClose) {
       void getCurrentWindow().onCloseRequested(async (event) => {
@@ -207,6 +213,7 @@ function browser(): Backend {
     pickSave: async () => null,
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
     setWindowTitle: (title) => { document.title = title; },
+    setTheme: () => {},
     confirm: async (message) => window.confirm(message),
     guardClose: () => {},
   };
