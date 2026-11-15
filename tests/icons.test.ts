@@ -45,7 +45,7 @@ describe('the toolbar icons (T4.7)', () => {
 
   it('the buttons the user did not name keep their words', async () => {
     await start();
-    for (const [act, word] of [['add', '+ Node'], ['fit', 'Fit'], ['about', 'About'], ['open', 'Open']]) {
+    for (const [act, word] of [['add', '+ Node'], ['fit', 'Fit'], ['about', 'About']]) {
       expect(button(act).classList.contains('icon'), act).toBe(false);
       expect(button(act).textContent!.trim(), act).toBe(word);
     }

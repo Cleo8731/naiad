@@ -21,7 +21,6 @@ vi.mock('../src/verify', async (original) => {
 });
 
 const FILE = 'C:/hunt/flow.mmd';
-const OTHER = 'C:/hunt/other.mmd';
 const BASE = `flowchart TD
     collect[Collect data] --> clean{Clean?}
     clean -- yes --> train[Train model]
@@ -40,7 +39,6 @@ afterEach(() => {
 async function start(text = BASE) {
   const disk = new FakeDisk();
   disk.files.set(FILE, text);
-  disk.files.set(OTHER, 'flowchart LR\n    o[O]\n');
   return { disk, ui: await startApp(disk, FILE) };
 }
 
@@ -313,7 +311,6 @@ describe('a program that writes the file in two steps is not cut in on (bug hunt
 
 describe('leaving a flowchart asks before an edit is lost (bug hunt S19: C10)', () => {
   const AGENT = BASE + '\n%% agent\n';
-  const SHOWN_OTHER = 'flowchart LR\n    o[O]\n';
 
   /** A chart edit waiting to be saved when the agent's write lands; the watcher has not fired yet. */
   async function displaced() {
@@ -325,12 +322,15 @@ describe('leaving a flowchart asks before an edit is lost (bug hunt S19: C10)', 
     return s;
   }
 
-  it('C10: Open right after a change on disk displaced the edit asks, and No keeps the edit in Undo', async () => {
+  // A tab's × (T1.16): the step that leaves a file. Open and the recent list never replace
+  // a file's tab (Q140, Q142), so they never ask.
+  it('C10: closing a tab right after a change on disk displaced the edit asks, and No keeps the tab and the edit in Undo', async () => {
     const { disk, ui } = await displaced();
     disk.answer = false;
-    await ui.app.open(OTHER);
+    await ui.closeTab('flow.mmd');
     expect(disk.asked).toHaveLength(1);
-    expect(disk.asked[0]).toMatch(/^Your last edit to flow\.mmd was not written: the file changed on disk first\..*Open other\.mmd and lose it\?$/);
+    expect(disk.asked[0]).toMatch(/^Your last edit to flow\.mmd was not written: the file changed on disk first\..*Close flow\.mmd and lose it\?$/);
+    expect(ui.tabs()).toEqual(['flow.mmd']);
     expect(ui.area().value).toBe(AGENT);
     expect(ui.undoEnabled()).toBe(true);
     disk.answer = true; // Undo asks before it takes back the change on disk (C3)
@@ -338,32 +338,33 @@ describe('leaving a flowchart asks before an edit is lost (bug hunt S19: C10)', 
     expect(await ui.until((t) => t.startsWith('flowchart LR'))).toBe(true);
   });
 
-  it('C10: and Yes opens the other file', async () => {
+  it('C10: and Yes closes the tab', async () => {
     const { disk, ui } = await displaced();
     disk.answer = true;
-    await ui.app.open(OTHER);
+    await ui.closeTab('flow.mmd');
     expect(disk.asked).toHaveLength(1);
-    expect(ui.area().value).toBe(SHOWN_OTHER);
+    expect(ui.tabs()).toEqual(['New tab']);
     expect(disk.files.get(FILE)).toBe(AGENT);
   });
 
-  it('Open while the text holds a change Mermaid cannot read asks first', async () => {
+  it('closing a tab whose text holds a change Mermaid cannot read asks first', async () => {
     const { disk, ui } = await start();
     ui.type(BROKEN);
     await sleep(400);
-    await ui.app.open(OTHER);
-    expect(disk.asked).toEqual(['flow.mmd holds a change that is not saved (Mermaid cannot read the text). Open other.mmd and lose it?']);
+    await ui.closeTab('flow.mmd');
+    expect(disk.asked).toEqual(['flow.mmd holds a change that is not saved (Mermaid cannot read the text). Close flow.mmd and lose it?']);
+    expect(ui.tabs()).toEqual(['flow.mmd']);
     expect(ui.area().value).toBe(BROKEN);
     expect(disk.files.get(FILE)).toBe(BASE);
   });
 
-  it('Open with nothing unsaved asks nothing', async () => {
+  it('closing a tab with nothing unsaved asks nothing, and saves an edit still waiting first', async () => {
     const { disk, ui } = await start();
     ui.direction('LR');
     await ui.until((t) => t.startsWith('flowchart LR'));
-    await ui.app.open(OTHER);
+    await ui.closeTab('flow.mmd');
     expect(disk.asked).toEqual([]);
-    expect(ui.area().value).toBe(SHOWN_OTHER);
+    expect(ui.tabs()).toEqual(['New tab']);
     expect(disk.files.get(FILE)).toMatch(/^flowchart LR/);
   });
 
@@ -1185,7 +1186,7 @@ describe('the Syntax pane', () => {
     for (let t0 = Date.now(); !bad() && Date.now() - t0 < 3000;) await sleep(5);
     expect(pane().hidden).toBe(true);
     expect(bad()!.querySelector('.notice-text')!.textContent).toBe('Mermaid cannot read this text, so the chart shows the last good version.');
-    expect(bad()!.parentElement!.matches('main > .notices')).toBe(true);
+    expect(bad()!.parentElement!.matches('.body > .tabview > .notices')).toBe(true);
     expect(bad()!.closest('[hidden]')).toBeNull();
     const press = (label: string) => [...bad()!.querySelectorAll('button')].find((b) => b.textContent === label)!.click();
     expect(bad()!.querySelector('pre')).toBeNull();

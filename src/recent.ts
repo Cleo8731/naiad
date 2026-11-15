@@ -1,7 +1,8 @@
 // The recent list (T1.15): the flowchart files opened in Naiad, newest first, kept by
 // the app between runs (never in a flowchart file), and the pane on the window's far
-// left that shows them. A click on an entry opens it as Open does; × takes it off the
-// list; a file that cannot be found stays, greyed, until it is taken off.
+// left that shows them. A click on an entry opens it (T1.16: in the shown tab when that
+// tab is blank, otherwise in a new tab; a file already open shows its tab); × takes it
+// off the list; a file that cannot be found stays, greyed, until it is taken off.
 
 import { ICONS } from './icons';
 
@@ -57,7 +58,7 @@ export function folderLabel(path: string): string {
 }
 
 export interface RecentHooks {
-  /** Opens a listed file, as Open does (asking first if unsaved text would be lost). */
+  /** Opens a listed file, never in place of another file (Q142). */
   open(path: string): void;
   /** Which of these paths name a flowchart file that is there. */
   existing(paths: string[]): Promise<boolean[]>;
@@ -66,7 +67,7 @@ export interface RecentHooks {
   save(value: string): void;
 }
 
-/** The pane: the list, the open file marked, the files not found greyed. */
+/** The pane: the list, the shown tab's file marked, the files not found greyed. */
 export class RecentPane {
   private list: string[];
   private current: string | null = null;
@@ -90,11 +91,16 @@ export class RecentPane {
     this.update();
   }
 
-  /** A file was opened in this window: it goes on top, marked as the open one. */
+  /** A file was opened in this window: it goes on top. */
   opened(path: string): void {
-    this.current = path;
     this.missing.delete(path.toLowerCase());
     this.keep(withOpened(this.list, path));
+  }
+
+  /** Marks the shown tab's file (T1.16); none for a blank tab. */
+  mark(path: string | null): void {
+    this.current = path;
+    this.update();
   }
 
   /** Reads the list again: another window changed it. */

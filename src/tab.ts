@@ -1,7 +1,8 @@
 // A tab: one open file, kept as text (T1.16). The chart, the Syntax pane and the sidebar
 // are three views of that text; every change from any of them becomes new text, which is
 // drawn again and saved to the file. A change to the file on disk comes back the same way.
-// The window around it (`App`, src/app.ts) holds the toolbar and the window's choices.
+// The window around it (`App`, src/app.ts) holds the toolbar, the tab strip and the
+// window's choices; it shows one of its tabs at a time, and the others keep theirs.
 
 import type { Backend } from './backend';
 import { Chart, type Target } from './chart';
@@ -20,6 +21,17 @@ interface Step { text: string; disk: boolean }
 /** How long the file must have been quiet after a change from outside before a save (`saveNow`). */
 const SETTLE_MS = 1000;
 const NODE_TEXT = '#1c2026';
+
+/**
+ * One reading and drawing at a time for the whole page (T1.16): every tab's chart is
+ * drawn by the page's one Mermaid, so one tab's never runs between another's steps.
+ */
+let drawing: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const run = drawing.then(job);
+  drawing = run.catch(() => {});
+  return run;
+}
 
 export function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -97,13 +109,15 @@ export interface TabElements {
 /** What a tab uses of its window (`App`): the toolbar, and the choices made for the whole window. */
 export interface TabWindow {
   readonly backend: Backend;
-  /** The toolbar's controls that show the tab's file. */
+  /** The toolbar's controls that show the shown tab's file. */
   readonly bar: {
-    name: HTMLElement; status: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
+    status: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; fit: HTMLButtonElement; highlight: HTMLButtonElement; clear: HTMLButtonElement;
   };
   /** The Syntax pane: a notice offers to show it while it is hidden. */
   readonly pane: HTMLElement;
+  /** Whether this tab is the one shown: only that one paints the toolbar. */
+  shown(): boolean;
   /** View mode (D4.3, T1.11). */
   viewing(): boolean;
   /** The About button (D1.4, T1.13). */
@@ -120,7 +134,7 @@ export interface TabWindow {
   setAbout(on: boolean): void;
   showAbout(on: boolean): void;
   showSyntax(): void;
-  /** The tab is opening `path`, which could be read: the recent list. */
+  /** The tab is opening `path`, which could be read: the recent list and the tab's name. */
   opening(path: string): void;
   /** The tab's file is now `path`: the window's title and the record of what it shows. */
   opened(path: string): void;
@@ -153,6 +167,12 @@ export class Tab {
   private hlText = '';
   /** Counts this view's own changes to the highlights, so a slower read cannot undo one. */
   private hlVersion = 0;
+  /** Hidden while another tab is shown (T1.16): a change is then read at once and drawn when the tab is shown. */
+  private hidden = false;
+  /** A drawing put off while the tab was hidden. */
+  private stale = false;
+  /** Closed with its ×: an open still under way stops, and watches nothing. */
+  private closed = false;
 
   readonly chart: Chart;
   readonly sidebar: Sidebar;
@@ -214,11 +234,13 @@ export class Tab {
   }
 
   /**
-   * Before another file is shown, or Naiad closes: saves what waits to be saved, then
-   * asks before an edit is lost, whether it cannot be saved or a change on disk
-   * displaced it and only Undo holds it (bug hunt C10). `what` names the step: "Open x".
+   * Before the tab closes, or Naiad does: saves what waits to be saved, then asks before
+   * an edit is lost, whether it cannot be saved or a change on disk displaced it and only
+   * Undo holds it (bug hunt C10). `what` names the step: "Close x.mmd". `showing` runs
+   * just before Naiad asks, so the window can show this tab first (T1.16).
    */
-  async leave(what: string): Promise<boolean> {
+  async leave(what: string, showing?: () => void): Promise<boolean> {
+    const confirm = (message: string) => { showing?.(); return this.backend.confirm(message); };
     // Text typed into the description while it or the file was written is written too
     // (bug hunt round 4, C41), unless the person let the description go; so is a title,
     // a label or a group's title typed in the sidebar and not entered (round 6, C44).
@@ -230,13 +252,13 @@ export class Tab {
     let letGoBox = false;
     for (let more = 0; ;) {
       if (!letGoDraft && !(await this.writeDraft())) {
-        if (!(await this.backend.confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
+        if (!(await confirm(`The description you were writing could not be saved. ${what} and lose it?`))) return false;
         letGoDraft = true;
       }
       if (!letGoBox) {
         const lost = await this.writeTyped();
         if (lost) {
-          if (!(await this.backend.confirm(`The ${lost} you were typing could not be saved. ${what} and lose it?`))) return false;
+          if (!(await confirm(`The ${lost} you were typing could not be saved. ${what} and lose it?`))) return false;
           letGoBox = true;
         }
       }
@@ -248,9 +270,9 @@ export class Tab {
     }
     if (!this.path) return true;
     if (this.text !== this.saved || this.typingWaits()) {
-      return this.backend.confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
+      return confirm(`${basename(this.path)} holds a change that is not saved${this.unsavedWhy()}. ${what} and lose it?`);
     }
-    if (this.displaced) return this.backend.confirm(this.displacedQuestion(what));
+    if (this.displaced) return confirm(this.displacedQuestion(what));
     return true;
   }
 
@@ -325,10 +347,12 @@ export class Tab {
     try {
       raw = await this.backend.read(path);
     } catch (e) {
-      this.win.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
+      if (!this.closed) this.win.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
       return;
     }
-    if (!(await this.leave(`Open ${basename(path)}`))) return;
+    // Only a blank tab takes a file (T1.16, Q140), so this asks nothing; it is kept in
+    // case that changes.
+    if (this.closed || !(await this.leave(`Open ${basename(path)}`)) || this.closed) return;
     this.stopWatch?.();
     this.path = path;
     this.win.opening(path);
@@ -344,14 +368,40 @@ export class Tab {
     this.el.area.value = this.text;
     this.chart.resetView();
     this.win.opened(path);
-    this.stopWatch = await this.backend.watch(path, () => { void this.diskChanged(); });
+    const stop = await this.backend.watch(path, () => { void this.diskChanged(); });
+    if (this.closed) { stop(); return; } // closed while the watch was set up
+    this.stopWatch = stop;
     await this.readHighlights();
     await this.queue(() => this.refresh(true));
   }
 
-  /** Draws the chart again, as when the system's light or dark theme changes. */
+  /** Draws the chart again, as when the system's light or dark theme changes; a hidden tab when it is shown. */
   redraw(): Promise<void> {
     return this.queue(() => this.refresh(true));
+  }
+
+  /** Another tab is shown (T1.16): this one keeps everything as it is, and draws nothing until shown again. */
+  hide(): void {
+    this.hidden = true;
+  }
+
+  /** The tab is shown: the toolbar and the notices show its file, and what changed while it was hidden is drawn. */
+  show(): void {
+    this.hidden = false;
+    if (this.stale) void this.queue(() => this.refresh(true));
+    this.paint();
+    void this.readHighlights();
+  }
+
+  /** The tab is closed, after `leave`: it stops watching its file, and its chart goes. */
+  close(): void {
+    this.closed = true;
+    this.hidden = true;
+    window.clearTimeout(this.saveTimer);
+    window.clearTimeout(this.textTimer);
+    this.stopWatch?.();
+    this.stopWatch = null;
+    this.chart.destroy();
   }
 
   // ------------------------------------------------------------------ highlights
@@ -420,7 +470,7 @@ export class Tab {
   private paintHighlights(): void {
     const items = parseHighlights(this.hlText);
     this.chart.setHighlights(this.snap ? resolveHighlights(items, this.snap) : []);
-    this.bar.clear.hidden = items.length === 0 || this.path === null;
+    if (this.win.shown()) this.bar.clear.hidden = items.length === 0 || this.path === null;
   }
 
   /** View mode (D4.3, T1.11) in the tab's own views: the chart, the sidebar and the Syntax pane. */
@@ -608,11 +658,20 @@ export class Tab {
     this.doc = parseDoc(this.text);
     const before = this.snap;
     try {
-      const snap = await snapshot(this.text);
-      if (force || !before || this.error !== null || this.chartText !== this.text) await this.chart.draw(this.text, snap);
-      this.chartText = this.text;
-      this.snap = snap;
-      this.error = null;
+      await oneAtATime(async () => {
+        const snap = await snapshot(this.text);
+        const draw = force || !before || this.error !== null || this.chartText !== this.text || this.stale;
+        // A hidden tab takes the new text in now and draws it when it is shown (`show`).
+        if (draw && this.hidden) {
+          this.stale = true;
+        } else {
+          if (draw) await this.chart.draw(this.text, snap);
+          this.chartText = this.text;
+          this.stale = false;
+        }
+        this.snap = snap;
+        this.error = null;
+      });
     } catch (e) {
       this.error = errorText(e);
       if (!this.snap) this.chart.clear();
@@ -861,11 +920,11 @@ export class Tab {
     this.paintNotices();
   }
 
+  /** The toolbar's part that shows the file: only the shown tab paints it (the file's name is in its tab, T1.16). */
   private paintBar(): void {
+    if (!this.win.shown()) return;
     const bar = this.bar;
     const open = this.path !== null;
-    bar.name.textContent = this.path ? basename(this.path) : '';
-    bar.name.title = this.path ?? '';
     let status = '';
     let state = '';
     if (open) {
@@ -922,7 +981,11 @@ export class Tab {
     if (this.win.viewNotice() && viewing) {
       notice('info', 'View mode: switch to Edit to change the chart', [button('Edit', () => this.win.setViewing(false))]);
     }
-    if (this.error) {
+    // A blank tab (T1.16) has no text, so nothing in it to find fault with.
+    const open = this.path !== null;
+    if (!open) {
+      this.noticeDetails = false;
+    } else if (this.error) {
       const details = button(this.noticeDetails ? 'Hide details' : 'Details', () => { this.noticeDetails = !this.noticeDetails; this.paintNotices(); });
       // A file that was broken when it was opened has no last good version: the chart is empty.
       const what = this.snap ? 'the chart shows the last good version' : 'the chart cannot be drawn';
@@ -934,7 +997,7 @@ export class Tab {
         notice('warn', `Line ${String(p.line + 1)}: ${p.message} The chart can show this file but will not edit it; change it in the Syntax pane.`, showSyntax());
       }
     }
-    if (this.doc.warnings.length) {
+    if (open && this.doc.warnings.length) {
       const lines = this.doc.warnings.map((w) => String(w.line + 1)).join(', ');
       // Its button changes the file, so View mode leaves it out.
       notice('warn', `Line ${lines}: a bare "%%" is drawn as a node by other Mermaid tools.`, viewing ? [] : [button('Change to "%% ."', () => {

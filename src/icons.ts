@@ -15,6 +15,7 @@ import touchpad from './icons/touchpad.svg?raw';
 import mouse from './icons/mouse.svg?raw';
 import panelLeft from './icons/panel-left.svg?raw';
 import x from './icons/x.svg?raw';
+import plus from './icons/plus.svg?raw';
 
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
@@ -35,6 +36,8 @@ export const ICONS = {
   mouse: icon('mouse', mouse),
   /** Shows and hides the recent list's pane (T1.15), at the toolbar's left end. */
   recent: icon('recent', panelLeft),
-  /** Takes an entry off the recent list. */
+  /** Takes an entry off the recent list; closes a tab (T1.16). */
   close: icon('close', x),
+  /** Opens a blank tab, at the tab strip's end (T1.16). */
+  plus: icon('plus', plus),
 } as const;

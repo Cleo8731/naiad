@@ -1,13 +1,14 @@
-// The window: the toolbar, the recent list, the choices made for the whole window (View
-// mode, About, the Touchpad and Mouse switch, the Highlight switch, the Syntax pane), the
-// keyboard, and closing. The open file is a tab (src/tab.ts), which keeps its text, its
-// chart, its sidebar and its Syntax pane's text, and saves it.
+// The window: the toolbar, the tab strip, the recent list, the choices made for the whole
+// window (View mode, About, the Touchpad and Mouse switch, the Highlight switch, the
+// Syntax pane), the keyboard, and closing. Each open file is a tab (src/tab.ts), which
+// keeps its text, its chart, its sidebar and its Syntax pane's text, and saves it. One
+// tab is shown at a time; the others keep everything as it was (T1.16).
 
 import type { Backend } from './backend';
 import { configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
 import { ICONS } from './icons';
-import { RecentPane } from './recent';
+import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
 import { basename, errorText, Tab, type TabWindow } from './tab';
 
@@ -29,6 +30,8 @@ const WHEEL_TIP: Record<WheelMode, string> = {
   mouse: 'Mouse mode: the wheel zooms, a drag moves the chart. Click for Touchpad mode, where two fingers move it',
 };
 const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mouse: 'Mouse mode' };
+/** A blank tab's name (Q140). */
+const BLANK_NAME = 'New tab';
 
 function remember(key: string, value?: string): string | null {
   try {
@@ -36,6 +39,16 @@ function remember(key: string, value?: string): string | null {
     localStorage.setItem(key, value);
   } catch { /* storage can be unavailable; the app works without it */ }
   return null;
+}
+
+/** A tab's own parts of the window: its entry in the strip, its view, its Syntax text area. */
+interface TabParts {
+  item: HTMLElement;
+  name: HTMLButtonElement;
+  close: HTMLButtonElement;
+  /** The chart area, the sidebar and the notices, hidden while another tab is shown. */
+  view: HTMLElement;
+  area: HTMLTextAreaElement;
 }
 
 export class App {
@@ -54,13 +67,22 @@ export class App {
    */
   private about = true;
 
-  /** The open file. */
+  /** The open tabs, in the strip's order (T1.16). */
+  private tabs: Tab[] = [];
+  /** The tab shown. */
   private tab!: Tab;
+  private parts = new Map<Tab, TabParts>();
+  /** The tabs whose × was clicked and that are not yet closed, so a second click asks nothing more. */
+  readonly closing = new Set<Tab>();
+  /** Files are opened one at a time, so two never race for one blank tab. */
+  private opens: Promise<void> = Promise.resolve();
   private el!: {
-    name: HTMLElement; status: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement;
+    status: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
+    /** The tab strip and its +; none in `naiad serve`'s page, which shows one file. */
+    strip: HTMLElement | null; plus: HTMLButtonElement; body: HTMLElement;
   };
   /** The recent list's pane (T1.15); none in `naiad serve`'s page, which shows one file only. */
   private recent: RecentPane | null = null;
@@ -71,12 +93,7 @@ export class App {
     this.root.innerHTML = `
       <header class="bar">
         <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
-        <button data-act="open" title="Open a file (Ctrl+O)">Open</button>
-        <button data-act="new" title="Start a new flowchart file">New</button>
-        <div class="file">
-          <span class="name"></span>
-          <span class="status"></span>
-        </div>
+        <span class="status"></span>
         <div class="spacer"></div>
         <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
         <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
@@ -97,43 +114,42 @@ export class App {
       </header>
       <main>
         <nav class="recent" aria-label="Recent files" hidden></nav>
-        <section class="textpane" hidden>
-          <textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="The flowchart's Mermaid syntax"></textarea>
-        </section>
-        <section class="stage" tabindex="-1">
-          <div class="empty" hidden>
-            <h1>No file open</h1>
-            <p>Open a Mermaid flowchart file (<code>.mmd</code> or <code>.mermaid</code>) to view and edit it.</p>
-            <p><button class="primary" data-act="open">Open a file</button> <button data-act="new">New flowchart</button></p>
+        <div class="work">
+          <div class="tabs" role="tablist" aria-label="Open flowcharts">
+            <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
           </div>
-        </section>
-        <aside class="sidebar" hidden></aside>
-        <div class="notices"></div>
+          <div class="body">
+            <section class="textpane" hidden></section>
+          </div>
+        </div>
       </main>
       <div class="toast" role="status" hidden></div>`;
     const q = <T extends HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
     this.el = {
-      name: q('.name'), status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
+      status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
+      strip: q('.tabs'), plus: q('[data-act="newtab"]'), body: q('.body'),
     };
-    const empty = q('.empty');
-    if (this.backend.kind !== 'desktop') this.root.querySelectorAll('[data-act="new"]').forEach((b) => b.remove());
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for.
-      this.root.querySelectorAll('[data-act="open"], [data-act="recent"], nav.recent').forEach((b) => b.remove());
-      empty.innerHTML = '<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>';
+      this.root.querySelectorAll('[data-act="recent"], nav.recent, .tabs').forEach((b) => b.remove());
+      this.el.strip = null;
     }
 
     const dark = window.matchMedia('(prefers-color-scheme: dark)');
     configureMermaid(dark.matches);
-    dark.addEventListener('change', () => { configureMermaid(dark.matches); void this.tab.redraw(); });
-
-    this.tab = new Tab(this.tabWindow(), {
-      stage: q('.stage'), empty, area: q('textarea'), sidebar: q('.sidebar'), notices: q('.notices'),
+    dark.addEventListener('change', () => {
+      configureMermaid(dark.matches);
+      for (const tab of this.tabs) void tab.redraw(); // a hidden tab draws when it is shown
     });
+
+    // A window with no file open holds one blank tab (Q140).
+    const first = this.makeTab();
+    this.place(first);
+    this.show(first);
 
     this.bind();
     // The Syntax pane starts hidden, and opens at start only if the person left it open.
@@ -162,51 +178,206 @@ export class App {
       window.addEventListener('storage', (e) => { if (e.key === 'recent' || e.key === null) this.recent?.reload(); });
     }
 
-    const first = await this.backend.initialPath().catch(() => null);
-    if (first) await this.open(first);
-    if (!this.tab.file) this.tab.paint(); // nothing was opened: show the empty state
+    const path = await this.backend.initialPath().catch(() => null);
+    if (path) await this.open(path);
 
-    // The highlights file is looked at once a second (and at once when the view comes
-    // back into sight), so an agent's highlights show without Naiad watching a folder
-    // that comes and goes.
+    // The shown tab's highlights file is looked at once a second (and at once when the
+    // view comes back into sight), so an agent's highlights show without Naiad watching
+    // a folder that comes and goes. A hidden tab's are read when it is shown.
     window.setInterval(() => { void this.tab.readHighlights(); }, 1000);
     document.addEventListener('visibilitychange', () => { void this.tab.readHighlights(); });
     this.backend.guardClose(() => this.canClose());
   }
 
-  /** What the tab uses of the window: the toolbar, the window's choices, the toast. */
-  private tabWindow(): TabWindow {
+  // ------------------------------------------------------------------ tabs
+
+  /** A new blank tab with its own chart area, sidebar, notices and Syntax text; not yet in the strip. */
+  private makeTab(): Tab {
+    const view = document.createElement('div');
+    view.className = 'tabview';
+    view.hidden = true;
+    const empty = this.backend.kind === 'served'
+      ? '<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>'
+      : `<h1>No file open</h1>
+         <p>Open a Mermaid flowchart file (<code>.mmd</code> or <code>.mermaid</code>) to view and edit it.</p>
+         <p><button class="primary" data-act="open">Open a file</button>${this.backend.kind === 'desktop' ? ' <button data-act="new">New flowchart</button>' : ''}</p>`;
+    view.innerHTML = `
+      <section class="stage" tabindex="-1"><div class="empty" hidden>${empty}</div></section>
+      <aside class="sidebar" hidden></aside>
+      <div class="notices"></div>`;
+    const area = document.createElement('textarea');
+    area.spellcheck = false;
+    area.setAttribute('autocomplete', 'off');
+    area.setAttribute('autocapitalize', 'off');
+    area.setAttribute('wrap', 'off');
+    area.setAttribute('aria-label', "The flowchart's Mermaid syntax");
+    area.hidden = true;
+    this.el.pane.append(area);
+    this.el.body.append(view);
+
+    const item = document.createElement('div');
+    item.className = 'tab';
+    item.setAttribute('role', 'presentation');
+    const name = document.createElement('button');
+    name.className = 'tname';
+    name.setAttribute('role', 'tab');
+    const close = document.createElement('button');
+    close.className = 'tclose';
+    close.title = 'Close this tab';
+    close.innerHTML = ICONS.close;
+    item.append(name, close);
+
+    const v = <T extends HTMLElement>(sel: string) => view.querySelector<T>(sel)!;
+    let tab!: Tab;
+    tab = new Tab(this.tabWindow(() => tab), { stage: v('.stage'), empty: v('.empty'), area, sidebar: v('.sidebar'), notices: v('.notices') });
+    name.addEventListener('click', () => this.show(tab));
+    close.addEventListener('click', () => { void this.closeTab(tab); });
+    this.parts.set(tab, { item, name, close, view, area });
+    // The window's choices hold in every tab.
+    tab.showViewing(this.viewing);
+    tab.chart.setWheelMode(this.wheelMode);
+    tab.chart.setHighlighting(this.hlOn);
+    return tab;
+  }
+
+  /** Puts a tab into the strip, right after `after`, or last. */
+  private place(tab: Tab, after?: Tab): void {
+    const at = after ? this.tabs.indexOf(after) + 1 : this.tabs.length;
+    this.tabs.splice(at, 0, tab);
+    this.paintStrip();
+  }
+
+  /** Shows a tab, as it was left; the one shown before keeps everything as it is. */
+  private show(tab: Tab): void {
+    const was = this.tab;
+    if (tab === was) return;
+    this.tab = tab;
+    for (const [t, p] of this.parts) {
+      p.view.hidden = t !== tab;
+      p.area.hidden = t !== tab;
+    }
+    was?.hide();
+    this.paintStrip();
+    this.parts.get(tab)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    this.backend.setWindowTitle(tab.file ? `${basename(tab.file)} - Naiad` : 'Naiad');
+    this.recent?.mark(tab.file);
+    tab.show();
+  }
+
+  /** The + (Q140): a blank tab after the shown one, shown. */
+  private newTab(): void {
+    const tab = this.makeTab();
+    this.place(tab, this.tab);
+    this.show(tab);
+  }
+
+  /** Closing a tab with its × (Q143): at once when nothing would be lost; otherwise Naiad shows it and asks. */
+  private async closeTab(tab: Tab): Promise<void> {
+    if (this.closing.has(tab)) return;
+    this.closing.add(tab);
+    try {
+      const name = tab.file ? basename(tab.file) : 'the tab';
+      if (await tab.leave(`Close ${name}`, () => this.show(tab))) this.drop(tab);
+    } finally {
+      this.closing.delete(tab);
+    }
+  }
+
+  /**
+   * Takes a tab out of the window: after `leave`, or a blank tab, which has nothing to
+   * lose. The tab to its right is shown, or else the one to its left; the last tab closed
+   * leaves a blank one.
+   */
+  private drop(tab: Tab): void {
+    const at = this.tabs.indexOf(tab);
+    if (at < 0) return;
+    this.tabs.splice(at, 1);
+    const p = this.parts.get(tab)!;
+    this.parts.delete(tab);
+    tab.close();
+    p.item.remove();
+    p.view.remove();
+    p.area.remove();
+    if (!this.tabs.length) this.place(this.makeTab());
+    if (tab === this.tab) this.show(this.tabs[Math.min(at, this.tabs.length - 1)]);
+    else this.paintStrip();
+    this.backend.viewing(this.files());
+  }
+
+  /** The files open in the window's tabs, in the strip's order. */
+  private files(): string[] {
+    return this.tabs.flatMap((t) => (t.file ? [t.file] : []));
+  }
+
+  /** The strip: each tab's name (its file's, or New tab), the shown one marked, then the +. */
+  private paintStrip(): void {
+    if (!this.el.strip) return;
+    const lone = this.tabs.length === 1;
+    const items = this.tabs.map((tab) => {
+      const p = this.parts.get(tab)!;
+      const file = tab.file;
+      const label = file ? basename(file) : BLANK_NAME;
+      const shown = tab === this.tab;
+      p.name.textContent = label;
+      p.name.title = file ?? '';
+      p.name.setAttribute('aria-selected', String(shown));
+      p.item.classList.toggle('shown', shown);
+      p.close.setAttribute('aria-label', `Close ${label}`);
+      // A lone blank tab has nothing to close: closing it would leave a blank tab.
+      p.close.hidden = lone && !file;
+      return p.item;
+    });
+    this.el.strip.replaceChildren(...items, this.el.plus);
+  }
+
+  /** What a tab uses of the window: the toolbar, the window's choices, the toast. */
+  private tabWindow(own: () => Tab): TabWindow {
     const el = this.el;
     return {
       backend: this.backend,
-      bar: { name: el.name, status: el.status, dir: el.dir, undo: el.undo, redo: el.redo, add: el.add, fit: el.fit, highlight: el.highlight, clear: el.clear },
+      bar: { status: el.status, dir: el.dir, undo: el.undo, redo: el.redo, add: el.add, fit: el.fit, highlight: el.highlight, clear: el.clear },
       pane: el.pane,
+      shown: () => own() === this.tab,
       viewing: () => this.viewing,
       about: () => this.about,
       highlighting: () => this.hlOn,
       viewNotice: () => this.viewNotice,
-      toast: (message) => this.toast(message),
+      toast: (message) => {
+        // A message from a hidden tab names its file.
+        const tab = own();
+        this.toast(tab === this.tab || !tab.file ? message : `${basename(tab.file)}: ${message}`);
+      },
       viewBlocked: () => this.viewBlocked(),
       setViewing: (on) => { void this.setViewing(on); },
       setHighlighting: (on) => this.setHighlighting(on),
       setAbout: (on) => this.setAbout(on),
       showAbout: (on) => this.showAbout(on),
       showSyntax: () => this.toggleText(true),
-      opening: (path) => { this.recent?.opened(path); },
+      opening: (path) => {
+        this.recent?.opened(path);
+        if (own() === this.tab) this.recent?.mark(path);
+        this.paintStrip();
+      },
       opened: (path) => {
-        this.backend.setWindowTitle(`${basename(path)} - Naiad`);
-        this.backend.viewing([path]);
+        if (own() === this.tab) this.backend.setWindowTitle(`${basename(path)} - Naiad`);
+        this.backend.viewing(this.files());
       },
     };
   }
 
-  /** Whether the window may close: saves what waits to be saved, and asks before a change is lost. */
-  private canClose(): Promise<boolean> {
-    return this.tab.leave('Close Naiad');
+  /**
+   * Whether the window may close: saves what waits to be saved in every tab, and asks
+   * about each tab that would lose text, showing it first; No keeps the window open.
+   */
+  private async canClose(): Promise<boolean> {
+    for (const tab of [...this.tabs]) {
+      if (!(await tab.leave('Close Naiad', () => this.show(tab)))) return false;
+    }
+    return true;
   }
 
-  // The tab's item selected, its sidebar, and its select and add steps, as the window's
-  // keys and buttons use them.
+  // The shown tab's item selected, its sidebar, and its select and add steps, as the
+  // window's keys and buttons use them.
   private get selection(): Target | null { return this.tab.selected; }
   private get sidebar(): Sidebar { return this.tab.sidebar; }
   private select(target: Target | null): void { this.tab.select(target); }
@@ -214,8 +385,35 @@ export class App {
 
   // ------------------------------------------------------------------ file
 
-  async open(path: string): Promise<void> {
-    await this.tab.open(path);
+  /**
+   * Opens a file: in the shown tab when it is blank, otherwise in a new tab right after
+   * it, so a file's tab is never replaced (Q140, Q142). A file already open shows its
+   * tab, and a blank tab it was picked from closes. One file at a time.
+   */
+  open(path: string): Promise<void> {
+    const run = this.opens.then(() => this.openNow(path));
+    this.opens = run.catch(() => {});
+    return run;
+  }
+
+  private async openNow(path: string): Promise<void> {
+    const from = this.tab;
+    const there = this.tabs.find((t) => t.file !== null && samePath(t.file, path));
+    if (there) {
+      if (there === from) return;
+      this.show(there);
+      if (from.file === null && !this.closing.has(from)) this.drop(from);
+      return;
+    }
+    if (from.file === null) {
+      await from.open(path);
+      return;
+    }
+    const tab = this.makeTab();
+    this.place(tab, from);
+    await tab.open(path);
+    if (tab.file === null) { this.drop(tab); return; } // it could not be read; the toast said so
+    if (this.tabs.includes(tab)) this.show(tab);
   }
 
   async moveEdgeEnd(index: number, end: 'start' | 'end', id: string): Promise<void> {
@@ -224,30 +422,34 @@ export class App {
 
   private setHighlighting(on: boolean): void {
     this.hlOn = on;
-    this.tab.chart.setHighlighting(on);
+    for (const tab of this.tabs) tab.chart.setHighlighting(on);
     this.el.highlight.setAttribute('aria-pressed', String(on));
   }
 
   /**
-   * The View button (Q115). Going to View, a description or a title typed in the sidebar
-   * and not yet in the file is written first, as turning to another item does (C36, Q90);
-   * one that cannot be written keeps Naiad in Edit mode, with the text still in its box.
+   * The View button (Q115). Going to View, a description or a title typed in a sidebar
+   * and not yet in the file is written first, in every tab, as turning to another item
+   * does (C36, Q90); one that cannot be written keeps Naiad in Edit mode, with its tab
+   * shown and the text still in its box.
    */
   private async setViewing(on: boolean): Promise<void> {
     if (on && !this.viewing) {
-      const tab = this.tab;
-      tab.refusal = null;
-      const why = () => (tab.refusal ? `${tab.refusal} ` : '');
-      if (!(await tab.writeDraft())) {
-        this.toast(`${why()}The description you were writing was not saved, so Naiad stays in Edit mode.`);
-        return;
+      for (const tab of [this.tab, ...this.tabs.filter((t) => t !== this.tab)]) {
+        tab.refusal = null;
+        const why = () => (tab.refusal ? `${tab.refusal} ` : '');
+        if (!(await tab.writeDraft())) {
+          if (this.tabs.includes(tab)) this.show(tab);
+          this.toast(`${why()}The description you were writing was not saved, so Naiad stays in Edit mode.`);
+          return;
+        }
+        const lost = await tab.writeTyped();
+        if (lost) {
+          if (this.tabs.includes(tab)) this.show(tab);
+          this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
+          return;
+        }
+        await tab.sidebar.settle(); // a description Done is writing is in the file first
       }
-      const lost = await tab.writeTyped();
-      if (lost) {
-        this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
-        return;
-      }
-      await this.sidebar.settle(); // a description Done is writing is in the file first
     }
     this.showViewing(on);
   }
@@ -257,7 +459,7 @@ export class App {
 
   private setWheelMode(mode: WheelMode): void {
     this.wheelMode = mode;
-    this.tab.chart.setWheelMode(mode);
+    for (const tab of this.tabs) tab.chart.setWheelMode(mode);
     this.el.wheel.innerHTML = ICONS[mode];
     this.el.wheel.title = WHEEL_TIP[mode];
     this.el.wheel.setAttribute('aria-label', WHEEL_LABEL[mode]);
@@ -266,16 +468,16 @@ export class App {
 
   private showViewing(on: boolean): void {
     this.viewing = on;
-    this.tab.showViewing(on);
+    for (const tab of this.tabs) tab.showViewing(on);
     this.el.view.setAttribute('aria-pressed', String(on));
     this.el.view.innerHTML = on ? ICONS.edit : ICONS.read;
     this.el.view.title = on ? VIEW_TIP.viewing : VIEW_TIP.editing;
-    // The toolbar keeps the file's name, Open, New, Highlight, Fit, the Touchpad and Mouse
-    // switch, Syntax, About and View.
+    // The toolbar keeps the saved state, Highlight, Fit, the Touchpad and Mouse switch,
+    // Syntax, About and View.
     for (const control of [this.el.add, this.el.undo, this.el.redo, this.el.dir]) control.hidden = on;
     if (!on) this.endViewNotice();
     remember('mode', on ? 'view' : 'edit');
-    this.tab.paint();
+    for (const tab of this.tabs) tab.paint();
   }
 
   /** Whether the notice for an edit tried in View mode shows (`viewBlocked`). */
@@ -299,6 +501,7 @@ export class App {
     this.viewNotice = false;
   }
 
+  /** Open, on a blank tab only (Q140): the file dialog, then the file in that tab. */
   private async pickAndOpen(): Promise<void> {
     try {
       const path = await this.backend.pickOpen();
@@ -308,7 +511,7 @@ export class App {
     }
   }
 
-  /** Opens a file from the recent list, as Open does; one that cannot be read stays listed, greyed (Q137). */
+  /** Opens a file from the recent list (Q142); one that cannot be read stays listed, greyed (Q137). */
   private async openRecent(path: string): Promise<void> {
     try {
       await this.open(await this.backend.choose(path));
@@ -342,12 +545,16 @@ export class App {
   /**
    * The About button and the × of the flowchart's description (T1.13). A description of
    * the flowchart being written goes into the file as its panel goes, as an item's does
-   * when the panel turns away from it (C36).
+   * when the panel turns away from it (C36), in every tab.
    */
   private setAbout(on: boolean): void {
     if (on === this.about) return;
-    const draft = this.sidebar.draft();
-    if (!on && draft?.id === FLOWCHART_ID) void this.tab.writeDescription(draft.id, draft.text);
+    if (!on) {
+      for (const tab of this.tabs) {
+        const draft = tab.sidebar.draft();
+        if (draft?.id === FLOWCHART_ID) void tab.writeDescription(draft.id, draft.text);
+      }
+    }
     this.showAbout(on);
   }
 
@@ -355,7 +562,7 @@ export class App {
     this.about = on;
     this.el.about.setAttribute('aria-pressed', String(on));
     remember('about', on ? 'shown' : 'hidden');
-    this.tab.paint();
+    for (const tab of this.tabs) tab.paint();
   }
 
   private toggleRecent(show?: boolean): void {
@@ -372,7 +579,8 @@ export class App {
     this.el.pane.hidden = !visible;
     this.el.textToggle.setAttribute('aria-pressed', String(visible));
     remember('syntaxpane', visible ? 'shown' : 'hidden');
-    this.tab.paintNotices(); // a notice's Show syntax button is there only while the pane is hidden
+    // A notice's Show syntax button is there only while the pane is hidden.
+    for (const tab of this.tabs) tab.paintNotices();
   }
 
   // ------------------------------------------------------------------ input
@@ -382,6 +590,7 @@ export class App {
       const act = (e.target as Element).closest<HTMLElement>('button[data-act]')?.dataset.act;
       if (act === 'open') void this.pickAndOpen();
       if (act === 'new') void this.newFile();
+      if (act === 'newtab') this.newTab();
       if (act === 'add') void this.addNode(null);
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
@@ -411,11 +620,17 @@ export class App {
       this.el.pane.addEventListener('pointerup', up, { once: true });
     });
 
+    // The keys act on the shown tab only.
     window.addEventListener('keydown', (e) => {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && key === 's') { e.preventDefault(); void this.tab.save(true); return; }
-      if (mod && key === 'o') { e.preventDefault(); if (this.backend.kind !== 'served') void this.pickAndOpen(); return; }
+      if (mod && key === 'o') {
+        // Open fills a blank tab only; a file's tab is never replaced (Q140).
+        e.preventDefault();
+        if (this.backend.kind !== 'served' && this.tab.file === null) void this.pickAndOpen();
+        return;
+      }
       const typing = (e.target as Element).closest('input, textarea, select, [contenteditable]');
       if (typing) return;
       if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.tab.history(true); }
@@ -431,10 +646,10 @@ export class App {
     });
 
     window.addEventListener('beforeunload', (e) => {
-      // A change not yet on disk: the browser asks before the page goes. (The desktop
-      // app's window asks in canClose, before the page is unloaded.)
-      const waiting = this.tab.waiting();
-      void this.tab.flushSave();
+      // A change not yet on disk, in any tab: the browser asks before the page goes. (The
+      // desktop app's window asks in canClose, before the page is unloaded.)
+      const waiting = this.tabs.some((t) => t.waiting());
+      for (const tab of this.tabs) void tab.flushSave();
       if (waiting && this.backend.kind !== 'desktop') {
         e.preventDefault();
         e.returnValue = true;

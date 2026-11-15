@@ -16,14 +16,31 @@ export const chartEvents: { last: import('../src/chart').ChartEvents | null } = 
 /** The wheel mode the app last gave the chart (`setWheelMode`), or null before any. */
 export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { mode: null };
 
+/**
+ * Every stand-in chart made, in order (one per tab, T1.16), each with the texts it drew;
+ * and how many drew at the same moment, at most (one Mermaid for the page).
+ */
+export const charts: { list: { drawn: string[]; destroyed: boolean }[]; drawing: number; most: number } = { list: [], drawing: 0, most: 0 };
+
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
-    constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; }
+    drawn: string[] = [];
+    destroyed = false;
+    constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    destroy() { this.destroyed = true; }
     setWheelMode(mode: import('../src/chart').WheelMode) { chartWheel.mode = mode; }
-    async draw() { if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay); }
+    async draw(text: string) {
+      charts.most = Math.max(charts.most, ++charts.drawing);
+      try {
+        if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay);
+        this.drawn.push(text);
+      } finally {
+        charts.drawing--;
+      }
+    }
   },
 });
 
@@ -47,6 +64,14 @@ export class FakeDisk {
   afterHighlightsRead: ((path: string) => void) | null = null;
   /** Which way Naiad runs: 'browser' is the dev page; 'served' is `naiad serve`'s page. */
   kind: Backend['kind'] = 'browser';
+  /** The file the Open dialog gives (none: the person cancels it), and how often it was shown. */
+  picked: string | null = null;
+  picks = 0;
+  /** The window's files, as last recorded (`Backend.viewing`), and its title. */
+  viewed: string[] = [];
+  title = '';
+  /** Called as Naiad asks, before the answer (to see what the window shows then). */
+  onAsk: ((message: string) => void) | null = null;
 
   backend(): Backend {
     return {
@@ -85,14 +110,14 @@ export class FakeDisk {
         else this.highlights.set(path, text);
         return true;
       },
-      viewing: () => {},
-      pickOpen: async () => null,
+      viewing: (paths) => { this.viewed = [...paths]; },
+      pickOpen: async () => { this.picks++; return this.picked; },
       choose: async (path) => path,
       existing: async (paths) => paths.map((p) => this.files.has(p)),
       pickSave: async () => null,
       openLink: () => {},
-      setWindowTitle: () => {},
-      confirm: async (message) => { this.asked.push(message); return this.answer; },
+      setWindowTitle: (title) => { this.title = title; },
+      confirm: async (message) => { this.asked.push(message); this.onAsk?.(message); return this.answer; },
       guardClose: (canClose) => { this.closeGuard = canClose; },
     };
   }
@@ -121,6 +146,8 @@ export async function startApp(disk: FakeDisk, path: string) {
   (window as unknown as { matchMedia: unknown }).matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   mermaid.initialize({ startOnLoad: false });
   document.body.innerHTML = '<div id="app"></div>';
+  charts.list = [];
+  charts.most = 0;
   const { App } = await import('../src/app');
   const app = new App(document.getElementById('app')!, disk.backend());
   const add = window.addEventListener;
@@ -135,9 +162,24 @@ export async function startApp(disk: FakeDisk, path: string) {
   }
   await app.open(path);
   const q = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+  const tabs = () => [...document.querySelectorAll<HTMLElement>('.tabs .tab')];
+  const tabNamed = (name: string) => tabs().find((t) => t.querySelector('.tname')!.textContent === name);
   return {
     app,
-    area: () => q<HTMLTextAreaElement>('textarea'),
+    /** The shown tab's text pane (T1.16: each tab has its own, the others hidden). */
+    area: () => q<HTMLTextAreaElement>('.textpane textarea:not([hidden])'),
+    /** The tabs' names, in the strip's order (T1.16). */
+    tabs: () => tabs().map((t) => t.querySelector('.tname')!.textContent),
+    /** The shown tab's name. */
+    shown: () => q<HTMLElement>('.tabs .tab.shown .tname')?.textContent ?? null,
+    /** A click on a tab's name, which shows it. */
+    showTab(name: string) { tabNamed(name)!.querySelector<HTMLButtonElement>('.tname')!.click(); },
+    /** A click on a tab's ×, then waits until the closing has asked and finished. */
+    async closeTab(name: string) {
+      tabNamed(name)!.querySelector<HTMLButtonElement>('.tclose')!.click();
+      const closing = (app as unknown as { closing: Set<unknown> }).closing;
+      while (closing.size) await sleep(5);
+    },
     status: () => q<HTMLElement>('.status').textContent ?? '',
     toast: () => (q<HTMLElement>('.toast').hidden ? '' : q<HTMLElement>('.toast').textContent ?? ''),
     /** Typing in the text pane: the textarea's own input event. */

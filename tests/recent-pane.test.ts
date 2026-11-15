@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // The recent list's pane (T1.15, stage 1 of D1.6), on the real App with the chart stood
 // in for (app-harness.ts): its button at the toolbar's left end, hidden at the first
-// start and then remembered; each file opened goes on top; a click opens an entry as
-// Open does; × takes it off the list; a file that cannot be found stays, greyed (Q137);
-// 50 kept, 25 shown, View more (Q136); no pane in `naiad serve`'s page. The list's
-// rules alone: recent.test.ts.
+// start and then remembered; each file opened goes on top; a click opens an entry in the
+// shown tab when it is blank, otherwise in a new tab, and shows a file already open
+// (Q142, T1.16); × takes it off the list; a file that cannot be found stays, greyed
+// (Q137); 50 kept, 25 shown, View more (Q136); no pane in `naiad serve`'s page. The
+// list's rules alone: recent.test.ts.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FakeDisk, sleep, startApp, stopApps } from './app-harness';
 
@@ -21,7 +22,8 @@ const pane = () => q<HTMLElement>('nav.recent')!;
 const items = () => [...document.querySelectorAll<HTMLElement>('nav.recent li')];
 const names = () => items().map((li) => li.querySelector('.rname')!.textContent);
 const entry = (name: string) => items().find((li) => li.querySelector('.rname')!.textContent === name)!;
-const shownName = () => q<HTMLElement>('.bar .name')!.textContent;
+/** The shown tab's name (T1.16: the file's name is in its tab). */
+const shownName = () => q<HTMLElement>('.tabs .tab.shown .tname')!.textContent;
 const stored = () => JSON.parse(localStorage.getItem('recent') ?? 'null');
 
 let disk: FakeDisk;
@@ -64,43 +66,58 @@ describe('the recent list\'s pane', () => {
     expect(localStorage.getItem('recentpane')).toBe('hidden');
   });
 
-  test('each file opened goes on top, once; the open one is marked; each shows its folder and full path', async () => {
+  test('each file opened goes on top, once; the shown tab\'s file is marked; each shows its folder and full path', async () => {
     const ui = await start();
     toggle().click();
     expect(names()).toEqual(['a.mmd']);
     await ui.app.open(B);
     expect(names()).toEqual(['b.mmd', 'a.mmd']);
+    expect(entry('b.mmd').classList.contains('current')).toBe(true);
+    // Showing a tab marks its file, and leaves the order as it is (T1.16).
+    ui.showTab('a.mmd');
+    expect(names()).toEqual(['b.mmd', 'a.mmd']);
+    expect(entry('a.mmd').classList.contains('current')).toBe(true);
+    expect(entry('b.mmd').classList.contains('current')).toBe(false);
+    // Opened again, after its tab was closed: on top again.
+    await ui.closeTab('a.mmd');
     await ui.app.open(A);
     expect(names()).toEqual(['a.mmd', 'b.mmd']);
     expect(stored()).toEqual([A, B]);
-    expect(entry('a.mmd').classList.contains('current')).toBe(true);
-    expect(entry('b.mmd').classList.contains('current')).toBe(false);
     expect(entry('a.mmd').querySelector('.rfolder')!.textContent).toBe('proj/docs');
     expect(entry('a.mmd').querySelector<HTMLElement>('.rentry')!.title).toBe(A);
   });
 
-  test('a click on an entry opens that file, as Open does', async () => {
+  test('a click on an entry opens that file in a new tab after the shown one, which keeps its file (Q142)', async () => {
+    localStorage.setItem('recent', JSON.stringify([C]));
+    const ui = await start();
+    toggle().click();
+    entry('c.mmd').querySelector<HTMLButtonElement>('.rentry')!.click();
+    await vi.waitFor(() => expect(shownName()).toBe('c.mmd'));
+    expect(ui.tabs()).toEqual(['a.mmd', 'c.mmd']);
+    expect(names()).toEqual(['c.mmd', 'a.mmd']);
+  });
+
+  test('a click on an entry while the shown file holds unsaved text asks nothing, and leaves that text in its tab', async () => {
+    localStorage.setItem('recent', JSON.stringify([C]));
+    const ui = await start();
+    toggle().click();
+    ui.type('flowchart TD\n    a[');
+    await sleep(300);
+    entry('c.mmd').querySelector<HTMLButtonElement>('.rentry')!.click();
+    await vi.waitFor(() => expect(shownName()).toBe('c.mmd'));
+    expect(disk.asked).toEqual([]);
+    ui.showTab('a.mmd');
+    expect(ui.area().value).toBe('flowchart TD\n    a[');
+  });
+
+  test('a click on the entry of a file open in another tab shows that tab', async () => {
     const ui = await start();
     await ui.app.open(B);
     toggle().click();
     entry('a.mmd').querySelector<HTMLButtonElement>('.rentry')!.click();
     await vi.waitFor(() => expect(shownName()).toBe('a.mmd'));
-    expect(names()).toEqual(['a.mmd', 'b.mmd']);
-  });
-
-  test('leaving a file with unsaved text asks first, and No changes neither the file shown nor the list', async () => {
-    const ui = await start();
-    await ui.app.open(B);
-    toggle().click();
-    ui.type('flowchart TD\n    a[');
-    await sleep(300);
-    disk.answer = false;
-    entry('a.mmd').querySelector<HTMLButtonElement>('.rentry')!.click();
-    await vi.waitFor(() => expect(disk.asked).toHaveLength(1));
-    await sleep(20);
-    expect(shownName()).toBe('b.mmd');
+    expect(ui.tabs()).toEqual(['a.mmd', 'b.mmd']);
     expect(names()).toEqual(['b.mmd', 'a.mmd']);
-    expect(stored()).toEqual([B, A]);
   });
 
   test('× takes an entry off the list, and leaves the file alone', async () => {
@@ -125,6 +142,7 @@ describe('the recent list\'s pane', () => {
     entry('x.mmd').querySelector<HTMLButtonElement>('.rentry')!.click();
     await vi.waitFor(() => expect(ui.toast()).toMatch(/^Could not open x\.mmd/));
     expect(shownName()).toBe('a.mmd');
+    expect(ui.tabs()).toEqual(['a.mmd']);
     expect(names()).toEqual(['a.mmd', 'x.mmd']);
     expect(entry('x.mmd').classList.contains('missing')).toBe(true);
   });
