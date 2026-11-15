@@ -44,7 +44,6 @@ async function fontLoaded(): Promise<void> {
 }
 
 export function configureMermaid(dark: boolean): void {
-  placeLabelsNearSource();
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -308,7 +307,7 @@ export class Chart {
   async draw(text: string, snap: Snap): Promise<void> {
     this.cancelDrag();
     const id = `chart${++drawCount}`;
-    await fontLoaded();
+    await Promise.all([fontLoaded(), placeLabelsNearSource()]);
     const { svg } = await mermaid.render(id, forMermaid(text));
     this.cancelDrag();
     this.canvas.innerHTML = svg;

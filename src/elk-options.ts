@@ -6,10 +6,9 @@
 // call to ELK's `layout`, whose second argument holds options for the whole graph.
 // Naiad imports the same ELK file Mermaid's layout imports (`elkjs` is listed in
 // `package.json` at the version Mermaid installs), so both use one copy and the change
-// reaches Mermaid's calls; a test fails if a Mermaid update stops importing it. Drawing
-// only: nothing is written into the file.
-
-import ELK from 'elkjs/lib/elk.bundled.js';
+// reaches Mermaid's calls; a test fails if a Mermaid update stops importing it. Like
+// Mermaid, Naiad imports ELK only when the first chart is drawn, so ELK stays out of
+// the code loaded at start. Drawing only: nothing is written into the file.
 
 const LABEL_LAYER = 'elk.layered.edgeLabels.centerLabelPlacementStrategy';
 
@@ -45,15 +44,20 @@ export function labelsNearSource(graph: Graph, args: Args = {}, defaults: Option
   return { ...args, layoutOptions: { ...(args.layoutOptions ?? defaults), [LABEL_LAYER]: 'TAIL_LAYER' } };
 }
 
-let done = false;
+let ready: Promise<void> | null = null;
 
-/** Makes every ELK layout place arrow labels near their source; once, from `configureMermaid`. */
-export function placeLabelsNearSource(): void {
-  if (done) return;
-  done = true;
-  const proto = ELK.prototype as unknown as { layout: Layout };
-  const layout = proto.layout;
-  proto.layout = function (graph, args) {
-    return layout.call(this, graph, labelsNearSource(graph, args, this.defaultLayoutOptions));
-  };
+/**
+ * Makes every ELK layout place arrow labels near their source, once; `Chart.draw` waits
+ * for it before each drawing. Should ELK fail to load, the drawing goes on without the
+ * change, and Mermaid reports its own error.
+ */
+export function placeLabelsNearSource(): Promise<void> {
+  ready ??= import('elkjs/lib/elk.bundled.js').then(({ default: ELK }) => {
+    const proto = ELK.prototype as unknown as { layout: Layout };
+    const layout = proto.layout;
+    proto.layout = function (graph, args) {
+      return layout.call(this, graph, labelsNearSource(graph, args, this.defaultLayoutOptions));
+    };
+  }, () => undefined);
+  return ready;
 }

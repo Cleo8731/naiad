@@ -4,8 +4,14 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { describe, expect, test } from 'vitest';
-import { labelsNearSource } from '../src/elk-options';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import ELK from 'elkjs/lib/elk.bundled.js';
+import mermaid from 'mermaid';
+import { Chart, type ChartEvents } from '../src/chart';
+import { labelsNearSource, placeLabelsNearSource } from '../src/elk-options';
+
+// ELK's own `layout`, before Naiad changes it on the first drawing.
+const originalLayout = ELK.prototype.layout;
 
 const LABEL_LAYER = 'elk.layered.edgeLabels.centerLabelPlacementStrategy';
 
@@ -30,6 +36,31 @@ describe('the options Naiad adds to each layout', () => {
     expect(turned.labels[0].layoutOptions).toEqual({ 'edgeLabels.inline': 'true', [LABEL_LAYER]: 'HEAD_LAYER' });
     expect(plain.labels[0].layoutOptions).toEqual({ 'edgeLabels.inline': 'true' });
     expect(bare).toEqual({ layoutReversed: true });
+  });
+});
+
+describe('when Naiad changes ELK', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  test('ELK stays out of the code loaded at start: no file imports it but by a deferred import', () => {
+    const dir = resolve('src');
+    const sources = readdirSync(dir, { recursive: true }).map(String).filter((f) => /\.ts$/.test(f));
+    for (const f of sources) expect(readFileSync(resolve(dir, f), 'utf8'), f).not.toMatch(/^import[^;]*['"]elkjs/m);
+    expect(readFileSync(resolve(dir, 'elk-options.ts'), 'utf8')).toContain("import('elkjs/lib/elk.bundled.js')");
+  });
+
+  test('a chart is drawn only once the change is in place', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    let changed: boolean | null = null;
+    vi.spyOn(mermaid, 'render').mockImplementation(() => {
+      changed = ELK.prototype.layout !== originalLayout;
+      return Promise.reject(Error('stop here'));
+    });
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const chart = new Chart(document.createElement('div'), events);
+    await expect(chart.draw('flowchart TD\n  A --> B\n', undefined as never)).rejects.toThrow('stop here');
+    expect(changed).toBe(true);
+    chart.destroy();
   });
 });
 
@@ -58,10 +89,10 @@ describe('Mermaid still lays out with the ELK Naiad changes', () => {
   });
 
   test('on a drawn chart, a decision\'s "Yes" and "No" sit level, near the decision', async () => {
-    const { default: mermaid } = await import('mermaid');
     const { configureMermaid } = await import('../src/chart');
     Object.defineProperty(SVGElement.prototype, 'getBBox', { configurable: true, value: () => ({ x: 0, y: 0, width: 50, height: 20 }) });
     configureMermaid(false);
+    await placeLabelsNearSource(); // as `Chart.draw` does before each drawing
     // "Yes" goes to Pack, three rows further down than "No"'s target.
     const chart = 'flowchart TD\nq{In stock?} -->|Yes| pack[Pack]\nq -->|No| order[Order]\norder --> wait[Wait] --> check[Check] --> pack';
     const { svg } = await mermaid.render('labels1', chart);
