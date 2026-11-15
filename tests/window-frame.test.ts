@@ -198,12 +198,12 @@ describe('the Customize window (T4.8)', () => {
 });
 
 describe('the windows over Naiad\'s (T1.21, T4.8)', () => {
-  test('Settings says there is nothing to set yet (Q149)', async () => {
+  test('Settings opens with its title and its first setting, Remember opened files (T1.23; its own tests: remember-files.test.ts)', async () => {
     await start();
     const w = openWindow('settings');
     expect(isOpen(w)).toBe(true);
     expect(w.querySelector('h2')!.textContent).toBe('Settings');
-    expect(w.querySelector('.ow-note')!.textContent).toBe('Nothing to set yet.');
+    expect(w.querySelector('input.switch')!.closest('.ow-row')!.textContent).toContain('Remember opened files');
   });
 
   test('a window closes with its ×, or a click outside it, and not with a click inside it', async () => {

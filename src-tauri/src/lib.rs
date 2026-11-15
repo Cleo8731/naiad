@@ -149,6 +149,53 @@ fn initial_file() -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
+/// Whether another Naiad window was already running when this one started (T1.23,
+/// Q157): the page then does not open the files kept at the last close, which are that
+/// window's. Set once, as the window is made (`run`).
+static OTHER_WINDOW: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// The marker every Naiad window holds while it runs, in the person's own Windows session.
+/// `naiad serve` and `naiad check` hold none.
+const WINDOW_MARKER: &str = r"Local\Naiad-window";
+
+#[tauri::command]
+fn other_window() -> bool {
+    OTHER_WINDOW.get().copied().unwrap_or(false)
+}
+
+/// Takes hold of the named marker `name`, and says whether it was held already: by
+/// another running program (or earlier by this one). Windows keeps a marker while any
+/// running program holds it and frees it when the last one ends, so a window that
+/// crashed counts no more. The marker is a named mutex that is never locked: only its
+/// name is used. Returns the handle, which is closed when the program ends.
+#[cfg(windows)]
+fn take_marker(name: &str) -> (*mut std::ffi::c_void, bool) {
+    use std::ffi::c_void;
+    extern "system" {
+        fn CreateMutexW(attributes: *const c_void, owner: i32, name: *const u16) -> *mut c_void;
+        fn GetLastError() -> u32;
+    }
+    const ALREADY_EXISTS: u32 = 183;
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: `wide` is a NUL-ended UTF-16 name that outlives the call; the error is read
+    // at once, before another call can change it.
+    unsafe {
+        let handle = CreateMutexW(std::ptr::null(), 0, wide.as_ptr());
+        let held = !handle.is_null() && GetLastError() == ALREADY_EXISTS;
+        (handle, held)
+    }
+}
+
+/// This window takes hold of the window marker for as long as it runs, and notes whether
+/// another window held it already. When it cannot tell, it says no: the kept files open.
+fn mark_window() {
+    #[cfg(windows)]
+    let other = take_marker(WINDOW_MARKER).1;
+    #[cfg(not(windows))]
+    let other = false;
+    let _ = OTHER_WINDOW.set(other);
+}
+
 /// Which of these paths name a flowchart file that is there: the recent list greys out
 /// the ones that are not (T1.15). A path `check` refuses counts as not there, and is
 /// never looked at.
@@ -472,6 +519,7 @@ pub fn run() {
         })
         .setup(|app| {
             if cli_args().is_none() {
+                mark_window();
                 // The window is made hidden (tauri.conf.json) so that the checker never
                 // shows one; in ordinary use it is shown here, before the page loads.
                 if let Some(window) = app.get_webview_window("main") {
@@ -491,6 +539,7 @@ pub fn run() {
             cli_job,
             cli_done,
             initial_file,
+            other_window,
             existing_files,
             read_file,
             write_file,
@@ -932,5 +981,33 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
         fs::remove_dir_all(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    /// T1.23, Q157: a second holder of a window marker sees the first; once no one holds
+    /// it (a window closed, or crashed), the next one does not.
+    #[cfg(windows)]
+    #[test]
+    fn a_window_marker_counts_while_it_is_held_and_not_after() {
+        use std::ffi::c_void;
+        extern "system" {
+            fn CloseHandle(handle: *mut c_void) -> i32;
+        }
+        let name = format!(r"Local\naiad-test-marker-{}", std::process::id());
+        let (first, held) = take_marker(&name);
+        assert!(!first.is_null());
+        assert!(!held, "no one held it before");
+        let (second, held) = take_marker(&name);
+        assert!(held, "the second holder sees the first");
+        // SAFETY: both handles came from `take_marker` and are closed once each.
+        unsafe {
+            CloseHandle(first);
+            CloseHandle(second);
+        }
+        let (third, held) = take_marker(&name);
+        assert!(!held, "a marker no one holds is gone");
+        // SAFETY: as above.
+        unsafe {
+            CloseHandle(third);
+        }
     }
 }

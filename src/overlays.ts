@@ -86,7 +86,28 @@ export function customizeWindow(hooks: CustomizeHooks): HTMLDialogElement {
   return overlay('Customize', [row, note('System follows the light or dark setting of your computer.')]);
 }
 
-/** The Settings window (T1.21): nothing to set until its first setting is known (Q149). */
-export function settingsWindow(): HTMLDialogElement {
-  return overlay('Settings', [note('Nothing to set yet.')]);
+export interface SettingsHooks {
+  remembering(): boolean;
+  setRemembering(on: boolean): void;
+}
+
+/**
+ * The Settings window (T1.21). Its first setting, Remember opened files (T1.23, the
+ * user, 2026-11-14), is an on-off switch: a checkbox drawn as a toggle.
+ */
+export function settingsWindow(hooks: SettingsHooks): HTMLDialogElement {
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = 'switch';
+  input.id = 'ow-remember';
+  input.setAttribute('role', 'switch');
+  input.checked = hooks.remembering();
+  input.addEventListener('change', () => hooks.setRemembering(input.checked));
+  const label = document.createElement('label');
+  label.htmlFor = input.id;
+  label.textContent = 'Remember opened files';
+  const row = document.createElement('div');
+  row.className = 'ow-row';
+  row.append(label, input);
+  return overlay('Settings', [row, note('When Naiad starts, it opens again the files that were open when it last closed.')]);
 }

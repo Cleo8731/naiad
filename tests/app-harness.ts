@@ -83,13 +83,18 @@ export class FakeDisk {
   theme: 'light' | 'dark' | null | undefined = undefined;
   /** Called as Naiad asks, before the answer (to see what the window shows then). */
   onAsk: ((message: string) => void) | null = null;
+  /** The file Naiad is started on (a double-click on it; none: started from the Start menu). */
+  startFile: string | null = null;
+  /** Whether another Naiad window is running as this one starts (`Backend.otherWindow`). */
+  otherWindow = false;
 
   backend(): Backend {
     return {
       kind: this.kind,
       cliJob: async () => null,
       cliDone: async () => {},
-      initialPath: async () => null,
+      initialPath: async () => this.startFile,
+      otherWindow: async () => this.otherWindow,
       read: async (path) => {
         if (!this.files.has(path)) throw new Error('not found');
         const text = this.files.get(path)!;

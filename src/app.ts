@@ -49,6 +49,29 @@ function remember(key: string, value?: string): string | null {
   return null;
 }
 
+function forget(key: string): void {
+  try { localStorage.removeItem(key); } catch { /* as in `remember` */ }
+}
+
+/** What Remember opened files keeps (T1.23): the tabs' files in their order, and the shown tab's. */
+interface Kept { files: string[]; shown: string | null }
+
+/** The kept files, as written by `keep`; anything else is none. */
+function readKept(stored: string | null): Kept {
+  try {
+    const v = JSON.parse(stored ?? '') as { files?: unknown; shown?: unknown };
+    const files = Array.isArray(v.files) ? v.files.filter((f): f is string => typeof f === 'string') : [];
+    return { files, shown: typeof v.shown === 'string' ? v.shown : null };
+  } catch {
+    return { files: [], shown: null };
+  }
+}
+
+/** "a.mmd", "a.mmd and b.mmd", "a.mmd, b.mmd and c.mmd". */
+function listed(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** A tab's own parts of the window: its entry in the strip, its view, its Syntax text area. */
 interface TabParts {
   item: HTMLElement;
@@ -202,9 +225,13 @@ export class App {
       window.addEventListener('storage', (e) => { if (e.key === 'recent' || e.key === null) this.recent?.reload(); });
     }
 
+    // The files of the last close (T1.23), then the file Naiad was started on, shown (Q157).
     const path = await this.backend.initialPath().catch(() => null);
+    await this.reopen(path !== null);
     if (path) await this.open(path);
     this.recentFollows(this.tab);
+    this.keeping = true;
+    this.keep();
 
     // The shown tab's highlights file is looked at once a second (and at once when the
     // view comes back into sight), so an agent's highlights show without Naiad watching
@@ -288,6 +315,68 @@ export class App {
     this.recent?.mark(tab.file);
     this.recentFollows(tab);
     tab.show();
+    this.keep();
+  }
+
+  // ------------------------------------------------------------------ remember opened files
+
+  /** Whether the tabs' files are kept for the next start: from the end of the start on (T1.23). */
+  private keeping = false;
+  /** While the kept files open at start: their openings leave the recent list's order as it was. */
+  private reopening = false;
+
+  /** Remember opened files (T1.23): on until the person turns it off (Q156). */
+  private get remembering(): boolean { return remember('remember-files') !== 'off'; }
+
+  /** The Settings window's switch: off forgets the kept files at once; on keeps this window's at once. */
+  private setRemembering(on: boolean): void {
+    remember('remember-files', on ? 'on' : 'off');
+    if (on) this.keep();
+    else forget('opentabs');
+  }
+
+  /**
+   * Keeps the tabs' files, in their order, and the shown tab's, for the next start
+   * (T1.23): at each opening, closing and showing of a tab, so they outlast a shutdown,
+   * and once more as the window closes, so that of two windows the one closed last is
+   * remembered. Blank tabs are not kept. `naiad serve`'s page keeps nothing.
+   */
+  private keep(): void {
+    if (!this.keeping || this.backend.kind === 'served' || !this.remembering) return;
+    const files = this.tabs.flatMap((t) => (t.file ? [t.file] : []));
+    remember('opentabs', JSON.stringify({ files, shown: this.tab.file }));
+  }
+
+  /**
+   * At start (T1.23, Q155): opens again the files kept at the last close, in their order,
+   * and shows the one that was shown, unless a file Naiad was started on is to be shown
+   * instead (`named`, Q157). Nothing opens with the switch off, or with another Naiad
+   * window running: the kept files are then that window's (Q157). Files no longer there
+   * are skipped, and one notice names them.
+   */
+  private async reopen(named: boolean): Promise<void> {
+    if (this.backend.kind === 'served' || !this.remembering) return;
+    const kept = readKept(remember('opentabs'));
+    if (!kept.files.length || (await this.backend.otherWindow().catch(() => false))) return;
+    const found = await this.backend.existing(kept.files).catch(() => kept.files.map(() => true));
+    const gone = kept.files.filter((_, i) => !found[i]).map(basename);
+    this.reopening = true;
+    try {
+      for (const [i, path] of kept.files.entries()) {
+        if (!found[i]) continue;
+        try {
+          await this.open(await this.backend.choose(path));
+        } catch (e) {
+          this.toast(`Could not open ${basename(path)}: ${errorText(e)}`);
+        }
+      }
+    } finally {
+      this.reopening = false;
+    }
+    const shown = kept.shown === null ? undefined : this.tabs.find((t) => t.file !== null && samePath(t.file, kept.shown!));
+    if (shown && !named) this.show(shown);
+    if (gone.length === 1) this.toast(`${gone[0]} was not found, so it was not opened again.`);
+    else if (gone.length) this.toast(`${listed(gone)} were not found, so they were not opened again.`);
   }
 
   /**
@@ -347,6 +436,7 @@ export class App {
     if (tab === this.tab) this.show(this.tabs[Math.min(at, this.tabs.length - 1)]);
     else this.paintStrip();
     if (last) this.recentFollows(this.tab, true); // a new blank tab
+    this.keep();
     // The shell deletes the highlights file of a flowchart no view shows: the closed tab's
     // file is kept in the window's list until its highlight writes are done, so none lands
     // after the delete (bug hunt H5).
@@ -410,13 +500,14 @@ export class App {
       showAbout: (on) => this.showAbout(on),
       showSyntax: () => this.toggleText(true),
       opening: (path) => {
-        this.recent?.opened(path);
+        if (!this.reopening) this.recent?.opened(path);
         if (own() === this.tab) this.recent?.mark(path);
         this.paintStrip();
       },
       opened: (path) => {
         if (own() === this.tab) this.backend.setWindowTitle(`${basename(path)} - Naiad`);
         this.backend.viewing(this.files());
+        this.keep();
       },
     };
   }
@@ -437,7 +528,10 @@ export class App {
         if (!(await tab.leave('Close Naiad', () => { asked = true; this.show(tab); }))) return false;
         if (asked) lettingGo.add(tab);
       }
-      if (!this.tabs.some((t) => !lettingGo.has(t) && t.waiting())) return true;
+      if (!this.tabs.some((t) => !lettingGo.has(t) && t.waiting())) {
+        this.keep(); // the window closed last is the one remembered (T1.23)
+        return true;
+      }
     }
     return false;
   }
@@ -697,7 +791,7 @@ export class App {
     if (!w) {
       w = name === 'customize'
         ? customizeWindow({ appearance: () => this.appearance, setAppearance: (choice) => this.setAppearance(choice) })
-        : settingsWindow();
+        : settingsWindow({ remembering: () => this.remembering, setRemembering: (on) => this.setRemembering(on) });
       this.root.append(w);
       this.windows.set(name, w);
     }

@@ -22,6 +22,12 @@ export interface Backend {
   cliDone(code: number, output: string): Promise<void>;
   /** The file the app was started with, if any. */
   initialPath(): Promise<string | null>;
+  /**
+   * Whether another Naiad window was already running when this one started (T1.23,
+   * Q157): its files are then not opened again here. Only the desktop app can tell; a
+   * page in a browser says no.
+   */
+  otherWindow(): Promise<boolean>;
   read(path: string): Promise<string>;
   /**
    * Writes the file whole. Given `expected` (the file's text as read), it writes only
@@ -92,6 +98,7 @@ async function desktop(): Promise<Backend> {
     },
     cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
+    otherWindow: () => invoke<boolean>('other_window'),
     read: (path) => invoke<string>('read_file', { path }),
     write: (path, text, expected) => invoke<boolean>('write_file', { path, contents: text, expected: expected ?? null }),
     async watch(path, onChange) {
@@ -180,6 +187,7 @@ function browser(): Backend {
     cliJob: async () => null,
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
+    otherWindow: async () => false,
     read: async (path) => (await call('api/file', { headers: shows(path) })).text,
     write: (path, text, expected) => put('api/file', path, text, expected),
     async watch(path, onChange) {
