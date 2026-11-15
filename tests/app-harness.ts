@@ -13,8 +13,11 @@ export const chartTiming = { drawDelay: 0 };
 /** The events the app gave the last stand-in chart (a click on an item, say). */
 export const chartEvents: { last: import('../src/chart').ChartEvents | null } = { last: null };
 
-/** Whether the app last set Mermaid up to draw dark (`configureMermaid`), or null before any. */
-export const chartTheme: { dark: boolean | null } = { dark: null };
+/**
+ * Whether the app last set Mermaid up to draw dark (`configureMermaid`), or null before
+ * any; and how many times it set Mermaid up (once more for each palette chosen, T4.9).
+ */
+export const chartTheme: { dark: boolean | null; calls: number } = { dark: null, calls: 0 };
 
 /** The wheel mode the app last gave the chart (`setWheelMode`), or null before any. */
 export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { mode: null };
@@ -30,7 +33,7 @@ export const charts: {
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
-  configureMermaid: (dark: boolean) => { chartTheme.dark = dark; },
+  configureMermaid: (dark: boolean) => { chartTheme.dark = dark; chartTheme.calls++; },
   Chart: class {
     drawn: string[] = [];
     sidebarShown: boolean[] = [];
@@ -40,7 +43,7 @@ export const chartMock = () => ({
     destroy() { this.destroyed = true; }
     setWheelMode(mode: import('../src/chart').WheelMode) { chartWheel.mode = mode; }
     async draw(text: string) {
-      const sidebar = this.stage.parentElement?.querySelector<HTMLElement>('.sidebar');
+      const sidebar = this.stage.closest('.tabview')?.querySelector<HTMLElement>('.sidebar');
       this.sidebarShown.push(!!sidebar && !sidebar.hidden);
       charts.most = Math.max(charts.most, ++charts.drawing);
       try {
@@ -62,6 +65,8 @@ export class FakeDisk {
   /** How long the watcher waits, like the 60 and 80 ms of the bridge and the desktop. */
   watchDelay = 70;
   writes: { path: string; text: string }[] = [];
+  /** Each write of a flowchart fails with this message (a full disk, say); none: writes succeed. */
+  failWrites: string | null = null;
   /** What the person answers when Naiad asks (`Backend.confirm`); every question asked. */
   answer = false;
   asked: string[] = [];
@@ -104,6 +109,7 @@ export class FakeDisk {
       write: async (path, text, expected) => {
         // As the backends do: refused when the file no longer holds what was read.
         if (expected !== undefined && this.files.get(path) !== expected) return false;
+        if (this.failWrites !== null) throw new Error(this.failWrites);
         this.writes.push({ path, text });
         this.put(path, text);
         return true;
@@ -201,8 +207,8 @@ export async function startApp(disk: FakeDisk, path: string | null) {
     toast: () => (q<HTMLElement>('.toast').hidden ? '' : q<HTMLElement>('.toast').textContent ?? ''),
     /** Typing in the text pane: the textarea's own input event. */
     type(text: string) { const a = this.area(); a.value = text; a.dispatchEvent(new Event('input')); },
-    /** A chart edit: the direction list in the toolbar. */
-    direction(dir: string) { const s = q<HTMLSelectElement>('[data-act="dir"]'); s.value = dir; s.dispatchEvent(new Event('change')); },
+    /** A chart edit: a direction picked in the direction button's menu (T4.9). */
+    direction(dir: string) { q<HTMLElement>('[data-act="dir"]').click(); q<HTMLElement>(`[data-dir="${dir}"]`).click(); },
     undo() { q<HTMLButtonElement>('[data-act="undo"]').click(); },
     redo() { q<HTMLButtonElement>('[data-act="redo"]').click(); },
     undoEnabled: () => !q<HTMLButtonElement>('[data-act="undo"]').disabled,

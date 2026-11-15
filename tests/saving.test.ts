@@ -1178,7 +1178,7 @@ describe('the Syntax pane', () => {
     localStorage.clear();
   });
 
-  it('a notice shows over the window while the pane is hidden, with Details and Show syntax', async () => {
+  it('a notice shows over the chart while the pane is hidden, with Details and Show syntax', async () => {
     localStorage.clear();
     const { disk } = await start();
     disk.outside(FILE, BROKEN);
@@ -1186,7 +1186,7 @@ describe('the Syntax pane', () => {
     for (let t0 = Date.now(); !bad() && Date.now() - t0 < 3000;) await sleep(5);
     expect(pane().hidden).toBe(true);
     expect(bad()!.querySelector('.notice-text')!.textContent).toBe('Mermaid cannot read this text, so the chart shows the last good version.');
-    expect(bad()!.parentElement!.matches('.body > .tabview > .notices')).toBe(true);
+    expect(bad()!.parentElement!.matches('.tabview > .chartarea > .notices')).toBe(true);
     expect(bad()!.closest('[hidden]')).toBeNull();
     const press = (label: string) => [...bad()!.querySelectorAll('button')].find((b) => b.textContent === label)!.click();
     expect(bad()!.querySelector('pre')).toBeNull();
@@ -1197,13 +1197,11 @@ describe('the Syntax pane', () => {
     press('Show syntax');
     expect(pane().hidden).toBe(false);
     expect([...bad()!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Details']);
-    // The bar covers the top of the pane, so the pane's text starts below it while it shows.
-    const area = pane().querySelector('textarea')!;
-    expect(area.style.paddingTop).not.toBe('');
+    // The notices lie over the chart only (T4.9), so the pane's text is never covered.
+    expect(pane().contains(bad())).toBe(false);
     disk.outside(FILE, BASE);
     for (let t0 = Date.now(); bad() && Date.now() - t0 < 3000;) await sleep(5);
     expect(bad()).toBeNull();
-    expect(area.style.paddingTop).toBe('');
     localStorage.clear();
   });
 

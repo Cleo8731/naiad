@@ -24,7 +24,7 @@ const tabOf = (name: string) => [...document.querySelectorAll<HTMLElement>('.tab
 const shownView = () => q<HTMLElement>('.tabview:not([hidden])')!;
 /** Every tab's Syntax text, shown or not, in the order the tabs were made. */
 const paneTexts = () => [...document.querySelectorAll<HTMLTextAreaElement>('.textpane textarea')].map((t) => t.value);
-const clear = () => q<HTMLButtonElement>('.bar [data-act="clear"]')!;
+const clear = () => q<HTMLButtonElement>('[data-act="clear"]')!;
 const key = (k: string, ctrl = true) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey: ctrl, bubbles: true, cancelable: true }));
 
 let disk: FakeDisk;
@@ -49,31 +49,31 @@ describe('the tab strip', () => {
     expect(strip().lastElementChild).toBe(plus());
     expect(plus().getAttribute('aria-label')).toBe('New tab');
     expect(plus().querySelector('svg')!.getAttribute('data-icon')).toBe('plus');
-    // The window's top row holds the tab strip alone (the user, 2026-11-14, T1.18 and T1.21).
+    // The tabs row, beside the rail, holds the tab strip alone (T1.18, T1.21, T4.9).
     const top = strip().parentElement!;
-    expect(top).toBe(q('#app')!.firstElementChild);
+    expect(top).toBe(q('.column')!.firstElementChild);
     expect(top.children).toHaveLength(1);
   });
 
-  test('the toolbar is the row beneath the tabs, over the chart and the recent list\'s pane (the user, 2026-11-14, T1.21)', async () => {
+  test('the chart\'s tools lie over the shown tab\'s chart, under the tabs row (T4.9)', async () => {
     await start();
-    const tools = q<HTMLElement>('[data-act="view"]')!.closest('.bar')!;
-    expect(tools).not.toBe(strip().parentElement);
-    expect(tools.querySelector('.status')).not.toBeNull();
-    expect(tools.querySelector('[data-act="add"]')).not.toBeNull();
-    // Above the recent list's pane, the Syntax pane, the chart and the sidebar.
-    expect(tools.previousElementSibling).toBe(strip().parentElement);
-    expect(tools.nextElementSibling).toBe(q('main'));
+    const area = shownView().querySelector('.chartarea')!;
+    expect(area.contains(q('[data-act="view"]'))).toBe(true);
+    expect(area.contains(q('[data-act="add"]'))).toBe(true);
+    expect(area.contains(q('[data-act="undo"]'))).toBe(true);
+    // Under the tabs row: the recent list's pane, the Syntax pane, the chart and the sidebar.
+    expect(strip().parentElement!.nextElementSibling).toBe(q('main'));
     expect(q('main')!.contains(q('nav.recent'))).toBe(true);
     expect(q('.body')!.contains(q('.textpane'))).toBe(true);
     expect(q('.body')!.contains(q('.stage'))).toBe(true);
   });
 
-  test('the toolbar keeps the shown tab\'s saved state, and neither the file\'s name nor Open and New (Q140)', async () => {
+  test('the chart\'s tools keep the shown tab\'s saved state, unseen, and neither the file\'s name nor Open and New (Q140)', async () => {
     const ui = await start('desktop');
-    expect(q('.bar .name')).toBeNull();
-    expect(q('.bar [data-act="open"]')).toBeNull();
-    expect(q('.bar [data-act="new"]')).toBeNull();
+    const tools = '.island-row, .pill';
+    expect(q(`:is(${tools}) .name`)).toBeNull();
+    expect(q(`:is(${tools}) [data-act="open"]`)).toBeNull();
+    expect(q(`:is(${tools}) [data-act="new"]`)).toBeNull();
     expect(ui.status()).toBe('Saved');
     expect(disk.title).toBe('a.mmd - Naiad');
   });
@@ -88,8 +88,8 @@ describe('the tab strip', () => {
     const empty = shownView().querySelector<HTMLElement>('.empty')!;
     expect(empty.hidden).toBe(false);
     expect(empty.querySelector('h1')!.textContent).toBe('No file open');
-    expect(empty.querySelector('[data-act="open"]')!.textContent).toBe('Open a file');
-    expect(empty.querySelector('[data-act="new"]')!.textContent).toBe('New flowchart');
+    expect(empty.querySelector('[data-act="open"]')!.textContent!.trim()).toBe('Open a file');
+    expect(empty.querySelector('[data-act="new"]')!.textContent!.trim()).toBe('New flowchart');
     expect(ui.status()).toBe('');
     expect(ui.undoEnabled()).toBe(false);
     expect(disk.title).toBe('Naiad');
@@ -101,7 +101,7 @@ describe('the tab strip', () => {
     expect(ui.shown()).toBe('New tab');
     const notices = () => shownView().querySelector('.notices')!.children.length;
     expect(notices()).toBe(0);
-    q<HTMLButtonElement>('.bar [data-act="syntax"]')!.click();
+    q<HTMLButtonElement>('[data-act="syntax"]')!.click();
     expect(notices()).toBe(0);
   });
 
@@ -163,7 +163,7 @@ describe('the tab strip', () => {
   test('the recent list marks the shown tab\'s file, and nothing for a blank tab', async () => {
     const ui = await start();
     await ui.app.open(B);
-    q<HTMLButtonElement>('.bar [data-act="recent"]')!.click();
+    q<HTMLButtonElement>('[data-act="recent"]')!.click();
     expect(q('nav.recent li.current .rname')!.textContent).toBe('b.mmd');
     ui.showTab('a.mmd');
     expect(q('nav.recent li.current .rname')!.textContent).toBe('a.mmd');
@@ -174,9 +174,10 @@ describe('the tab strip', () => {
   test('naiad serve\'s page shows its one file with no strip', async () => {
     const ui = await start('served');
     expect(q('.tabs')).toBeNull();
-    // Only the toolbar: the top row held the tabs and the recent list's button.
-    expect(document.querySelectorAll('.bar')).toHaveLength(1);
-    expect(q('#app')!.firstElementChild!.contains(q('[data-act="view"]'))).toBe(true);
+    // No tabs row: the rail, then the chart with its tools (T4.9).
+    expect(q('header.top')).toBeNull();
+    expect(q('.rail')!.contains(q('[data-act="syntax"]'))).toBe(true);
+    expect(shownView().querySelector('.chartarea')!.contains(q('[data-act="view"]'))).toBe(true);
     expect(ui.area().value).toBe(TEXT);
     expect(ui.status()).toBe('Saved');
   });
@@ -298,12 +299,12 @@ describe('what each tab keeps, and what the window keeps', () => {
   test('View mode and the Highlight switch are the window\'s, so they hold in every tab', async () => {
     const ui = await start();
     await ui.app.open(B);
-    q<HTMLButtonElement>('.bar [data-act="highlight"]')!.click();
-    q<HTMLButtonElement>('.bar [data-act="view"]')!.click();
-    await vi.waitFor(() => expect(q('.bar [data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    q<HTMLButtonElement>('[data-act="highlight"]')!.click();
+    q<HTMLButtonElement>('[data-act="view"]')!.click();
+    await vi.waitFor(() => expect(q('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
     ui.showTab('a.mmd');
     expect(ui.area().readOnly).toBe(true);
-    expect(q('.bar [data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('true');
   });
 
   test('the toolbar\'s Clear follows the shown tab\'s highlights', async () => {

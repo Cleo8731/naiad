@@ -37,6 +37,9 @@ const press = (key: string, more: KeyboardEventInit = {}) => {
   document.body.dispatchEvent(e);
   return e;
 };
+/** Whether a control shows: neither it nor a part that holds it (the island, the pill's first part: T4.9) is hidden. */
+const shows = (act: string) => !q<HTMLElement>(`[data-act="${act}"]`)!.closest('[hidden]');
+
 async function toView() {
   viewButton().click();
   await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('true'));
@@ -51,12 +54,13 @@ describe('the View button (Q115) and the mode remembered (Q114)', () => {
     expect(viewButton().getAttribute('aria-pressed')).toBe('false');
     expect(ui.area().readOnly).toBe(false);
     await toView();
-    for (const act of ['add', 'undo', 'redo', 'dir']) expect(q<HTMLElement>(`[data-act="${act}"]`)!.hidden).toBe(true);
-    for (const act of ['highlight', 'fit', 'syntax', 'view']) expect(q<HTMLElement>(`[data-act="${act}"]`)!.hidden).toBe(false);
+    for (const act of ['add', 'undo', 'redo', 'dir']) expect(shows(act), act).toBe(false);
+    for (const act of ['highlight', 'fit', 'wheel', 'syntax', 'view']) expect(shows(act), act).toBe(true);
     expect(ui.area().readOnly).toBe(true);
     viewButton().click();
     await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('false'));
-    expect(q<HTMLElement>('[data-act="add"]')!.hidden).toBe(false);
+    expect(shows('add')).toBe(true);
+    expect(shows('undo')).toBe(true);
     expect(ui.area().readOnly).toBe(false);
   });
 
@@ -67,7 +71,7 @@ describe('the View button (Q115) and the mode remembered (Q114)', () => {
     const again = await startApp(disk, FILE);
     expect(viewButton().getAttribute('aria-pressed')).toBe('true');
     expect(again.area().readOnly).toBe(true);
-    expect(q<HTMLElement>('[data-act="add"]')!.hidden).toBe(true);
+    expect(shows('add')).toBe(false);
     viewButton().click();
     await vi.waitFor(() => expect(viewButton().getAttribute('aria-pressed')).toBe('false'));
     stopApps();

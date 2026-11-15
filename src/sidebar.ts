@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import { SHAPES } from './core/scan';
 import { FLOWCHART_ID } from './core/descriptions';
 import type { ArrowKind, LinkParts } from './core/edits';
+import { ICONS } from './icons';
 
 export interface NodeView {
   kind: 'node'; id: string; title: string; description: string; shape: string;
@@ -95,6 +96,13 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...
   }
   el.append(...kids);
   return el;
+}
+
+/** One of the window's icons (`icons.ts`), as an element: a list's arrow, Delete's bin (T4.9). */
+function iconEl(name: keyof typeof ICONS): Element {
+  const t = document.createElement('template');
+  t.innerHTML = ICONS[name];
+  return t.content.firstElementChild!;
 }
 
 function option(value: string, label: string): HTMLOptionElement {
@@ -355,7 +363,9 @@ export class Sidebar {
   }
 
   private row(label: string, control: HTMLElement): HTMLElement {
-    return h('label', { class: 'row' }, h('span', {}, label), control);
+    // A list shows its own arrow (T4.9), drawn over the end of the box.
+    const box = control instanceof HTMLSelectElement ? h('span', { class: 'select-wrap' }, control, iconEl('chevron')) : control;
+    return h('label', { class: 'row' }, h('span', {}, label), box);
   }
 
   private build(view: View): HTMLElement[] {
@@ -483,7 +493,7 @@ export class Sidebar {
         this.row('Group', group)),
       h('div', { class: 'side-foot' },
         h('span', { class: 'hint' }, 'Drag the dot beside the node onto another node to connect them.'),
-        h('button', { class: 'danger', click: () => a.deleteNode(id) }, 'Delete node')),
+        h('button', { class: 'danger', click: () => a.deleteNode(id) }, iconEl('trash'), 'Delete node')),
     ];
   }
 
@@ -514,7 +524,7 @@ export class Sidebar {
       label,
       h('div', { class: 'props' }, this.row('From', from), this.row('To', to), this.row('Line', stroke), this.row('Head', arrow),
         this.row('Colour', this.swatches((v) => (v as EdgeView).colour, (s) => a.setEdgeColour(index, s), 'stroke'))),
-      h('div', { class: 'side-foot' }, h('button', { class: 'danger', click: () => a.deleteEdge(index) }, 'Delete arrow')),
+      h('div', { class: 'side-foot' }, h('button', { class: 'danger', click: () => a.deleteEdge(index) }, iconEl('trash'), 'Delete arrow')),
     ];
   }
 

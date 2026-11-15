@@ -1,164 +1,347 @@
-/* Nunito (the user, 2026-11-13), for the chart and the window; the Syntax pane keeps its
-   code font. Its Latin part, every weight from 200 to 1000 in one file; licence:
-   `fonts/OFL.txt`. Other letters fall back to the next font in --ui. */
+/* The fonts (the design handoff, T4.9, 2026-11-15), bundled so nothing is fetched; their
+   licences: `fonts/OFL.txt`. Lexend for the window and the chart's labels; Newsreader
+   italic for window titles, the blank tab's heading and the sidebar's titles; JetBrains
+   Mono for the Syntax pane, or DM Mono or Recursive Casual (Customize, Syntax font). */
 @font-face {
-  font-family: Nunito; font-style: normal; font-weight: 200 1000; font-display: block;
-  src: url('./fonts/nunito-latin.woff2') format('woff2');
+  font-family: 'Lexend'; font-style: normal; font-weight: 400 700; font-display: block;
+  src: url('./fonts/lexend.woff2') format('woff2');
 }
-/* The colours, each as light-dark(light, dark). Appearance (T4.8) sets `data-theme` on
-   the page's root to light or dark; without it, the computer's setting decides (System). */
+@font-face {
+  font-family: 'Newsreader'; font-style: italic; font-weight: 400 600; font-display: block;
+  src: url('./fonts/newsreader-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 800; font-display: block;
+  src: url('./fonts/jetbrains-mono.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DM Mono'; font-style: normal; font-weight: 400; font-display: block;
+  src: url('./fonts/dm-mono.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Recursive'; font-style: oblique 0deg 15deg; font-weight: 300 1000; font-display: block;
+  src: url('./fonts/recursive.woff2') format('woff2');
+}
+
+/* ---- the palettes: the design handoff's `themes.css`, taken in whole (T4.9). The
+   palette is `data-palette` on the page's root (none: Naiad Default); Appearance (T4.8)
+   is `data-theme` (none: the computer's setting). Every colour is light-dark(light,
+   dark). A Customize window's theme card is drawn in its palette's colours, so each
+   palette's rule also names `.theme-preview[data-palette]`. */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f4f5f7, #16181c);
-  --panel: light-dark(#ffffff, #1e2126);
-  --line: light-dark(#dde1e7, #30353d);
-  --text: light-dark(#1c2026, #e8eaed);
-  --muted: light-dark(#667085, #98a1b0);
-  --accent: light-dark(#3b5bdb, #8da2fb);
-  --accent-soft: light-dark(#e6ebff, #252d4d);
-  --on-accent: light-dark(#ffffff, #10131a);
-  --bad: light-dark(#c92a2a, #ff8787);
-  --warn-bg: light-dark(#fff4d6, #362d12);
-  --warn-text: light-dark(#6b4a00, #f0d48a);
-  --dot: light-dark(#d5d9e0, #2a2e35);
-  --hl: light-dark(#f59f00, #fcc419);
-  --ui: Nunito, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-ui: 'Lexend', 'Segoe UI', system-ui, sans-serif;             /* interface text, chart labels */
+  --font-display: 'Newsreader', Georgia, serif;                        /* italic: window titles */
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace; /* the Syntax pane */
+  --radius-control: 12px; --radius-tab: 10px; --radius-pill: 999px; --radius-node: 12px; --radius-group: 22px; --radius-window: 22px;
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+
+/* Naiad Default: clear water blue, sunlight-gold highlight (the default) */
+:root, :root[data-palette="naiad-default"], .theme-preview[data-palette="naiad-default"] {
+  --bg: light-dark(#eef5f4, #0b1c21);
+  --panel: light-dark(#fafcfb, #10252b);
+  --field: light-dark(#f2f7f6, #0e2126);
+  --line: light-dark(#d8e7e6, #1d3a42);
+  --text: light-dark(#12292f, #e3f1f2);
+  --muted: light-dark(#4d6a6f, #8fb0b5);
+  --accent: light-dark(#0b7d95, #4cbdd6);
+  --on-accent: light-dark(#ffffff, #04202a);
+  --accent-soft: light-dark(#d6ecee, #133740);
+  --highlight: light-dark(#e9a83a, #f2bc55);
+  --grid-dot: light-dark(#cfe2e1, #163238);
+  --node: light-dark(#ffffff, #12303a);
+  --node-border: light-dark(#95c2c8, #34727f);
+  --edge: light-dark(#66979f, #5592a0);
+  --group: light-dark(#e3efee, #0e262c);
+  --group-border: light-dark(#bad6d8, #22474f);
+}
+
+/* Moonpool: lavender night, gold */
+:root[data-palette="moonpool"], .theme-preview[data-palette="moonpool"] {
+  --bg: light-dark(#f0eff7, #11101e);
+  --panel: light-dark(#fbfbfe, #18172c);
+  --field: light-dark(#f4f3fa, #141327);
+  --line: light-dark(#dcdaea, #2b2946);
+  --text: light-dark(#1f1d33, #e8e6f7);
+  --muted: light-dark(#5f5c79, #9e9abf);
+  --accent: light-dark(#5a4ed4, #a99eff);
+  --on-accent: light-dark(#ffffff, #15123a);
+  --accent-soft: light-dark(#e3e0fa, #29264f);
+  --highlight: light-dark(#d9971f, #f2c45a);
+  --grid-dot: light-dark(#d3d0e6, #22203a);
+  --node: light-dark(#ffffff, #1f1d3a);
+  --node-border: light-dark(#aaa5cf, #4f4a85);
+  --edge: light-dark(#8580ad, #7a76a8);
+  --group: light-dark(#e6e4f3, #1a1932);
+  --group-border: light-dark(#c9c5e2, #34315a);
+}
+
+/* Kelp: olive green, amber */
+:root[data-palette="kelp"], .theme-preview[data-palette="kelp"] {
+  --bg: light-dark(#eff1e8, #11150e);
+  --panel: light-dark(#fafbf6, #181e14);
+  --field: light-dark(#f3f5ed, #141a11);
+  --line: light-dark(#d8dccb, #2a3323);
+  --text: light-dark(#1e2619, #e5ebdb);
+  --muted: light-dark(#5c6550, #9ba68b);
+  --accent: light-dark(#4a7a2a, #9cc76a);
+  --on-accent: light-dark(#ffffff, #16220c);
+  --accent-soft: light-dark(#dfe9d0, #25331b);
+  --highlight: light-dark(#d47a22, #f0a24a);
+  --grid-dot: light-dark(#d0d5c0, #20281a);
+  --node: light-dark(#ffffff, #1d2618);
+  --node-border: light-dark(#a7b38f, #4c5e3a);
+  --edge: light-dark(#7f8b6b, #7a8a66);
+  --group: light-dark(#e5e9da, #171e12);
+  --group-border: light-dark(#c8cfb5, #313d27);
+}
+
+/* Water Lily: soft pink ground, lily-pink accent, leaf-green highlight */
+:root[data-palette="water-lily"], .theme-preview[data-palette="water-lily"] {
+  --bg: light-dark(#fbf0f2, #1a0f13);
+  --panel: light-dark(#fff9fa, #24151b);
+  --field: light-dark(#fdf4f6, #1f1217);
+  --line: light-dark(#f0d9df, #3d2530);
+  --text: light-dark(#3a2129, #f7e6ec);
+  --muted: light-dark(#7a5862, #c09cab);
+  --accent: light-dark(#c8487a, #ff8fb7);
+  --on-accent: light-dark(#ffffff, #3a0a1d);
+  --accent-soft: light-dark(#f9dbe5, #44202f);
+  --highlight: light-dark(#4fa83a, #84d66a);
+  --grid-dot: light-dark(#edd3da, #2c1a22);
+  --node: light-dark(#ffffff, #2b1820);
+  --node-border: light-dark(#dfaebd, #77445a);
+  --edge: light-dark(#b08391, #a07888);
+  --group: light-dark(#f8e6eb, #21131a);
+  --group-border: light-dark(#ebc8d2, #4a2b39);
+}
+
+/* Glacier: near-monochrome ink, icy cyan */
+:root[data-palette="glacier"], .theme-preview[data-palette="glacier"] {
+  --bg: light-dark(#eef3f8, #070c12);
+  --panel: light-dark(#fbfdff, #0d141c);
+  --field: light-dark(#f2f6fb, #0a1018);
+  --line: light-dark(#d9e3ee, #1b2733);
+  --text: light-dark(#0d1824, #e9f2fb);
+  --muted: light-dark(#566779, #8b9bad);
+  --accent: light-dark(#14212e, #dcebfa);
+  --on-accent: light-dark(#ffffff, #0a121b);
+  --accent-soft: light-dark(#dfe8f2, #172331);
+  --highlight: light-dark(#38bdf8, #5fd0ff);
+  --grid-dot: light-dark(#cfdbe7, #141e29);
+  --node: light-dark(#ffffff, #111a24);
+  --node-border: light-dark(#a4b4c6, #3a4c60);
+  --edge: light-dark(#7a8b9d, #6f8296);
+  --group: light-dark(#e5edf5, #0d151e);
+  --group-border: light-dark(#c6d3e1, #263546);
+}
+
+/* Coral: coral accent, bark-brown ink, clear-water blue */
+:root[data-palette="coral"], .theme-preview[data-palette="coral"] {
+  --bg: light-dark(#f8f1ec, #18110d);
+  --panel: light-dark(#fffaf6, #211813);
+  --field: light-dark(#fbf5f0, #1c1410);
+  --line: light-dark(#ecdcd1, #3a2b23);
+  --text: light-dark(#3a2519, #f4e7de);
+  --muted: light-dark(#765e52, #b59e92);
+  --accent: light-dark(#c4513a, #ff8b6b);
+  --on-accent: light-dark(#ffffff, #2a0f06);
+  --accent-soft: light-dark(#f8ded3, #3e2419);
+  --highlight: light-dark(#1f9bb8, #4fd0ec);
+  --grid-dot: light-dark(#e6d5c9, #2a1f19);
+  --node: light-dark(#ffffff, #281d17);
+  --node-border: light-dark(#d3b3a3, #6d4a3a);
+  --edge: light-dark(#a08273, #9a7d70);
+  --group: light-dark(#f3e5dc, #1f1611);
+  --group-border: light-dark(#e2c9bb, #47342a);
+}
+
+/* Derived once, for every palette */
+:root {
+  --accent-press: color-mix(in oklab, var(--accent) 84%, light-dark(black, white));
+  --highlight-ink: light-dark(color-mix(in oklab, var(--highlight) 58%, black), var(--highlight));
+  --select: var(--accent);
+  --bad: light-dark(#b93a28, #ff8f7a);
+  --warn-bg: light-dark(#fbefd6, #33290f);
+  --warn-text: light-dark(#664700, #f0d48a);
+  --shadow: light-dark(color-mix(in srgb, var(--text) 24%, transparent), rgb(0 0 0 / .6));
+  --scrim: light-dark(color-mix(in srgb, var(--text) 32%, transparent), rgb(0 0 0 / .56));
+  /* the names the rules below use */
+  --hl: var(--highlight); --dot: var(--grid-dot); --ui: var(--font-ui); --mono: var(--font-mono);
+}
+:root[data-palette="coral"] { --bad: light-dark(#a61b3c, #ff7a9a); }
+:root[data-palette="glacier"] { --select: light-dark(#0b6fa8, #5fd0ff); }
+
+/* The Syntax font (T4.9): `data-syntaxfont` on the page's root (none: JetBrains Mono).
+   A sample in Customize shows its own font, whichever is chosen. Recursive is drawn
+   monospaced and casual through its variation settings. */
+:root[data-syntaxfont="dm-mono"], .font-sample[data-syntaxfont="dm-mono"] {
+  --font-mono: 'DM Mono', 'Cascadia Code', Consolas, monospace; --mono-fvs: normal;
+}
+:root[data-syntaxfont="recursive"], .font-sample[data-syntaxfont="recursive"] {
+  --font-mono: 'Recursive', 'Cascadia Code', Consolas, monospace; --mono-fvs: 'MONO' 1, 'CASL' 1;
+}
+.font-sample[data-syntaxfont="jetbrains-mono"] {
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace; --mono-fvs: normal;
+}
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--ui); overflow: hidden; }
-#app { height: 100%; display: flex; flex-direction: column; }
+body.resizing { cursor: col-resize; user-select: none; }
+/* Unseen, but read by screen readers: the saved state (T4.9). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 
 button, select, input, textarea { font: inherit; color: inherit; }
 button, select {
-  height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px;
+  height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-control);
   background: var(--panel); cursor: pointer;
 }
 button:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--muted); }
 button:disabled, select:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-press); border-color: var(--accent-press); }
 button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
 button.ghost:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--text); }
 button.danger { color: var(--bad); }
 button.danger:hover { border-color: var(--bad); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+:focus-visible { outline: 2px solid var(--select); outline-offset: 1px; }
+svg { flex: none; }
 
-/* ---- the window's two rows (the user, 2026-11-14): the top row holds the tabs; the
-   toolbar is the row beneath, across the whole window, over the recent list's pane and
-   the chart (T1.21). */
-.bar {
-  display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px; flex: none;
-  background: var(--panel); border-bottom: 1px solid var(--line);
-}
-.bar.top { gap: 4px; padding: 0 6px; }
-/* In a narrow window the toolbar scrolls sideways rather than cut its last buttons off. */
-.bar.tools { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
-.bar .status { margin-left: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.bar .status[data-state="bad"] { color: var(--bad); }
-.bar .spacer { flex: 1; }
-.bar [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
-/* Icon buttons (T4.7): no border; a soft rounded square behind the icon on hover, as in
-   Obsidian. A switch that is on (Highlight, Syntax) keeps the square, in the accent. The
-   View button shows where a click goes, not a state, so it has no "on" look. */
-.bar button.icon {
-  display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 30px; height: 30px; padding: 0; border-color: transparent; border-radius: 7px;
-  background: transparent; color: var(--muted);
-}
-.bar button.icon svg { width: 18px; height: 18px; display: block; }
-.bar button.icon[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.bar button.icon[data-act="view"][aria-pressed="true"] { background: transparent; color: var(--muted); }
-.bar button.icon:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--text); }
-/* The caret button (T1.21), the toolbar's last: it points up while the top row shows and
-   turns upside down while it is hidden; at once when Windows' animation effects are off. */
-.bar button.caret { margin-left: 2px; }
-.bar button.caret svg { transition: transform 160ms ease; }
-.bar button.caret[aria-expanded="false"] svg { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) {
-  .bar button.caret svg { transition: none; }
-}
-
+/* ---- the window (T4.9): the rail on the left, then a column of the tabs row over the
+   panes and the chart. */
+#app { height: 100%; display: flex; }
+.column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 main { position: relative; flex: 1; display: flex; min-height: 0; }
 
-/* ---- tabs (T1.16): the strip of open files, the top row; one tab is shown at a time.
-   The shown tab has the soft accent square. A tab's × shows on the shown tab, and on
-   another while the pointer is over it, as the recent list's × does. */
+/* The logo's mark, in the palette's accent: the rail's corner and a blank tab. */
+.mark {
+  display: block; flex: none; background: var(--accent);
+  -webkit-mask: url('./brand/naiad-mark.svg') center/contain no-repeat;
+  mask: url('./brand/naiad-mark.svg') center/contain no-repeat;
+}
+
+/* ---- the rail (48 px): each button is its icon; the one under the pointer widens over
+   the window to show its name. A switch that is on keeps the soft accent square. */
+.rail {
+  position: relative; z-index: 12; width: 48px; flex: none; display: flex; flex-direction: column;
+  align-items: flex-start; gap: 4px; padding: 12px 7px 10px; overflow: visible; user-select: none;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.rail .mark { width: 24px; height: 24px; margin: 0 5px 12px; }
+.rail .spacer { flex: 1; }
+.rail button {
+  display: flex; align-items: center; gap: 10px; flex: none; height: 34px; max-width: 34px; padding: 0 8px;
+  border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted);
+  overflow: hidden; white-space: nowrap;
+  transition: max-width 160ms ease, padding 160ms ease, background-color 120ms, box-shadow 120ms;
+}
+.rail button svg { width: 18px; height: 18px; display: block; }
+.rail button:hover {
+  max-width: 180px; padding: 0 14px 0 8px; background: var(--panel); color: var(--text);
+  box-shadow: 0 0 0 1px var(--line), 0 6px 18px -6px var(--shadow);
+}
+.rail button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.rail button[aria-pressed="true"]:hover { background: var(--accent-soft); }
+.rlabel { font-weight: 500; }
+@media (prefers-reduced-motion: reduce) {
+  .rail button { transition: none; }
+}
+
+/* ---- the tabs row (T1.16): the strip of open files, the only row above the chart. The
+   shown tab has the soft accent square. A tab's × shows on the shown tab, and on another
+   while the pointer is over it, as the recent list's × does. */
+.bar.top {
+  display: flex; align-items: center; height: 44px; padding: 0 8px; flex: none; user-select: none;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
 .tabs {
-  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; height: 100%; padding: 0 2px;
+  display: flex; align-items: center; gap: 3px; flex: 1; min-width: 0; height: 100%; padding: 0 2px;
   overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
 }
 .tab {
-  position: relative; display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 28px;
-  border-radius: 7px; color: var(--muted);
+  position: relative; display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 30px;
+  border-radius: var(--radius-tab); color: var(--muted);
 }
 .tab:hover { background: var(--bg); color: var(--text); }
 .tab.shown { background: var(--accent-soft); color: var(--text); }
 .tab .tname {
-  flex: 1; min-width: 0; height: 28px; padding: 0 28px 0 10px; border: 0; border-radius: 7px; background: transparent;
+  flex: 1; min-width: 0; height: 30px; padding: 0 28px 0 12px; border: 0; border-radius: var(--radius-tab); background: transparent;
   color: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tab.shown .tname { font-weight: 600; cursor: default; }
 .tab .tclose {
-  position: absolute; top: 3px; right: 3px; display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted);
+  position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--muted);
 }
 .tab .tclose svg { width: 14px; height: 14px; display: block; }
 .tab .tclose:hover { background: var(--panel); color: var(--text); }
 .tab:not(.shown):not(:hover):not(:focus-within) .tclose { visibility: hidden; }
 .tabs button.icon {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 28px; height: 28px; padding: 0; border-color: transparent; border-radius: 7px;
+  width: 30px; height: 30px; padding: 0; border-color: transparent; border-radius: var(--radius-pill);
   background: transparent; color: var(--muted);
 }
 .tabs button.icon svg { width: 16px; height: 16px; display: block; }
 .tabs button.icon:hover { background: var(--accent-soft); border-color: transparent; color: var(--text); }
-/* Under the toolbar: the Syntax pane, then the shown tab's chart, sidebar and notices. */
-.body { position: relative; flex: 1; display: flex; min-height: 0; }
-.tabview { display: contents; }
 
-/* ---- text pane */
+/* Beside the recent list's pane: the Syntax pane, then the shown tab's chart area and
+   sidebar. */
+.body { position: relative; flex: 1; display: flex; min-width: 0; min-height: 0; }
+.tabview { flex: 1; min-width: 0; display: flex; }
+.chartarea { position: relative; flex: 1; min-width: 0; display: flex; container-type: inline-size; }
+
+/* ---- the grips (T4.9): on the edge of a pane that faces the chart; a drag resizes it. */
+.grip {
+  position: absolute; top: 0; bottom: 0; right: -6px; width: 11px; z-index: 6;
+  display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none;
+}
+.grip::after {
+  content: ''; display: block; width: 7px; height: 48px; border-radius: var(--radius-pill);
+  background: var(--line); border: 2px solid var(--panel); transition: background-color 120ms;
+}
+.grip:hover::after, .grip.dragging::after { background: var(--accent); }
+.tabview:has(> .sidebar[hidden]) .grip.side { display: none; }
+
+/* ---- the Syntax pane */
 .textpane {
-  position: relative; width: 340px; flex: none; display: flex; flex-direction: column;
+  position: relative; width: var(--syntax-w, 330px); flex: none; display: flex; flex-direction: column;
   background: var(--panel); border-right: 1px solid var(--line);
 }
-.textpane::after { content: ""; position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 2; }
+.pane-head {
+  flex: none; padding: 14px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); user-select: none;
+}
 .textpane textarea {
-  flex: 1; width: 100%; border: 0; outline: 0; resize: none; padding: 12px 14px; background: transparent;
-  font: 12.5px/1.6 var(--mono); tab-size: 4; white-space: pre;
+  flex: 1; width: 100%; border: 0; outline: 0; resize: none; padding: 8px 16px 16px; background: transparent;
+  font: 12.5px/1.7 var(--mono); font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
+  tab-size: 4; white-space: pre;
 }
 
-/* ---- the recent list's pane (T1.15): the files opened before, on the window's left,
-   under the toolbar (T1.21). A name wraps rather than being cut off; the × shows on
-   hover; a file not found is faded. The list scrolls in its own part; the pane's foot,
-   Customize and Settings, stays under it (the user, 2026-11-14). */
+/* ---- the recent list's pane (T1.15): the files opened before, on the window's left. A
+   name wraps rather than being cut off; the × shows on hover; a file not found is
+   faded. The list scrolls in its own part. */
 .recent {
-  width: 220px; flex: none; display: flex; flex-direction: column; user-select: none;
+  position: relative; width: var(--recent-w, 232px); flex: none; display: flex; flex-direction: column; user-select: none;
   background: var(--panel); border-right: 1px solid var(--line);
 }
 .recent .rlist {
   flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin;
-  padding: 10px 8px 12px;
+  padding: 14px 8px 12px;
 }
-.recent .pane-foot { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; border-top: 1px solid var(--line); }
-/* Its buttons have no outline (the user, 2026-11-14): the soft square under the pointer only. */
-.recent .pane-foot button {
-  display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 8px;
-  border: 0; border-radius: 7px; background: transparent; color: var(--muted); text-align: left;
-}
-.recent .pane-foot button svg { width: 18px; height: 18px; flex: none; display: block; }
-.recent .pane-foot button:hover { background: var(--accent-soft); color: var(--text); }
-.recent h2 { margin: 2px 8px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.recent h2 { margin: 0 8px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.recent li { position: relative; border-radius: 7px; }
+.recent li { position: relative; border-radius: var(--radius-control); }
 .recent li:hover, .recent li:focus-within, .recent li.current { background: var(--accent-soft); }
 .recent .rentry {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; height: auto;
-  padding: 5px 30px 6px 8px; border: 0; border-radius: 7px; background: transparent; text-align: left;
+  padding: 6px 30px 7px 10px; border: 0; border-radius: var(--radius-control); background: transparent; text-align: left;
 }
 .recent .rname { font-weight: 600; overflow-wrap: anywhere; }
 .recent .rfolder { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
@@ -166,29 +349,88 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .recent li.current .rentry { cursor: default; }
 .recent li.missing .rentry { opacity: 0.5; }
 .recent .rremove {
-  position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted);
+  position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--muted);
 }
 .recent .rremove svg { width: 14px; height: 14px; display: block; }
 .recent .rremove:hover { background: var(--panel); color: var(--text); }
 .recent li:not(:hover):not(:focus-within) .rremove { visibility: hidden; }
-.recent .more { align-self: flex-start; margin: 8px 8px 0; }
+.recent .more { align-self: flex-start; margin: 8px 8px 0; border-radius: var(--radius-pill); }
 .recent .none { margin: 2px 8px; color: var(--muted); }
 
-/* ---- notices: thin, wide bars laid over the top of the window, under the toolbar */
+/* ---- the chart's tools (T4.9), laid over the chart: Undo and Redo in an island at its
+   top left, Clear beside it; the pill at its foot. Icon buttons have no border; a soft
+   square shows behind the icon under the pointer, and behind a switch that is on. */
+.island-row { position: absolute; top: 14px; left: 14px; z-index: 7; display: flex; align-items: center; gap: 8px; user-select: none; }
+.island, .pill, .dir-menu, .clear {
+  border: 1px solid var(--line); background: var(--panel); box-shadow: 0 8px 24px -10px var(--shadow);
+}
+.island { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-control); }
+.island button.icon, .pill button.icon, .dir-menu button.icon {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 34px; height: 34px; padding: 0; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--muted);
+}
+.pill button.icon, .dir-menu button.icon { width: 36px; height: 36px; border-radius: var(--radius-pill); }
+.island button.icon svg, .pill button.icon svg, .dir-menu button.icon svg { width: 18px; height: 18px; display: block; }
+.island button.icon:hover:not(:disabled), .pill button.icon:hover:not(:disabled), .dir-menu button.icon:hover {
+  background: var(--accent-soft); color: var(--text);
+}
+.pill button.icon[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.clear {
+  display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px 0 12px;
+  border-radius: var(--radius-pill); color: var(--highlight-ink); font-weight: 600;
+}
+.clear svg { width: 18px; height: 18px; display: block; }
+.clear:hover:not(:disabled) { border-color: var(--highlight-ink); }
+
+/* The pill: centred at the chart's foot. In a chart narrower than the pill it wraps onto
+   a second row, so no control is cut off (Q158, recommended). */
+.pill {
+  position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 7; width: fit-content; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; padding: 5px;
+  border-radius: 24px; user-select: none;
+}
+.pill-edit { display: contents; }
+.divider { flex: none; width: 1px; height: 22px; margin: 0 4px; background: var(--line); }
+.add {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px;
+  border: 0; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-weight: 600;
+}
+.add svg { width: 18px; height: 18px; display: block; }
+.add:hover:not(:disabled) { background: var(--accent-press); }
+/* The mode button shows the mode Naiad is in, so it has no "on" look of its own. */
+.pill button.icon.mode, .pill button.icon.mode[aria-pressed="true"] { background: var(--field); color: var(--accent); }
+.pill button.icon.mode:hover { background: var(--accent-soft); color: var(--accent); }
+/* The direction button's menu opens above it; a strip under the menu keeps the pointer
+   over it while it crosses the gap. */
+.dir-wrap { position: relative; display: flex; }
+.dir-menu {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); z-index: 9;
+  display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
+}
+.dir-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+
+/* ---- notices: thin bars laid over the top of the chart, between the island and the
+   chart's right edge; under the island in a narrow chart. */
 .notices {
-  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: min(1100px, calc(100% - 32px));
-  display: flex; flex-direction: column; gap: 6px; z-index: 8; pointer-events: none;
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 8;
+  width: max(280px, calc(100% - 420px)); max-width: calc(100% - 28px);
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+}
+@container (max-width: 720px) {
+  .notices { top: 64px; width: calc(100% - 28px); }
 }
 .notice {
-  pointer-events: auto; padding: 4px 6px 4px 12px; border: 1px solid var(--line); border-radius: 8px;
-  font-size: 12px; background: var(--warn-bg); color: var(--warn-text); box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+  pointer-events: auto; padding: 4px 6px 4px 14px; border: 1px solid var(--line); border-radius: var(--radius-control);
+  font-size: 12px; background: var(--warn-bg); color: var(--warn-text); box-shadow: 0 8px 24px -10px var(--shadow);
 }
 .notice.bad { background: var(--panel); color: var(--bad); border-color: var(--bad); }
 .notice.info { background: var(--panel); color: var(--text); }
-.notice-line { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.notice-line { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.notice-line svg { width: 16px; height: 16px; margin-right: 2px; display: block; }
 .notice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.notice button { flex: none; height: 22px; padding: 0 8px; font-size: 12px; color: var(--text); }
+.notice button { flex: none; height: 24px; padding: 0 10px; font-size: 12px; color: var(--text); border-radius: var(--radius-pill); }
 .notice pre { margin: 4px 0 2px; max-height: 40vh; overflow: auto; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; }
 
 /* ---- chart */
@@ -199,7 +441,6 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
   background-size: 22px 22px;
   touch-action: none; user-select: none;
 }
-.bar { user-select: none; }
 .stage.viewing { background-image: none; } /* View mode: no dot grid (D4.3) */
 .stage.panning { cursor: grabbing; }
 .canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -222,10 +463,10 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 /* The item under the pointer: a softer kind of the selection's outline (the user,
    2026-11-13). Before the selection's rules, so a selected item keeps its own. */
 .canvas .node.hov .label-container, .canvas .node.hov .label-container path,
-.canvas .node.hov > :is(rect, polygon, circle, ellipse, path) { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 2px !important; }
-.canvas .cluster.hov > rect { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 1.5px !important; }
-.canvas path.hov { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 2.5px !important; }
-.canvas path.hov + path.dir-mark { stroke: color-mix(in srgb, var(--accent) 55%, transparent) !important; stroke-width: 2px !important; }
+.canvas .node.hov > :is(rect, polygon, circle, ellipse, path) { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 2px !important; }
+.canvas .cluster.hov > rect { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 1.5px !important; }
+.canvas path.hov { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 2.5px !important; }
+.canvas path.hov + path.dir-mark { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 2px !important; }
 /* Trace on hover (the user, 2026-11-13): with the pointer resting on an item, the nodes and
    arrows not joined to it fade (`traceOf` in `chart.ts`). Groups stay: they hold the
    nodes. Drawing only. */
@@ -234,17 +475,17 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .stage.tracing .canvas path[data-edge-line]:not(.lit) + path.dir-mark,
 .stage.tracing .canvas g.edgeLabel:not(.lit) { opacity: 0.22; }
 .canvas .node.sel .label-container, .canvas .node.sel .label-container path,
-.canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
-.canvas .cluster.sel > rect { stroke: var(--accent) !important; stroke-width: 2px !important; }
-.canvas path.sel { stroke: var(--accent) !important; stroke-width: 3px !important; }
-.canvas path.sel + path.dir-mark { stroke: var(--accent) !important; stroke-width: 2px !important; }
-/* A highlight (D2.4) is an amber halo around the item, so it shows beside the selection's outline. */
+.canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--select) !important; stroke-width: 2.5px !important; }
+.canvas .cluster.sel > rect { stroke: var(--select) !important; stroke-width: 2px !important; }
+.canvas path.sel { stroke: var(--select) !important; stroke-width: 3px !important; }
+.canvas path.sel + path.dir-mark { stroke: var(--select) !important; stroke-width: 2px !important; }
+/* A highlight (D2.4) is a halo in the palette's highlight around the item, so it shows beside the selection's outline. */
 .canvas .node.hl, .canvas .cluster.hl > rect, .canvas path.hl, .canvas path.hl + path.dir-mark, .canvas .edgeLabel.hl {
   filter: drop-shadow(0 0 2px var(--hl)) drop-shadow(0 0 4px var(--hl)) drop-shadow(0 0 6px var(--hl));
 }
 .stage.highlighting .canvas [data-node], .stage.highlighting .canvas [data-edge], .stage.highlighting .canvas [data-sub] { cursor: crosshair; }
 .canvas .drop .label-container, .canvas .drop .label-container path, .canvas .cluster.drop > rect {
-  stroke: var(--accent) !important; stroke-width: 2.5px !important; stroke-dasharray: 5 4 !important;
+  stroke: var(--select) !important; stroke-width: 2.5px !important; stroke-dasharray: 5 4 !important;
 }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .overlay line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
@@ -255,43 +496,54 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .end-handle { width: 18px; height: 18px; }
 .connect-handle:hover, .end-handle:hover { transform: scale(1.15); border-color: var(--bg); }
 
+/* ---- a blank tab (T4.9): the mark, "No file open", Open a file and New flowchart. */
 .empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; cursor: default; color: var(--muted); }
-.empty h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: var(--text); }
-.empty p { margin: 6px 0; }
+.empty-box { display: flex; flex-direction: column; align-items: center; max-width: 440px; padding: 0 24px; }
+.empty .mark { width: 72px; height: 72px; margin-bottom: 20px; }
+.empty h1 { margin: 0 0 10px; font: italic 450 40px/1.1 var(--font-display); color: var(--text); }
+.empty p { margin: 4px 0; }
+.empty-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; }
+.empty-acts button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px 0 14px; border-radius: var(--radius-pill); }
+.empty-acts button svg { width: 18px; height: 18px; display: block; }
 code { font-family: var(--mono); font-size: 0.92em; }
 
-/* ---- sidebar */
+/* ---- sidebar, restyled as the mock-up (T4.9): a grip on its left edge (in the chart
+   area), the kind in the accent, the id in a pill, titles in Newsreader italic, and
+   pill-shaped buttons. */
 .sidebar {
-  width: 340px; flex: none; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px;
+  width: var(--side-w, 340px); flex: none; display: flex; flex-direction: column; gap: 16px; padding: 18px 22px 20px;
   background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
 }
-.side-head { display: flex; align-items: center; gap: 8px; }
-.side-head .kind { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.side-head .id { color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.side-head .close { margin-left: auto; width: 28px; padding: 0; font-size: 18px; line-height: 1; }
-.sidebar input.title {
-  width: 100%; padding: 4px 6px; margin: 0 -6px; border: 1px solid transparent; border-radius: 6px; background: transparent;
-  font-size: 19px; font-weight: 600; line-height: 1.3;
+.side-head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.side-head .kind { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.side-head .id {
+  max-width: 150px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--field); color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sidebar .read-title { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.side-head .close { margin-left: auto; width: 32px; height: 32px; padding: 0; border-radius: var(--radius-pill); font-size: 19px; line-height: 1; }
+.sidebar input.title {
+  width: calc(100% + 20px); padding: 2px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: var(--radius-control);
+  background: transparent; font: italic 450 29px/1.15 var(--font-display);
+}
+.sidebar .read-title { margin: 0; font: italic 450 29px/1.12 var(--font-display); overflow-wrap: anywhere; }
 .sidebar input.title:hover { border-color: var(--line); }
-.sidebar input.title:focus { border-color: var(--accent); outline: 0; background: var(--bg); }
-.ends { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
-.ends .arrow { color: var(--muted); }
+.sidebar input.title:focus { border-color: var(--accent); outline: 0; background: var(--field); }
+.ends { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; font-weight: 600; }
+.ends .arrow { color: var(--accent); }
 
-.desc { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.desc-head { display: flex; align-items: center; gap: 4px; }
-.desc-head span { flex: 1; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.desc-head button { height: 24px; padding: 0 8px; font-size: 12px; }
-.desc-body { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.desc { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.desc-head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
+.desc-head span { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.desc-head button { height: 28px; padding: 0 12px; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 600; }
+.desc-body { font-size: 14.5px; line-height: 1.65; overflow-wrap: anywhere; }
 .desc-body > :first-child { margin-top: 0; }
 .desc-body > :last-child { margin-bottom: 0; }
 .desc-body p, .desc-body ul, .desc-body ol, .desc-body pre, .desc-body blockquote { margin: 0 0 10px; }
 .desc-body ul, .desc-body ol { padding-left: 20px; }
 .desc-body h1, .desc-body h2, .desc-body h3 { margin: 14px 0 6px; font-size: 15px; line-height: 1.3; }
 .desc-body a { color: var(--accent); }
-.desc-body code { background: var(--bg); padding: 1px 4px; border-radius: 4px; }
-.desc-body pre { background: var(--bg); padding: 10px; border-radius: 6px; overflow-x: auto; }
+.desc-body code { background: var(--field); padding: 1px 5px; border-radius: 6px; }
+.desc-body pre { background: var(--field); padding: 10px 12px; border-radius: var(--radius-control); overflow-x: auto; }
 .desc-body pre code { padding: 0; background: none; }
 .desc-body blockquote { padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
 .desc-body table { border-collapse: collapse; margin-bottom: 10px; }
@@ -299,42 +551,52 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .desc-body img { max-width: 100%; }
 .desc-body .empty, p.hint, .hint { position: static; display: block; text-align: left; color: var(--muted); font-size: 12.5px; margin: 0; }
 .desc-edit {
-  width: 100%; min-height: 200px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 6px; outline: 0; resize: vertical;
-  background: var(--bg); font: 13px/1.55 var(--mono);
+  width: 100%; min-height: 200px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 14px; outline: 0; resize: vertical;
+  background: var(--field); font: 12.5px/1.6 var(--mono); font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
 }
 
-.props { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-.row { display: flex; align-items: center; gap: 10px; }
-.row > span { width: 68px; flex: none; color: var(--muted); }
-.row select { flex: 1; min-width: 0; }
+.props { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 12px; }
+.row > span { width: 64px; flex: none; color: var(--muted); }
+.select-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.select-wrap select { flex: 1; min-width: 0; padding-right: 34px; appearance: none; background: var(--field); }
+.select-wrap svg { position: absolute; top: 50%; right: 11px; width: 16px; height: 16px; margin-top: -8px; pointer-events: none; color: var(--muted); }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border-width: 2px; }
 .swatch.none { background: linear-gradient(135deg, transparent 44%, var(--bad) 44%, var(--bad) 56%, transparent 56%); }
-.swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
-.side-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
+.swatch.on { outline: 2px solid var(--select); outline-offset: 2px; }
+.side-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
 .side-foot .hint { flex: 1 1 100%; }
+.side-foot button { height: 34px; padding: 0 14px; border-radius: var(--radius-pill); font-weight: 600; }
+.side-foot button.danger {
+  display: inline-flex; align-items: center; gap: 8px; padding: 0 14px 0 11px;
+  border-color: transparent; background: transparent;
+}
+.side-foot button.danger svg { width: 16px; height: 16px; display: block; }
+.side-foot button.danger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); border-color: transparent; }
 
-/* ---- the windows laid over Naiad's (T1.21, T4.8): Customize and Settings. The dialog
-   fills the screen as the dimmed area; its box holds the window's rows. */
+/* ---- the windows laid over Naiad's (T1.21, T4.8, T4.9): Customize and Settings. The
+   dialog fills the screen as the dimmed area; its box holds the window's rows. */
 dialog.overlay-window {
-  width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.28);
+  width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0;
+  border: 1px solid var(--line); border-radius: var(--radius-window); background: var(--panel); color: var(--text);
+  box-shadow: 0 24px 60px -16px var(--shadow);
 }
-dialog.overlay-window::backdrop { background: rgb(0 0 0 / 0.35); }
-.ow-box { display: flex; flex-direction: column; gap: 14px; padding: 12px 16px 18px; }
+dialog.overlay-window::backdrop { background: var(--scrim); }
+.ow-box { display: flex; flex-direction: column; gap: 18px; padding: 18px 24px 24px; }
 .ow-head { display: flex; align-items: center; gap: 8px; }
-.ow-head h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 700; }
+.ow-head h2 { flex: 1; margin: 0; font: italic 450 29px/1.1 var(--font-display); }
 .ow-close {
-  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
-  border: 0; border-radius: 7px; background: transparent; color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--muted);
 }
-.ow-close svg { width: 16px; height: 16px; display: block; }
+.ow-close svg { width: 17px; height: 17px; display: block; }
 .ow-close:hover { background: var(--accent-soft); color: var(--text); }
 .ow-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.ow-row > span, .ow-row > label { font-weight: 600; }
+.ow-row > span, .ow-row > label, .ow-label { font-weight: 600; }
 .ow-row > label { cursor: pointer; }
-.ow-note { margin: 0; color: var(--muted); font-size: 12.5px; }
+.ow-note { margin: -10px 0 0; color: var(--muted); font-size: 12.5px; }
+.ow-section { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
 /* An on-off switch (T1.23): a checkbox drawn as a track with a white knob, which moves
    right and turns the track the accent colour when on. */
 input.switch {
@@ -350,21 +612,60 @@ input.switch:checked { background: var(--accent); }
 input.switch:checked::before { transform: translateX(14px); }
 /* A choice of a few, side by side: the chosen one raised. Real radio buttons, so the
    arrow keys move between them. */
-.segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-.segmented label { position: relative; padding: 4px 12px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.segmented { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--field); }
+.segmented label { position: relative; padding: 4px 14px; border-radius: var(--radius-pill); color: var(--muted); cursor: pointer; }
 .segmented label:hover { color: var(--text); }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
-.segmented label:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); }
-.segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.segmented label:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 4px var(--shadow); }
+.segmented label:has(input:focus-visible) { outline: 2px solid var(--select); outline-offset: 1px; }
+/* Theme: a card per palette, drawn in its own colours (its preview takes the palette's
+   rule); the chosen one has the accent's ring. */
+.theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.theme-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px; height: auto; padding: 6px 6px 8px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--panel); text-align: left;
+}
+.theme-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-preview {
+  position: relative; display: block; height: 58px; border-radius: 11px; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--line);
+}
+.theme-preview .tp-node {
+  position: absolute; left: 12px; top: 12px; width: 44px; height: 22px; border-radius: 6px;
+  background: var(--node); border: 1.5px solid var(--node-border);
+}
+.theme-preview .tp-edge { position: absolute; left: 56px; top: 22px; width: 26px; height: 2px; background: var(--edge); }
+.theme-preview .tp-accent {
+  position: absolute; left: 82px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+}
+.theme-preview .tp-hl {
+  position: absolute; left: 12px; bottom: 9px; width: 30px; height: 5px; border-radius: 999px; background: var(--highlight);
+}
+.theme-name { padding: 0 4px; font-weight: 600; font-size: 12.5px; }
+/* Syntax font: a row per font, its name and a line of a flowchart in its letters. */
+.font-choices { display: flex; flex-direction: column; gap: 4px; }
+.font-choice {
+  display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 4px 12px;
+  border: 1px solid transparent; border-radius: var(--radius-control); cursor: pointer;
+}
+.font-choice:hover { background: var(--field); }
+.font-choice:has(input:checked) { background: var(--accent-soft); }
+.font-choice input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.font-choice:has(input:focus-visible) { outline: 2px solid var(--select); outline-offset: 1px; }
+.font-name { width: 130px; flex: none; font-weight: 600; }
+.font-sample {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted);
+  font-family: var(--font-mono); font-size: 12.5px; font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
+}
 
 .toast {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: min(620px, 90vw); padding: 10px 14px;
-  background: var(--text); color: var(--bg); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); z-index: 10;
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); max-width: min(620px, 90vw); padding: 10px 16px;
+  background: var(--text); color: var(--bg); border-radius: var(--radius-control); box-shadow: 0 8px 28px -8px var(--shadow); z-index: 10;
 }
 
 @media (max-width: 760px) {
-  .sidebar { position: absolute; right: 0; top: 44px; bottom: 0; width: min(340px, 92vw); z-index: 5; box-shadow: -8px 0 24px rgb(0 0 0 / 0.18); }
+  .sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: min(340px, 92vw); z-index: 9; box-shadow: -8px 0 24px var(--shadow); }
   .textpane { width: 220px; }
-  .recent { position: absolute; left: 0; top: 0; bottom: 0; z-index: 5; box-shadow: 8px 0 24px rgb(0 0 0 / 0.18); }
-  .bar { overflow-x: auto; }
+  .recent { position: absolute; left: 0; top: 0; bottom: 0; z-index: 9; box-shadow: 8px 0 24px var(--shadow); }
+  .grip { display: none; }
 }

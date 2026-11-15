@@ -48,14 +48,21 @@ flowchart**.
 
 ## Using it
 
+The tabs run across the top of the window. Down its left edge, the rail holds
+**Recent files**, **Syntax** and **About** at the top and **Customize** and **Settings**
+at the foot; pointing at a button shows its name. On the chart, Undo and Redo sit at the
+top left, and a bar at the foot holds **+ Node**, the direction button, **Fit**, the
+Mouse mode button, **Highlight** and the mode button.
+
 | To | Do |
 |---|---|
-| Open several flowcharts | Each file opens in its own tab, in the window's top row; the toolbar is the row beneath it. The arrow at the right end of the toolbar hides the top row, for more room for the chart, and turns upside down; click it again to show the tabs. Naiad remembers your choice. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
-| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first, in a pane under the toolbar: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. A page from `naiad serve` has no list |
-| Choose light or dark | **Customize**, at the bottom of the recent files pane, opens a window with **Light**, **Dark** and **System**. System, the choice until you pick another, follows the light or dark setting of your computer. The window closes with its ×, Escape, or a click outside it. A page from `naiad serve` follows your computer's setting |
-| Have your files open again when Naiad starts | **Settings**, beside **Customize**, opens a window with the switch **Remember opened files**, on until you turn it off. While it is on, Naiad opens again the files that were open when it last closed, each in its tab and in the same order, and shows the tab that was shown. A file that is no longer there is skipped, and a notice names it. A file you start Naiad on, with a double-click or `naiad flow.mmd`, opens after them and is shown. A second window, opened while another Naiad window is open, opens only its own file; of two windows, the one closed last is remembered. Turning the switch off forgets the list at once. A page from `naiad serve` has no Settings |
+| Open several flowcharts | Each file opens in its own tab. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
+| Open a file you opened before | The **Recent files** button, a panel, at the top of the rail, shows the last 50 files you opened, newest first, in a pane beside the rail: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. A page from `naiad serve` has no list |
+| Choose light or dark, the colours and the Syntax pane's font | **Customize**, a brush at the foot of the rail, opens a window with three choices. **Appearance**: **Light**, **Dark** or **System**; System, the choice until you pick another, follows the light or dark setting of your computer. **Theme**: one of six sets of colours, each with a light and a dark form: Naiad Default (the choice until you pick another), Moonpool, Kelp, Water Lily, Glacier and Coral; the chart takes its colours too. **Syntax font**: JetBrains Mono (the choice until you pick another), DM Mono or Recursive Casual, each shown on a line of a flowchart. The window closes with its ×, Escape, or a click outside it. Naiad remembers each choice |
+| Have your files open again when Naiad starts | **Settings**, a gear under **Customize**, opens a window with the switch **Remember opened files**, on until you turn it off. While it is on, Naiad opens again the files that were open when it last closed, each in its tab and in the same order, and shows the tab that was shown. A file that is no longer there is skipped, and a notice names it. A file you start Naiad on, with a double-click or `naiad flow.mmd`, opens after them and is shown. A second window, opened while another Naiad window is open, opens only its own file; of two windows, the one closed last is remembered. Turning the switch off forgets the list at once. A page from `naiad serve` has no Settings |
 | Read a description | Click a node |
-| Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
+| Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About**, on the rail, hides or shows it, and Naiad remembers your choice |
+| Make a pane wider or narrower | Drag the grip on the pane's edge that faces the chart. The recent files pane is 180 to 420 px wide (232 at first), the Syntax pane 220 to 640 px (330), and the sidebar 280 to 560 px (340). Naiad remembers each width |
 | Add a node | **+ Node**, or double-click empty space |
 | Rename | Double-click a node, or press Enter / F2 |
 | Connect two nodes | Point at a node and drag the dot beside it to another node, or Shift-click the second node |
@@ -65,12 +72,13 @@ flowchart**.
 | Move an arrow's start or end | Point at the arrow and drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |
 | Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |
 | Delete | Select, then Delete |
-| Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows in the toolbar |
+| Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows at the chart's top left |
+| Change which way the chart runs | The direction button, an arrow, shows the way the chart runs now. Point at it or click it to show the other three ways, and click one: the file's first line changes, for example from `flowchart TD` to `flowchart LR` |
 | Zoom / pan | Mouse wheel or pinch to zoom; drag empty space to pan |
 | Move the chart with two fingers on a touchpad | The **Mouse mode** button, a mouse, switches to Touchpad mode: two fingers or the mouse wheel move the chart (Shift: sideways), a pinch or Ctrl with the wheel zooms, and the button shows a touchpad. Naiad starts in Mouse mode and remembers your choice |
-| Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear** takes every highlight off |
-| Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>` (the syntax is hidden when Naiad starts, unless you left it open) |
-| Read without changing anything | The **View mode** button, an open book: no dots to drag, no dot grid, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. In View mode the button shows a pencil: click it to edit again. Naiad opens in the mode you left it in |
+| Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear**, at the chart's top left with the number of highlights, takes every highlight off |
+| Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open) |
+| Read without changing anything | The mode button, at the right end of the bar at the chart's foot, shows the mode Naiad is in: a pencil in Edit mode, an open book in View mode. Click it to switch. View mode has no dots to drag, no dot grid, no **+ Node**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
 view that way, at up to 1,200 px a second, until the chart's edge on that side comes
@@ -78,6 +86,9 @@ into view; the wheel and a pinch work as they do outside a drag, and Escape canc
 drag.
 
 The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
+Naiad shows no "Saved" mark. A notice at the top of the chart says when the file could
+not be saved or read, and when its text is not a flowchart Mermaid can read. Text like
+that, typed in Naiad, is saved only when you press Ctrl+S.
 Highlights are kept in a small file of their own beside the flowchart, which an agent
 reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
 
@@ -153,9 +164,9 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
-- Whether the Syntax pane is shown, its width, whether View mode and **About** are on,
-  whether the top row is hidden, Touchpad or Mouse mode once you choose one, Light,
-  Dark or System once you choose one, and whether **Remember opened files** is on once
+- Whether the Syntax pane is shown, the width of each pane, whether View mode and
+  **About** are on, Touchpad or Mouse mode once you choose one, the appearance, theme
+  and Syntax font once you choose them, and whether **Remember opened files** is on once
   you turn it off or on, in the window's own storage.
 - While **Remember opened files** is on, the full paths of the files open in the tabs,
   in their order, and which one is shown, in the same storage (`src/app.ts`), written
@@ -205,6 +216,6 @@ Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 
 ## Licence
 
-[MIT](LICENSE). The bundled Nunito font is under the
-[SIL Open Font License 1.1](src/fonts/OFL.txt). The window's icons are from
+[MIT](LICENSE). The bundled fonts, Lexend, Newsreader, JetBrains Mono, DM Mono and
+Recursive, are under the [SIL Open Font License 1.1](src/fonts/OFL.txt). The window's icons are from
 [Lucide](https://lucide.dev), under the [ISC License](src/icons/LICENSE).

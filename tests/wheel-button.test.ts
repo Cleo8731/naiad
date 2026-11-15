@@ -10,7 +10,7 @@ vi.mock('../src/chart', async () => (await import('./app-harness')).chartMock())
 
 describe('the Touchpad and Mouse button', () => {
   const FILE = 'C:/wheel/flow.mmd';
-  const button = () => document.querySelector<HTMLButtonElement>('.bar [data-act="wheel"]')!;
+  const button = () => document.querySelector<HTMLButtonElement>('[data-act="wheel"]')!;
   const icon = () => button().querySelector('svg')?.getAttribute('data-icon');
   async function start() {
     const disk = new FakeDisk();
@@ -60,8 +60,8 @@ describe('the Touchpad and Mouse button', () => {
 
   test('the button stays in View mode, where moving around the chart is still wanted', async () => {
     await start();
-    document.querySelector<HTMLButtonElement>('.bar [data-act="view"]')!.click();
-    await vi.waitFor(() => expect(document.querySelector('.bar [data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    document.querySelector<HTMLButtonElement>('[data-act="view"]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
     expect(button().hidden).toBe(false);
     button().click();
     expect(chartWheel.mode).toBe('touchpad');

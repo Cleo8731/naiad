@@ -1,9 +1,10 @@
 /**
  * The window's icons: Lucide's (lucide.dev, release 1.73.0), the set Obsidian uses,
  * copied unchanged into `icons/` with Lucide's licence, `icons/LICENSE` (Q131 and Q132,
- * 2026-11-14). Each is drawn inline in its button, so its lines take the button's text
- * colour in light and dark; the button's `aria-label` says what it does, so the drawing
- * itself is hidden from screen readers.
+ * 2026-11-14; twelve more with the design handoff, T4.9, 2026-11-15). Each is drawn
+ * inline in its button, so its lines take the button's text colour in every theme; the
+ * button's name says what it does, so the drawing itself is hidden from screen readers.
+ * Naiad's own mark is not an icon: `brand/naiad-mark.svg`, drawn through a mask.
  */
 import undo from './icons/undo-2.svg?raw';
 import redo from './icons/redo-2.svg?raw';
@@ -18,7 +19,18 @@ import x from './icons/x.svg?raw';
 import plus from './icons/plus.svg?raw';
 import paintbrush from './icons/paintbrush.svg?raw';
 import settings from './icons/settings.svg?raw';
-import chevronUp from './icons/chevron-up.svg?raw';
+import info from './icons/info.svg?raw';
+import scan from './icons/scan.svg?raw';
+import arrowDown from './icons/arrow-down.svg?raw';
+import arrowRight from './icons/arrow-right.svg?raw';
+import arrowUp from './icons/arrow-up.svg?raw';
+import arrowLeft from './icons/arrow-left.svg?raw';
+import eraser from './icons/eraser.svg?raw';
+import folderOpen from './icons/folder-open.svg?raw';
+import filePlus from './icons/file-plus.svg?raw';
+import circleAlert from './icons/circle-alert.svg?raw';
+import chevronDown from './icons/chevron-down.svg?raw';
+import trash from './icons/trash-2.svg?raw';
 
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
@@ -28,25 +40,43 @@ function icon(name: string, svg: string): string {
 export const ICONS = {
   undo: icon('undo', undo),
   redo: icon('redo', redo),
-  /** The open book: shown while editing, since a click goes to View mode (as Obsidian's). */
+  /** The open book: the mode button in View mode (it shows the mode Naiad is in, T4.9). */
   read: icon('read', bookOpen),
-  /** The pencil: shown in View mode, since a click goes back to editing. */
+  /** The pencil: the mode button in Edit mode. */
   edit: icon('edit', pencilLine),
   syntax: icon('syntax', codeXml),
   highlight: icon('highlight', highlighter),
   /** The Touchpad and Mouse switch (D1.5) shows the mode it is in. */
   touchpad: icon('touchpad', touchpad),
   mouse: icon('mouse', mouse),
-  /** Shows and hides the recent list's pane (T1.15), at the toolbar's left end (T1.21). */
+  /** Shows and hides the recent list's pane (T1.15), in the rail (T4.9). */
   recent: icon('recent', panelLeft),
-  /** Opens the Customize window, from the pane's foot (T1.21, T4.8). */
+  /** Shows and hides the flowchart's description in the sidebar (T1.13), in the rail. */
+  about: icon('about', info),
+  /** Opens the Customize window, at the rail's foot (T4.8, T4.9). */
   customize: icon('customize', paintbrush),
-  /** Opens the Settings window, from the pane's foot (T1.21). */
+  /** Opens the Settings window, at the rail's foot. */
   settings: icon('settings', settings),
-  /** The caret button, at the toolbar's right end: hides and shows the top row (T1.21). */
-  caret: icon('caret', chevronUp),
-  /** Takes an entry off the recent list; closes a tab (T1.16). */
+  /** Fits the chart to the window, in the pill (T4.9). */
+  fit: icon('fit', scan),
+  /** The direction button and its menu (T4.9): the way the chart runs. */
+  down: icon('down', arrowDown),
+  right: icon('right', arrowRight),
+  up: icon('up', arrowUp),
+  left: icon('left', arrowLeft),
+  /** Clear, beside the Undo island: takes every highlight off. */
+  eraser: icon('eraser', eraser),
+  /** A blank tab's Open a file and New flowchart. */
+  open: icon('open', folderOpen),
+  new: icon('new', filePlus),
+  /** A notice that something is wrong (a syntax error, a save that failed). */
+  alert: icon('alert', circleAlert),
+  /** A list's arrow, in the sidebar. */
+  chevron: icon('chevron', chevronDown),
+  /** The sidebar's Delete and Ungroup. */
+  trash: icon('trash', trash),
+  /** Takes an entry off the recent list; closes a tab (T1.16) and a window. */
   close: icon('close', x),
-  /** Opens a blank tab, at the tab strip's end (T1.16). */
+  /** Opens a blank tab, at the tab strip's end (T1.16); + Node in the pill. */
   plus: icon('plus', plus),
 } as const;

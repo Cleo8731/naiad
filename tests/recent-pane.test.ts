@@ -18,7 +18,7 @@ const C = 'D:/c.mmd';
 const GONE = 'C:/gone/x.mmd';
 
 const q = <T extends Element>(s: string) => document.querySelector<T>(s);
-const toggle = () => q<HTMLButtonElement>('.bar [data-act="recent"]')!;
+const toggle = () => q<HTMLButtonElement>('[data-act="recent"]')!;
 const plus = () => q<HTMLButtonElement>('.tabs [data-act="newtab"]')!;
 const pane = () => q<HTMLElement>('nav.recent')!;
 const items = () => [...document.querySelectorAll<HTMLElement>('nav.recent li')];
@@ -40,12 +40,11 @@ beforeEach(() => localStorage.clear());
 afterEach(() => { stopApps(); localStorage.clear(); });
 
 describe('the recent list\'s pane', () => {
-  test('its button is the toolbar\'s first (T1.21), an icon that says what it does; the pane is hidden with a flowchart open', async () => {
+  test('its button is the rail\'s first (T4.9), an icon with its name; the pane is hidden with a flowchart open', async () => {
     await start();
-    expect(q('.bar.tools')!.firstElementChild).toBe(toggle());
-    expect(toggle().classList.contains('icon')).toBe(true);
+    expect(q('.rail button')).toBe(toggle());
     expect(toggle().querySelector('svg')!.getAttribute('data-icon')).toBe('recent');
-    expect(toggle().getAttribute('aria-label')).toBe('Recent files');
+    expect(toggle().querySelector('.rlabel')!.textContent).toBe('Recent files');
     expect(toggle().title).toBe('Show recent files');
     expect(toggle().getAttribute('aria-pressed')).toBe('false');
     expect(pane().hidden).toBe(true);
@@ -273,8 +272,8 @@ describe('the recent list\'s pane', () => {
 
   test('it stays in View mode, where opening another file changes nothing', async () => {
     await start();
-    q<HTMLButtonElement>('.bar [data-act="view"]')!.click();
-    await vi.waitFor(() => expect(q('.bar [data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
+    q<HTMLButtonElement>('[data-act="view"]')!.click();
+    await vi.waitFor(() => expect(q('[data-act="view"]')!.getAttribute('aria-pressed')).toBe('true'));
     expect(toggle().hidden).toBe(false);
     toggle().click();
     expect(pane().hidden).toBe(false);
@@ -282,7 +281,7 @@ describe('the recent list\'s pane', () => {
 
   test('naiad serve\'s page, which shows one file only, has neither the pane nor its button, and keeps no list', async () => {
     await start('served');
-    expect(q('.bar [data-act="recent"]')).toBeNull();
+    expect(q('[data-act="recent"]')).toBeNull();
     expect(q('nav.recent')).toBeNull();
     expect(localStorage.getItem('recent')).toBeNull();
   });

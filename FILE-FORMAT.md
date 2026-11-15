@@ -136,7 +136,7 @@ flowchart TD
 ```
 
 - Naiad shows it in the sidebar while no node, arrow or group is selected. The
-  toolbar's **About** button shows or hides it.
+  **About** button, on the rail at the window's left edge, shows or hides it.
 - Mermaid never takes `flowchart` as a node's id, so the name cannot clash with a node.
   Mermaid does take it as a group's id (`subgraph flowchart`): do not give a group that
   id, since a `@flowchart` block is always the flowchart's description.
@@ -302,9 +302,9 @@ collect --> clean
   nothing on the chart.
 - A line ends at LF, CRLF or a lone CR. When Naiad changes the list, every line it
   writes ends in LF.
-- In Naiad, the **Highlight** switch in the toolbar (key H) makes a click on an item
-  highlight it, or take its highlight off, instead of selecting it. **Clear** takes
-  every highlight off.
+- In Naiad, the **Highlight** switch in the bar at the chart's foot (key H) makes a
+  click on an item highlight it, or take its highlight off, instead of selecting it.
+  **Clear** takes every highlight off.
 - Anyone may write the file: Naiad shows a change to it within a second, and need not
   be running when it is written.
 - When Naiad changes the list it writes the whole file, through a temporary file and a

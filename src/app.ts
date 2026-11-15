@@ -1,29 +1,49 @@
-// The window: the toolbar, the tab strip, the recent list and the pane's foot, the
-// choices made for the whole window (View mode, About, the Touchpad and Mouse switch,
-// the Highlight switch, the Syntax pane, the top row hidden or shown, Appearance), the
-// windows laid over it (Customize, Settings), the keyboard, and closing. Each open file
-// is a tab (src/tab.ts), which keeps its text, its chart, its sidebar and its Syntax
-// pane's text, and saves it. One tab is shown at a time; the others keep everything as
-// it was (T1.16).
+// The window (its layout: the design handoff, T4.9, 2026-11-15): the rail on the left,
+// the tabs row, the recent list's pane, the Syntax pane and the sidebar with their grips,
+// the Undo island and the floating pill on the shown tab's chart; the choices made for
+// the whole window (View mode, About, the Touchpad and Mouse switch, the Highlight
+// switch, the Syntax pane, Appearance, the palette, the Syntax font, the panes' widths),
+// the windows laid over it (Customize, Settings), the keyboard, and closing. Each open
+// file is a tab (src/tab.ts), which keeps its text, its chart, its sidebar and its
+// Syntax pane's text, and saves it. One tab is shown at a time; the others keep
+// everything as it was (T1.16).
 
 import type { Backend } from './backend';
 import { configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
 import { ICONS } from './icons';
-import { customizeWindow, isDark, readAppearance, settingsWindow, type Appearance } from './overlays';
+import {
+  customizeWindow, isDark, readAppearance, readPalette, readSyntaxFont, settingsWindow,
+  type Appearance, type Palette, type SyntaxFont,
+} from './overlays';
 import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
 import { basename, errorText, Tab, type TabWindow } from './tab';
 
 const NEW_FILE = 'flowchart TD\n    start[Start]\n';
 /**
- * The View button's tooltip. Like Obsidian's, its icon shows where a click goes (Q131):
- * the open book while editing, the pencil in View mode.
+ * The mode button's tooltip. Its icon shows the mode Naiad is in (T4.9, in place of
+ * Q131's "where a click goes"): the pencil in Edit mode, the open book in View mode.
  */
 const VIEW_TIP = {
-  editing: 'Editing. Click for View mode, to read the chart without changing it',
-  viewing: 'View mode: reading without changing. Click to edit',
+  editing: 'Edit mode. Click for View mode, to read the chart without changing it',
+  viewing: 'View mode: the chart cannot be changed. Click for Edit mode',
 };
+/** The four directions of a chart: the file's word, its name, and its arrow's icon (T4.9). */
+const DIRS = [['TD', 'Top to bottom', 'down'], ['LR', 'Left to right', 'right'], ['BT', 'Bottom to top', 'up'], ['RL', 'Right to left', 'left']] as const;
+/**
+ * The three panes a grip resizes (T4.9): where each width is kept, its limits and first
+ * width in px, and which way a drag widens it (the sidebar's grip is on its left edge).
+ */
+const PANES = {
+  recent: { key: 'recent-width', min: 180, max: 420, first: 232, grows: 1 },
+  syntax: { key: 'textpane-width', min: 220, max: 640, first: 330, grows: 1 },
+  side: { key: 'sidebar-width', min: 280, max: 560, first: 340, grows: -1 },
+} as const;
+type PaneName = keyof typeof PANES;
+/** A grip, on the edge of a pane that faces the chart (T4.9). */
+const grip = (pane: PaneName, name: string, extra = '') =>
+  `<div class="grip${extra}" data-pane="${pane}" role="separator" aria-orientation="vertical" aria-label="Width of ${name}" title="Drag to resize"></div>`;
 /**
  * The Touchpad and Mouse switch (D1.5, the user's option): its icon and label show the
  * mode it is in, and its tooltip what a click changes. Mouse at the first start (the
@@ -36,9 +56,7 @@ const WHEEL_TIP: Record<WheelMode, string> = {
 const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mouse: 'Mouse mode' };
 /** A blank tab's name (Q140). */
 const BLANK_NAME = 'New tab';
-/** The caret button's tooltip (T1.21): what a click does. */
-const TOPROW_TIP = { shown: 'Hide the tabs, for more room for the chart', hidden: 'Show the tabs' };
-/** The windows laid over Naiad's, opened from the pane's foot (T1.21, T4.8). */
+/** The windows laid over Naiad's, opened from the rail (T1.21, T4.8, T4.9). */
 type WindowName = 'customize' | 'settings';
 
 function remember(key: string, value?: string): string | null {
@@ -79,6 +97,8 @@ interface TabParts {
   close: HTMLButtonElement;
   /** The chart area, the sidebar and the notices, hidden while another tab is shown. */
   view: HTMLElement;
+  /** The chart area: the stage, the notices, the sidebar's grip, and the island and the pill while shown. */
+  chartarea: HTMLElement;
   area: HTMLTextAreaElement;
 }
 
@@ -108,10 +128,12 @@ export class App {
   /** Files are opened one at a time, so two never race for one blank tab. */
   private opens: Promise<void> = Promise.resolve();
   private el!: {
-    status: HTMLElement; toast: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement;
+    status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
-    wheel: HTMLButtonElement; recentToggle: HTMLButtonElement; topToggle: HTMLButtonElement;
+    wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
+    /** The Undo island and Clear beside it, and the pill (T4.9), moved to the shown tab's chart. */
+    islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
     /** The tab strip and its +; none in `naiad serve`'s page, which shows one file. */
     strip: HTMLElement | null; plus: HTMLButtonElement; body: HTMLElement;
   };
@@ -121,71 +143,102 @@ export class App {
   constructor(private root: HTMLElement, private backend: Backend) {}
 
   async init(): Promise<void> {
-    // The top row: the tabs, hidden and shown by the caret button at the toolbar's right
-    // end. The toolbar is the row beneath, across the whole window; its first button shows
-    // and hides the recent list's pane, which runs under it, beside the Syntax pane, the
-    // chart and the sidebar. The pane's foot holds Customize and Settings, apart from the
-    // list, which scrolls alone (the user, 2026-11-14, T1.21).
+    // The rail (the design handoff, T4.9): the mark, then Recent files, Syntax and About;
+    // Customize and Settings at its foot. Beside it, the tabs row, the only row above the
+    // chart, then the recent list's pane, the Syntax pane and the tabs' views.
     this.root.innerHTML = `
-      <header class="bar top" id="toprow">
-        <div class="tabs" role="tablist" aria-label="Open flowcharts">
-          <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
-        </div>
-      </header>
-      <div class="bar tools">
-        <button class="icon" data-act="recent" title="Show recent files" aria-label="Recent files" aria-pressed="false">${ICONS.recent}</button>
-        <span class="status"></span>
+      <nav class="rail" aria-label="Naiad">
+        <span class="mark" aria-hidden="true"></span>
+        <button data-act="recent" title="Show recent files" aria-pressed="false">${ICONS.recent}<span class="rlabel">Recent files</span></button>
+        <button data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-pressed="false">${ICONS.syntax}<span class="rlabel">Syntax</span></button>
+        <button data-act="about" title="About: show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">${ICONS.about}<span class="rlabel">About</span></button>
         <div class="spacer"></div>
-        <button data-act="add" title="Add a node (or double-click empty space)">+ Node</button>
-        <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
-        <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
-        <select data-act="dir" title="Direction of the chart" aria-label="Direction of the chart">
-          <option value="TD">Top to bottom</option><option value="LR">Left to right</option>
-          <option value="BT">Bottom to top</option><option value="RL">Right to left</option>
-        </select>
-        <!-- Clear stands before Highlight: the bar is aligned right, so when Clear appears,
-             Highlight stays where it is and a second click on it never lands on Clear. -->
-        <button data-act="clear" title="Take every highlight off" hidden>Clear</button>
-        <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-        <button data-act="fit" title="Fit the chart to the window">Fit</button>
-        <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
-        <button class="icon" data-act="syntax" title="Show or hide the flowchart's Mermaid syntax" aria-label="Syntax" aria-pressed="false">${ICONS.syntax}</button>
-        <button data-act="about" title="Show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">About</button>
-        <button class="icon" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.read}</button>
-        <button class="icon caret" data-act="tabrow" title="${TOPROW_TIP.shown}" aria-label="Tabs" aria-controls="toprow" aria-expanded="true">${ICONS.caret}</button>
-      </div>
-      <main>
-        <nav class="recent" aria-label="Recent files" hidden>
-          <div class="rlist"></div>
-          <div class="pane-foot">
-            <button data-act="customize">${ICONS.customize}<span>Customize</span></button>
-            <button data-act="settings">${ICONS.settings}<span>Settings</span></button>
+        <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
+        <button data-act="settings" title="Settings">${ICONS.settings}<span class="rlabel">Settings</span></button>
+      </nav>
+      <div class="column">
+        <header class="bar top">
+          <div class="tabs" role="tablist" aria-label="Open flowcharts">
+            <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
           </div>
-        </nav>
-        <div class="body">
-          <section class="textpane" hidden></section>
-        </div>
-      </main>
+        </header>
+        <main>
+          <nav class="recent" aria-label="Recent files" hidden>
+            <div class="rlist"></div>
+            ${grip('recent', 'Recent files')}
+          </nav>
+          <div class="body">
+            <section class="textpane" hidden>
+              <div class="pane-head">Mermaid syntax</div>
+              ${grip('syntax', 'the Syntax pane')}
+            </section>
+          </div>
+        </main>
+      </div>
+      <span class="status sr-only"></span>
       <div class="toast" role="status" hidden></div>`;
-    const q = <T extends HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
+    // The chart's tools (T4.9), laid over the shown tab's chart (`show`): Undo and Redo in
+    // an island at its top left, with Clear beside it while anything is highlighted; and
+    // the floating pill at its foot. In View mode the island and the pill's first part go.
+    const tools = document.createElement('div');
+    tools.innerHTML = `
+      <div class="island-row">
+        <div class="island" role="group" aria-label="Undo and Redo">
+          <button class="icon" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
+          <button class="icon" data-act="redo" title="Redo (Ctrl+Y)" aria-label="Redo">${ICONS.redo}</button>
+        </div>
+        <button class="clear" data-act="clear" title="Take every highlight off" hidden>${ICONS.eraser}<span>Clear</span></button>
+      </div>
+      <div class="pill" role="toolbar" aria-label="The chart's tools">
+        <div class="pill-edit">
+          <button class="add" data-act="add" title="Add a node (or double-click empty space)">${ICONS.plus}<span>Node</span></button>
+          <span class="divider"></span>
+          <div class="dir-wrap">
+            <button class="icon" data-act="dir" aria-haspopup="menu" aria-expanded="false"></button>
+            <div class="dir-menu" role="menu" aria-label="Direction of the chart" hidden>
+              ${DIRS.map(([key, name, icon]) => `<button class="icon" role="menuitem" data-dir="${key}" title="${name}" aria-label="${name}">${ICONS[icon]}</button>`).join('')}
+            </div>
+          </div>
+          <span class="divider"></span>
+        </div>
+        <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
+        <button class="icon" data-act="wheel" title="${WHEEL_TIP.mouse}" aria-label="${WHEEL_LABEL.mouse}">${ICONS.mouse}</button>
+        <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
+        <span class="divider"></span>
+        <button class="icon mode" data-act="view" title="${VIEW_TIP.editing}" aria-label="View mode" aria-pressed="false">${ICONS.edit}</button>
+      </div>`;
+    const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
-      status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), undo: q('[data-act="undo"]'),
+      status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
-      wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'), topToggle: q('[data-act="tabrow"]'),
+      wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
+      islandRow: q('.island-row'), island: q('.island'), pill: q('.pill'), pillEdit: q('.pill-edit'),
       strip: q('.tabs'), plus: q('[data-act="newtab"]'), body: q('.body'),
     };
+    this.showDirection('TD');
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for: no tabs, so no
-      // top row and no caret button; no recent list, so no pane and no button for it.
-      this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="tabrow"]').forEach((b) => b.remove());
+      // tabs row; no recent list, so no pane and no button for it; and no Settings, whose
+      // one setting, Remember opened files, is the app's.
+      this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="settings"]').forEach((b) => b.remove());
       this.el.strip = null;
+    }
+    // The panes' widths, as the person last left them (T4.9).
+    for (const pane of Object.keys(PANES) as PaneName[]) {
+      const kept = Number(remember(PANES[pane].key));
+      this.setWidth(pane, Number.isFinite(kept) && kept > 0 ? kept : PANES[pane].first);
     }
 
     // Appearance (T4.8): Light, Dark, or System, which follows the computer's setting.
     this.system = window.matchMedia('(prefers-color-scheme: dark)');
     this.appearance = readAppearance(remember('appearance'));
+    // The palette and the Syntax font (T4.9), as the person last chose; Naiad Default and
+    // JetBrains Mono until they choose.
+    this.palette = readPalette(remember('palette'));
+    this.syntaxFont = readSyntaxFont(remember('syntaxfont'));
+    this.applySyntaxFont();
     this.applyAppearance();
     this.system.addEventListener('change', () => this.applyAppearance());
 
@@ -205,12 +258,6 @@ export class App {
     this.setWheelMode(remember('wheelmode') === 'touchpad' ? 'touchpad' : 'mouse');
     // The flowchart's description shows unless the person hid it (T1.13).
     if (remember('about') === 'hidden') this.showAbout(false);
-    // The top row shows unless the person hid it with the caret button (T1.21).
-    if (remember('toprow') === 'hidden') this.showTopRow(false);
-    // A notice's details wrap to another height when the window's width changes.
-    window.addEventListener('resize', () => this.tab.padUnderNotices());
-    const width = Number(remember('textpane-width'));
-    if (width >= 220) this.el.pane.style.width = `${width}px`;
     // The recent list (T1.15), wherever Open is. Whether its pane shows follows the shown
     // tab (`recentFollows`), set once the file to open at start, if any, is open.
     const nav = this.root.querySelector<HTMLElement>('nav.recent');
@@ -248,15 +295,20 @@ export class App {
     const view = document.createElement('div');
     view.className = 'tabview';
     view.hidden = true;
+    // A blank tab (T4.9): the mark, "No file open", Open a file and New flowchart.
+    const mark = '<span class="mark" role="img" aria-label="Naiad"></span>';
     const empty = this.backend.kind === 'served'
-      ? '<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>'
-      : `<h1>No file open</h1>
+      ? `${mark}<h1>No file to show</h1><p>The file this page was opened for cannot be read. Ask the agent to show the flowchart again, or open the file in the Naiad app.</p>`
+      : `${mark}<h1>No file open</h1>
          <p>Open a Mermaid flowchart file (<code>.mmd</code> or <code>.mermaid</code>) to view and edit it.</p>
-         <p><button class="primary" data-act="open">Open a file</button>${this.backend.kind === 'desktop' ? ' <button data-act="new">New flowchart</button>' : ''}</p>`;
+         <div class="empty-acts"><button class="primary" data-act="open">${ICONS.open}Open a file</button>${this.backend.kind === 'desktop' ? `<button data-act="new">${ICONS.new}New flowchart</button>` : ''}</div>`;
     view.innerHTML = `
-      <section class="stage" tabindex="-1"><div class="empty" hidden>${empty}</div></section>
-      <aside class="sidebar" hidden></aside>
-      <div class="notices"></div>`;
+      <div class="chartarea">
+        <section class="stage" tabindex="-1"><div class="empty" hidden><div class="empty-box">${empty}</div></div></section>
+        <div class="notices"></div>
+        ${grip('side', 'the sidebar', ' side')}
+      </div>
+      <aside class="sidebar" hidden></aside>`;
     const area = document.createElement('textarea');
     area.spellcheck = false;
     area.setAttribute('autocomplete', 'off');
@@ -284,7 +336,7 @@ export class App {
     tab = new Tab(this.tabWindow(() => tab), { stage: v('.stage'), empty: v('.empty'), area, sidebar: v('.sidebar'), notices: v('.notices') });
     name.addEventListener('click', () => this.show(tab));
     close.addEventListener('click', () => { void this.closeTab(tab); });
-    this.parts.set(tab, { item, name, close, view, area });
+    this.parts.set(tab, { item, name, close, view, area, chartarea: v('.chartarea') });
     // The window's choices hold in every tab.
     tab.showViewing(this.viewing);
     tab.chart.setWheelMode(this.wheelMode);
@@ -309,6 +361,9 @@ export class App {
       p.area.hidden = t !== tab;
     }
     was?.hide();
+    // The island and the pill go with the shown tab's chart (T4.9).
+    this.showDirMenu(false);
+    this.parts.get(tab)!.chartarea.append(this.el.islandRow, this.el.pill);
     this.paintStrip();
     this.parts.get(tab)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     this.backend.setWindowTitle(tab.file ? `${basename(tab.file)} - Naiad` : 'Naiad');
@@ -476,12 +531,16 @@ export class App {
     this.el.strip.replaceChildren(...items, this.el.plus);
   }
 
-  /** What a tab uses of the window: the toolbar, the window's choices, the toast. */
+  /** What a tab uses of the window: the chart's tools (the island and the pill), the window's choices, the toast. */
   private tabWindow(own: () => Tab): TabWindow {
     const el = this.el;
     return {
       backend: this.backend,
-      bar: { status: el.status, dir: el.dir, undo: el.undo, redo: el.redo, add: el.add, fit: el.fit, highlight: el.highlight, clear: el.clear },
+      bar: {
+        status: el.status, dir: el.dir, undo: el.undo, redo: el.redo, add: el.add, fit: el.fit,
+        highlight: el.highlight, clear: el.clear, pill: el.pill, island: el.island,
+      },
+      showDirection: (dir) => this.showDirection(dir),
       pane: el.pane,
       shown: () => own() === this.tab,
       viewing: () => this.viewing,
@@ -642,11 +701,12 @@ export class App {
     this.viewing = on;
     for (const tab of this.tabs) tab.showViewing(on);
     this.el.view.setAttribute('aria-pressed', String(on));
-    this.el.view.innerHTML = on ? ICONS.edit : ICONS.read;
+    this.el.view.innerHTML = on ? ICONS.read : ICONS.edit;
     this.el.view.title = on ? VIEW_TIP.viewing : VIEW_TIP.editing;
-    // The toolbar keeps the saved state, Highlight, Fit, the Touchpad and Mouse switch,
-    // Syntax, About and View.
-    for (const control of [this.el.add, this.el.undo, this.el.redo, this.el.dir]) control.hidden = on;
+    // The pill keeps Fit, the Touchpad and Mouse switch, Highlight and the mode button;
+    // the island goes too (`Tab.paintBar`).
+    this.el.pillEdit.hidden = on;
+    if (on) this.showDirMenu(false);
     if (!on) this.endViewNotice();
     remember('mode', on ? 'view' : 'edit');
     for (const tab of this.tabs) tab.paint();
@@ -737,22 +797,66 @@ export class App {
     for (const tab of this.tabs) tab.paint();
   }
 
-  /** The caret button (T1.21): hides the top row, for more room, and shows it again; kept between runs. */
-  private showTopRow(show: boolean): void {
-    const top = this.root.querySelector<HTMLElement>('header.top');
-    if (!top) return;
-    top.hidden = !show;
-    this.el.topToggle.setAttribute('aria-expanded', String(show));
-    this.el.topToggle.title = show ? TOPROW_TIP.shown : TOPROW_TIP.hidden;
-    remember('toprow', show ? 'shown' : 'hidden');
+  /** The direction button (T4.9): the chart's direction, and the other three in its menu. */
+  private showDirection(dir: string): void {
+    const [key, name, icon] = DIRS.find(([k]) => k === dir) ?? DIRS[0];
+    this.el.dir.innerHTML = ICONS[icon];
+    this.el.dir.title = `Direction of the chart: ${name}`;
+    this.el.dir.setAttribute('aria-label', this.el.dir.title);
+    for (const item of this.el.dirMenu.querySelectorAll<HTMLButtonElement>('[data-dir]')) item.hidden = item.dataset.dir === key;
+  }
+
+  /** Whether the pointer is over the direction button or its menu, which then stays open. */
+  private dirHover = false;
+  private dirTimer: number | undefined;
+
+  private showDirMenu(open: boolean): void {
+    window.clearTimeout(this.dirTimer);
+    this.el.dirMenu.hidden = !open;
+    this.el.dir.setAttribute('aria-expanded', String(open));
+  }
+
+  /** The panes' widths in px (T4.9), as the CSS variables `--recent-w`, `--syntax-w` and `--side-w` on the window. */
+  private widths = {} as Record<PaneName, number>;
+
+  private setWidth(pane: PaneName, width: number): void {
+    const { min, max } = PANES[pane];
+    this.widths[pane] = Math.round(Math.max(min, Math.min(max, width)));
+    this.root.style.setProperty(`--${pane}-w`, `${String(this.widths[pane])}px`);
+  }
+
+  /** A drag on a pane's grip (T4.9): the pane follows the pointer, and its width is kept when it is let go. */
+  private dragGrip(e: PointerEvent, grip: HTMLElement): void {
+    const pane = grip.dataset.pane as PaneName;
+    if (!(pane in PANES) || e.button !== 0) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = this.widths[pane];
+    try { grip.setPointerCapture(e.pointerId); } catch { /* no pointer to capture */ }
+    grip.classList.add('dragging');
+    document.body.classList.add('resizing');
+    const move = (m: PointerEvent) => this.setWidth(pane, w0 + PANES[pane].grows * (m.clientX - x0));
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      grip.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      remember(PANES[pane].key, String(this.widths[pane]));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   /** Appearance (T4.8): the person's choice, kept by the app between runs; System until they choose. */
   private appearance: Appearance = 'system';
   /** The computer's light or dark setting. */
   private system!: MediaQueryList;
-  /** Whether Mermaid is set up to draw dark; null before the first setting. */
-  private dark: boolean | null = null;
+  /** The palette (T4.9): the person's choice, kept by the app between runs; Naiad Default until they choose. */
+  private palette: Palette = 'naiad-default';
+  /** The Syntax pane's font (T4.9), kept the same way; JetBrains Mono until the person chooses. */
+  private syntaxFont: SyntaxFont = 'jetbrains-mono';
+  /** What Mermaid was last set up for: dark or light, and the palette; null before the first. */
+  private look: string | null = null;
   /** The Appearance the title bar was last given; none before the first. */
   private titleBar: Appearance | null = null;
 
@@ -762,23 +866,46 @@ export class App {
     this.applyAppearance();
   }
 
+  private setPalette(choice: Palette): void {
+    this.palette = choice;
+    remember('palette', choice);
+    this.applyAppearance();
+  }
+
+  private setSyntaxFont(choice: SyntaxFont): void {
+    this.syntaxFont = choice;
+    remember('syntaxfont', choice);
+    this.applySyntaxFont();
+  }
+
+  /** The Syntax pane's font, through `data-syntaxfont` on the page's root (none: JetBrains Mono; `style.css`). */
+  private applySyntaxFont(): void {
+    const root = document.documentElement;
+    if (this.syntaxFont === 'jetbrains-mono') root.removeAttribute('data-syntaxfont');
+    else root.setAttribute('data-syntaxfont', this.syntaxFont);
+  }
+
   /**
-   * Draws the window, the title bar and the chart as Appearance says: the page's colours
-   * through `data-theme` on the page's root (none: the computer's setting; `style.css`),
-   * and, when light turns to dark or back, Mermaid set up again and every tab drawn again
-   * (a hidden tab draws when it is shown).
+   * Draws the window, the title bar and the chart as Appearance and the palette say: the
+   * page's colours through `data-theme` and `data-palette` on the page's root (none: the
+   * computer's setting, and Naiad Default; `style.css`), and, when light turns to dark or
+   * back or the palette changes, Mermaid set up again in the page's colours and every tab
+   * drawn again (a hidden tab draws when it is shown).
    */
   private applyAppearance(): void {
     const root = document.documentElement;
     if (this.appearance === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', this.appearance);
+    if (this.palette === 'naiad-default') root.removeAttribute('data-palette');
+    else root.setAttribute('data-palette', this.palette);
     if (this.titleBar !== this.appearance) {
       this.titleBar = this.appearance;
       this.backend.setTheme(this.appearance === 'system' ? null : this.appearance);
     }
     const dark = isDark(this.appearance, this.system.matches);
-    if (dark === this.dark) return;
-    this.dark = dark;
+    const look = `${String(dark)} ${this.palette}`;
+    if (look === this.look) return;
+    this.look = look;
     configureMermaid(dark);
     for (const tab of this.tabs) void tab.redraw();
   }
@@ -790,7 +917,11 @@ export class App {
     let w = this.windows.get(name);
     if (!w) {
       w = name === 'customize'
-        ? customizeWindow({ appearance: () => this.appearance, setAppearance: (choice) => this.setAppearance(choice) })
+        ? customizeWindow({
+          appearance: () => this.appearance, setAppearance: (choice) => this.setAppearance(choice),
+          palette: () => this.palette, setPalette: (choice) => this.setPalette(choice),
+          syntaxFont: () => this.syntaxFont, setSyntaxFont: (choice) => this.setSyntaxFont(choice),
+        })
         : settingsWindow({ remembering: () => this.remembering, setRemembering: (on) => this.setRemembering(on) });
       this.root.append(w);
       this.windows.set(name, w);
@@ -819,7 +950,18 @@ export class App {
 
   private bind(): void {
     this.root.addEventListener('click', (e) => {
-      const act = (e.target as Element).closest<HTMLElement>('button[data-act]')?.dataset.act;
+      const target = e.target as Element;
+      // The direction menu (T4.9): a direction picked changes the chart; a click anywhere
+      // else but its button closes the menu.
+      const picked = target.closest<HTMLElement>('.dir-menu [data-dir]')?.dataset.dir;
+      if (picked) {
+        this.showDirMenu(false);
+        void this.tab.edit({ kind: 'setDirection', dir: picked });
+        return;
+      }
+      if (!target.closest('.dir-wrap')) this.showDirMenu(false);
+      const act = target.closest<HTMLElement>('button[data-act]')?.dataset.act;
+      if (act === 'dir' && !(this.dirHover && !this.el.dirMenu.hidden)) this.showDirMenu(!!this.el.dirMenu.hidden);
       if (act === 'open') void this.pickAndOpen();
       if (act === 'new') void this.newFile();
       if (act === 'newtab') this.newTab();
@@ -829,7 +971,6 @@ export class App {
       if (act === 'fit') this.tab.chart.fit();
       if (act === 'syntax') this.toggleText();
       if (act === 'recent') this.toggleRecent();
-      if (act === 'tabrow') this.showTopRow(this.el.topToggle.getAttribute('aria-expanded') === 'false');
       if (act === 'customize' || act === 'settings') this.openWindow(act);
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
       if (act === 'clear') void this.tab.clearHighlights();
@@ -842,21 +983,23 @@ export class App {
         remember('wheelmode', mode);
       }
     });
-    this.el.dir.addEventListener('change', () => { void this.tab.edit({ kind: 'setDirection', dir: this.el.dir.value }); });
+    // Pointing at the direction button shows its menu; leaving both hides it, a moment
+    // later, so the pointer can cross the gap between them (T4.9).
+    const dirWrap = this.el.dir.parentElement!;
+    dirWrap.addEventListener('mouseenter', () => {
+      this.dirHover = true;
+      if (!this.el.dir.disabled) this.showDirMenu(true);
+    });
+    dirWrap.addEventListener('mouseleave', () => {
+      this.dirHover = false;
+      window.clearTimeout(this.dirTimer);
+      this.dirTimer = window.setTimeout(() => this.showDirMenu(false), 200);
+    });
 
-    // Drag the text pane's right edge to resize it.
-    this.el.pane.addEventListener('pointerdown', (e) => {
-      const r = this.el.pane.getBoundingClientRect();
-      if (e.clientX < r.right - 6) return;
-      e.preventDefault();
-      this.el.pane.setPointerCapture(e.pointerId);
-      const move = (m: PointerEvent) => { this.el.pane.style.width = `${Math.max(220, Math.min(window.innerWidth * 0.7, m.clientX - r.left))}px`; };
-      const up = () => {
-        this.el.pane.removeEventListener('pointermove', move);
-        remember('textpane-width', String(Math.round(this.el.pane.getBoundingClientRect().width)));
-      };
-      this.el.pane.addEventListener('pointermove', move);
-      this.el.pane.addEventListener('pointerup', up, { once: true });
+    // A drag on a pane's grip resizes the pane (T4.9).
+    this.root.addEventListener('pointerdown', (e) => {
+      const g = (e.target as Element).closest<HTMLElement>('.grip[data-pane]');
+      if (g) this.dragGrip(e, g);
     });
 
     // The keys act on the shown tab only, and not while a window lies over Naiad's (T1.21).
@@ -876,7 +1019,11 @@ export class App {
       if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); void this.tab.history(true); }
       else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.tab.history(false); }
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.tab.deleteSelection(); }
-      else if (key === 'escape') { if (this.hlOn) this.setHighlighting(false); else this.select(null); }
+      else if (key === 'escape') {
+        if (!this.el.dirMenu.hidden) this.showDirMenu(false);
+        else if (this.hlOn) this.setHighlighting(false);
+        else this.select(null);
+      }
       else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled) this.setHighlighting(!this.hlOn);
       else if ((key === 'enter' || key === 'f2') && this.selection) {
         e.preventDefault();

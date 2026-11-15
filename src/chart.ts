@@ -31,8 +31,8 @@ export interface ChartEvents {
 const ROUNDED_NODE_RADIUS = 14;
 const BEND_RADIUS = 14;
 
-/** Nunito (the user, 2026-11-13), bundled in `src/fonts/` and declared in `style.css`. */
-export const CHART_FONT = 'Nunito, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
+/** Lexend (the design handoff, T4.9, 2026-11-15), bundled in `src/fonts/` and declared in `style.css`. */
+export const CHART_FONT = 'Lexend, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif';
 
 /**
  * Mermaid sizes each box by measuring its label as it draws, so the font must have
@@ -40,10 +40,42 @@ export const CHART_FONT = 'Nunito, "Segoe UI Variable Text", "Segoe UI", system-
  */
 async function fontLoaded(): Promise<void> {
   if (!('fonts' in document)) return; // jsdom
-  try { await document.fonts.load('14px Nunito'); } catch { /* drawn in the fallback font */ }
+  try { await document.fonts.load('14px Lexend'); } catch { /* drawn in the fallback font */ }
 }
 
+/**
+ * The chart's colours: the palette's (`style.css`, T4.9), read from the page so that each
+ * colour has one home. Each is read through a hidden element whose text colour is the
+ * palette's colour, since the page gives a colour written `light-dark()` as rgb() only
+ * there. A page without the styles (the tests) gets Naiad Default's.
+ */
+const CHART_COLOURS = {
+  bg: ['#eef5f4', '#0b1c21'], node: ['#ffffff', '#12303a'], 'node-border': ['#95c2c8', '#34727f'],
+  edge: ['#66979f', '#5592a0'], text: ['#12292f', '#e3f1f2'], muted: ['#4d6a6f', '#8fb0b5'],
+  group: ['#e3efee', '#0e262c'], 'group-border': ['#bad6d8', '#22474f'],
+} as const;
+
+function pageColours(dark: boolean): Record<keyof typeof CHART_COLOURS, string> {
+  const probe = document.createElement('span');
+  probe.hidden = true;
+  document.body.append(probe);
+  const out = {} as Record<keyof typeof CHART_COLOURS, string>;
+  for (const [name, both] of Object.entries(CHART_COLOURS) as [keyof typeof CHART_COLOURS, readonly [string, string]][]) {
+    probe.style.color = '';
+    probe.style.color = `var(--${name}, rgb(1, 2, 3))`;
+    const value = getComputedStyle(probe).color;
+    out[name] = /^rgba?\(/.test(value) && value !== 'rgb(1, 2, 3)' ? value : both[dark ? 1 : 0];
+  }
+  probe.remove();
+  return out;
+}
+
+/**
+ * Sets Mermaid up to draw in the palette's colours, light or dark (Appearance, T4.8; the
+ * palette, T4.9). Called again when either changes, before every tab is drawn again.
+ */
 export function configureMermaid(dark: boolean): void {
+  const c = pageColours(dark);
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -52,19 +84,13 @@ export function configureMermaid(dark: boolean): void {
     look: 'classic',
     // `radius` rounds the corners of a rounded node, `id(Title)`; a square node's corners
     // and a group's are rounded less, in `style.css`, so the two shapes stay apart.
-    themeVariables: dark
-      ? {
-        darkMode: true, radius: ROUNDED_NODE_RADIUS, fontFamily: CHART_FONT, fontSize: '14px', background: '#16181c',
-        primaryColor: '#262a31', primaryTextColor: '#e8eaed', primaryBorderColor: '#5b6472',
-        lineColor: '#8a93a1', textColor: '#e8eaed', clusterBkg: '#1c1f25', clusterBorder: '#3a414c',
-        edgeLabelBackground: '#16181c', titleColor: '#aeb6c2',
-      }
-      : {
-        radius: ROUNDED_NODE_RADIUS, fontFamily: CHART_FONT, fontSize: '14px', background: '#f6f7f9',
-        primaryColor: '#ffffff', primaryTextColor: '#1c2026', primaryBorderColor: '#9aa3b0',
-        lineColor: '#6b7482', textColor: '#1c2026', clusterBkg: '#eef0f4', clusterBorder: '#c9ced6',
-        edgeLabelBackground: '#f6f7f9', titleColor: '#4a5362',
-      },
+    themeVariables: {
+      ...(dark ? { darkMode: true } : {}),
+      radius: ROUNDED_NODE_RADIUS, fontFamily: CHART_FONT, fontSize: '14px', background: c.bg,
+      primaryColor: c.node, primaryTextColor: c.text, primaryBorderColor: c['node-border'],
+      lineColor: c.edge, textColor: c.text, clusterBkg: c.group, clusterBorder: c['group-border'],
+      edgeLabelBackground: c.bg, titleColor: c.muted,
+    },
     flowchart: { useMaxWidth: false, htmlLabels: true, padding: 14, nodeSpacing: 44, rankSpacing: 52 },
     // Gaps at crossings (the user, 2026-11-13): where two arrows cross, Mermaid's layout
     // (ELK, its default) cuts a short gap in one, as on road maps, instead of its own

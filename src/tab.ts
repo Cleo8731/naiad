@@ -10,6 +10,7 @@ import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
+import { ICONS } from './icons';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
@@ -106,17 +107,23 @@ export interface TabElements {
   notices: HTMLElement;
 }
 
-/** What a tab uses of its window (`App`): the toolbar, and the choices made for the whole window. */
+/** What a tab uses of its window (`App`): the chart's tools, and the choices made for the whole window. */
 export interface TabWindow {
   readonly backend: Backend;
-  /** The toolbar's controls that show the shown tab's file. */
+  /**
+   * The controls that show the shown tab's file: the saved state (unseen, for screen
+   * readers), the island and the pill laid over its chart (T4.9), and what is in them.
+   */
   readonly bar: {
-    status: HTMLElement; dir: HTMLSelectElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
+    status: HTMLElement; dir: HTMLButtonElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; fit: HTMLButtonElement; highlight: HTMLButtonElement; clear: HTMLButtonElement;
+    pill: HTMLElement; island: HTMLElement;
   };
+  /** The direction button shows the chart's direction: TD, LR, BT or RL. */
+  showDirection(dir: string): void;
   /** The Syntax pane: a notice offers to show it while it is hidden. */
   readonly pane: HTMLElement;
-  /** Whether this tab is the one shown: only that one paints the toolbar. */
+  /** Whether this tab is the one shown: only that one paints the chart's tools. */
   shown(): boolean;
   /** View mode (D4.3, T1.11). */
   viewing(): boolean;
@@ -400,7 +407,7 @@ export class Tab {
     this.hidden = true;
   }
 
-  /** The tab is shown: the toolbar and the notices show its file, and what changed while it was hidden is drawn. */
+  /** The tab is shown: the chart's tools and the notices show its file, and what changed while it was hidden is drawn. */
   show(): void {
     this.hidden = false;
     if (this.stale) void this.queue(() => this.refresh(true));
@@ -491,7 +498,10 @@ export class Tab {
   private paintHighlights(): void {
     const items = parseHighlights(this.hlText);
     this.chart.setHighlights(this.snap ? resolveHighlights(items, this.snap) : []);
-    if (this.win.shown()) this.bar.clear.hidden = items.length === 0 || this.path === null;
+    if (!this.win.shown()) return;
+    // Clear, with the count of highlights in the file (T4.9).
+    this.bar.clear.hidden = items.length === 0 || this.path === null;
+    this.bar.clear.querySelector('span')!.textContent = `Clear ${String(items.length)}`;
   }
 
   /** View mode (D4.3, T1.11) in the tab's own views: the chart, the sidebar and the Syntax pane. */
@@ -527,7 +537,14 @@ export class Tab {
       if (path !== this.path) return;
       this.note = 'The file cannot be read (moved or deleted?)';
       this.paintBar();
+      this.paintNotices();
       return;
+    }
+    // It can be read again: its notice goes.
+    if (path === this.path && this.note.startsWith('The file cannot')) {
+      this.note = '';
+      this.paintBar();
+      this.paintNotices();
     }
     // Compared and taken in as one job of the queue, so an edit is never applied over it
     // nor it over an edit half done.
@@ -604,6 +621,7 @@ export class Tab {
       this.note = `Could not save: ${errorText(e)}`;
     }
     this.paintBar();
+    this.paintNotices();
   }
 
   // ------------------------------------------------------------------ changes
@@ -941,7 +959,11 @@ export class Tab {
     this.paintNotices();
   }
 
-  /** The toolbar's part that shows the file: only the shown tab paints it (the file's name is in its tab, T1.16). */
+  /**
+   * The island and the pill (T4.9), and the saved state, unseen but read by screen
+   * readers: only the shown tab paints them (the file's name is in its tab, T1.16). A
+   * blank tab shows neither the island nor the pill.
+   */
   private paintBar(): void {
     if (!this.win.shown()) return;
     const bar = this.bar;
@@ -956,20 +978,23 @@ export class Tab {
     }
     bar.status.textContent = status;
     bar.status.dataset.state = state;
+    bar.pill.hidden = !open;
+    bar.island.hidden = !open || this.win.viewing();
     bar.undo.disabled = !this.undoStack.length;
     bar.redo.disabled = !this.redoStack.length;
     bar.add.disabled = bar.fit.disabled = bar.dir.disabled = bar.highlight.disabled = !open || !this.snap;
     if (bar.highlight.disabled && this.win.highlighting()) this.win.setHighlighting(false);
-    if (this.snap) bar.dir.value = this.snap.direction === 'TB' ? 'TD' : this.snap.direction;
+    if (this.snap) this.win.showDirection(this.snap.direction === 'TB' ? 'TD' : this.snap.direction);
   }
 
   /** Whether the syntax error's notice shows Mermaid's own message (its Details button). */
   private noticeDetails = false;
 
   /**
-   * The notices: thin bars laid over the top of the window, under the toolbar, so they
-   * show whether the Syntax pane is open or not (the user, 2026-11-12, Q103). Each is one
-   * line, its whole text on hover; Mermaid's message for a syntax error opens below it.
+   * The notices: thin bars laid over the top of the chart (the user, 2026-11-12, Q103;
+   * in the chart area since T4.9). Each is one line, its whole text on hover; Mermaid's
+   * message for a syntax error opens below it. With no saved state shown (T4.9), a file
+   * that could not be saved or read shows here, and a syntax error says it is not saved.
    */
   paintNotices(): void {
     const items: HTMLElement[] = [];
@@ -988,6 +1013,8 @@ export class Tab {
       span.className = 'notice-text';
       span.textContent = text;
       span.title = text;
+      // Something wrong (T4.9): the alert's icon before the text.
+      if (cls === 'bad') line.insertAdjacentHTML('afterbegin', ICONS.alert);
       line.append(span, ...actions);
       div.append(line);
       if (detail !== undefined) {
@@ -1004,13 +1031,15 @@ export class Tab {
     }
     // A blank tab (T1.16) has no text, so nothing in it to find fault with.
     const open = this.path !== null;
+    if (open && /^(Could not|The file cannot)/.test(this.note)) notice('bad', this.note, []);
     if (!open) {
       this.noticeDetails = false;
     } else if (this.error) {
       const details = button(this.noticeDetails ? 'Hide details' : 'Details', () => { this.noticeDetails = !this.noticeDetails; this.paintNotices(); });
       // A file that was broken when it was opened has no last good version: the chart is empty.
       const what = this.snap ? 'the chart shows the last good version' : 'the chart cannot be drawn';
-      notice('bad', `Mermaid cannot read this text, so ${what}.`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
+      const unsaved = this.text !== this.saved ? ' Not saved: Ctrl+S saves anyway.' : '';
+      notice('bad', `Mermaid cannot read this text, so ${what}.${unsaved}`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
     } else {
       this.noticeDetails = false;
       if (this.doc.problems.length) {
@@ -1026,13 +1055,6 @@ export class Tab {
       })]);
     }
     this.el.notices.replaceChildren(...items);
-    this.padUnderNotices();
-  }
-
-  /** The bars cover the top of the Syntax pane, so its text starts below them and line 1 stays readable. */
-  padUnderNotices(): void {
-    const covered = this.el.notices.childElementCount ? this.el.notices.offsetHeight + 8 : 0;
-    this.el.area.style.paddingTop = covered ? `${String(12 + covered)}px` : '';
   }
 
   // ------------------------------------------------------------------ input
