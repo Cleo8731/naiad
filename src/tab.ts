@@ -230,8 +230,11 @@ export class Tab {
 
   /** Whether something typed or changed is not yet on disk, for the browser's question before a page goes. */
   waiting(): boolean {
-    return this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null || this.sidebar.typed() !== null || this.sidebar.writing());
+    return this.path !== null && (this.textTimer !== undefined || this.text !== this.saved || this.displaced || this.sidebar.draft() !== null || this.sidebar.typed() !== null || this.sidebar.writing() || this.describing > 0);
   }
+
+  /** Descriptions being written after the panel left them (`writeDescription`), not yet in the text (bug hunt H6). */
+  private describing = 0;
 
   /**
    * Before the tab closes, or Naiad does: saves what waits to be saved, then asks before
@@ -310,6 +313,15 @@ export class Tab {
    * left as a known finding).
    */
   async writeDescription(id: string, text: string): Promise<void> {
+    this.describing++;
+    try {
+      await this.writeDescriptionNow(id, text);
+    } finally {
+      this.describing--;
+    }
+  }
+
+  private async writeDescriptionNow(id: string, text: string): Promise<void> {
     if (await this.edit({ kind: 'setDescription', id, description: text })) return;
     // The flowchart's description (T1.13) is in the sidebar while nothing is selected and
     // About is on; turning back to it turns About on.
@@ -433,7 +445,8 @@ export class Tab {
     this.hlBusy++;
     this.hlVersion++;
     this.hlWork = this.hlWork
-      .then(() => (path === this.path ? job() : undefined))
+      // A change not started when the tab closed is dropped with it (bug hunt H5).
+      .then(() => (path === this.path && !this.closed ? job() : undefined))
       .catch((e) => {
         // Show what is on disk again: the read that follows draws it.
         this.win.toast(`Could not save the highlights: ${errorText(e)}`);
@@ -441,6 +454,11 @@ export class Tab {
         this.paintHighlights();
       })
       .finally(() => { this.hlBusy--; this.hlVersion++; if (!this.hlBusy) void this.readHighlights(); });
+    return this.hlWork;
+  }
+
+  /** Resolves when the highlight writes under way are done, failed ones too (the window's `drop`). */
+  highlightsWritten(): Promise<void> {
     return this.hlWork;
   }
 

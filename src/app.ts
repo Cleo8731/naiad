@@ -301,12 +301,22 @@ export class App {
     if (!this.tabs.length) this.place(this.makeTab());
     if (tab === this.tab) this.show(this.tabs[Math.min(at, this.tabs.length - 1)]);
     else this.paintStrip();
-    this.backend.viewing(this.files());
+    // The shell deletes the highlights file of a flowchart no view shows: the closed tab's
+    // file is kept in the window's list until its highlight writes are done, so none lands
+    // after the delete (bug hunt H5).
+    this.draining.add(tab);
+    void tab.highlightsWritten().then(() => {
+      this.draining.delete(tab);
+      this.backend.viewing(this.files());
+    });
   }
 
-  /** The files open in the window's tabs, in the strip's order. */
+  /** Closed tabs whose highlight writes are not done yet (`drop`). */
+  private readonly draining = new Set<Tab>();
+
+  /** The files the window shows, for the shell: its tabs', in the strip's order, then any closed tab's still writing its highlights. */
   private files(): string[] {
-    return this.tabs.flatMap((t) => (t.file ? [t.file] : []));
+    return [...this.tabs, ...this.draining].flatMap((t) => (t.file ? [t.file] : []));
   }
 
   /** The strip: each tab's name (its file's, or New tab), the shown one marked, then the +. */
@@ -367,13 +377,23 @@ export class App {
 
   /**
    * Whether the window may close: saves what waits to be saved in every tab, and asks
-   * about each tab that would lose text, showing it first; No keeps the window open.
+   * about each tab that would lose text, showing it first; No keeps the window open. A
+   * tab changed after it was looked at, while a later tab saved or asked (typed into,
+   * say), is looked at again, unless the person already let its text go (bug hunt H3);
+   * a tab still changing after five rounds keeps the window open.
    */
   private async canClose(): Promise<boolean> {
-    for (const tab of [...this.tabs]) {
-      if (!(await tab.leave('Close Naiad', () => this.show(tab)))) return false;
+    const lettingGo = new Set<Tab>();
+    for (let round = 0; round < 5; round++) {
+      for (const tab of [...this.tabs]) {
+        if (round > 0 && (lettingGo.has(tab) || !tab.waiting())) continue;
+        let asked = false;
+        if (!(await tab.leave('Close Naiad', () => { asked = true; this.show(tab); }))) return false;
+        if (asked) lettingGo.add(tab);
+      }
+      if (!this.tabs.some((t) => !lettingGo.has(t) && t.waiting())) return true;
     }
-    return true;
+    return false;
   }
 
   // The shown tab's item selected, its sidebar, and its select and add steps, as the
@@ -430,25 +450,32 @@ export class App {
    * The View button (Q115). Going to View, a description or a title typed in a sidebar
    * and not yet in the file is written first, in every tab, as turning to another item
    * does (C36, Q90); one that cannot be written keeps Naiad in Edit mode, with its tab
-   * shown and the text still in its box.
+   * shown and the text still in its box. Text typed in a sidebar while a later tab's was
+   * written is written too, in another round (bug hunt H4); still typing after five
+   * rounds, Naiad stays in Edit mode.
    */
   private async setViewing(on: boolean): Promise<void> {
     if (on && !this.viewing) {
-      for (const tab of [this.tab, ...this.tabs.filter((t) => t !== this.tab)]) {
-        tab.refusal = null;
-        const why = () => (tab.refusal ? `${tab.refusal} ` : '');
-        if (!(await tab.writeDraft())) {
-          if (this.tabs.includes(tab)) this.show(tab);
-          this.toast(`${why()}The description you were writing was not saved, so Naiad stays in Edit mode.`);
-          return;
+      for (let round = 0; ; round++) {
+        for (const tab of [this.tab, ...this.tabs.filter((t) => t !== this.tab)]) {
+          tab.refusal = null;
+          const why = () => (tab.refusal ? `${tab.refusal} ` : '');
+          if (!(await tab.writeDraft())) {
+            if (this.tabs.includes(tab)) this.show(tab);
+            this.toast(`${why()}The description you were writing was not saved, so Naiad stays in Edit mode.`);
+            return;
+          }
+          const lost = await tab.writeTyped();
+          if (lost) {
+            if (this.tabs.includes(tab)) this.show(tab);
+            this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
+            return;
+          }
+          await tab.sidebar.settle(); // a description Done is writing is in the file first
         }
-        const lost = await tab.writeTyped();
-        if (lost) {
-          if (this.tabs.includes(tab)) this.show(tab);
-          this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
-          return;
-        }
-        await tab.sidebar.settle(); // a description Done is writing is in the file first
+        const more = this.tabs.some((t) => t.sidebar.draft() || t.sidebar.typed() || t.sidebar.writing());
+        if (!more) break;
+        if (round >= 4) return;
       }
     }
     this.showViewing(on);
