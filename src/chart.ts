@@ -4,6 +4,7 @@
 import mermaid from 'mermaid';
 import { forMermaid, type Snap } from './semantics';
 import { parseDoc } from './core/scan';
+import { addDirectionMarks } from './direction-marks';
 
 export type Target =
   | { kind: 'node'; id: string }
@@ -372,6 +373,7 @@ export class Chart {
       const i = snap.edgeIds.indexOf(g.querySelector<SVGGElement>('[data-id]')?.dataset.id ?? '');
       if (i >= 0) g.dataset.edge = String(i);
     });
+    addDirectionMarks(svg);
   }
 
   private targetAt(el: Element | null): Target | null {
