@@ -197,20 +197,20 @@ describe('the three panes and their grips (T4.9)', () => {
   });
 });
 
-describe('the recent list\'s pane or the Syntax pane, never both (the user, 2026-11-15, Q158\'s answer)', () => {
+describe('the recent list\'s pane or the Syntax pane, never both (the user, 2026-11-15, Q158\'s answer; the Syntax pane switches off, the user\'s correction)', () => {
   const syntaxPane = () => q<HTMLElement>('.textpane')!;
   const recentPane = () => q<HTMLElement>('nav.recent')!;
   const pressed = (act: string) => button(act).getAttribute('aria-pressed') === 'true';
 
-  test('opening the recent list\'s pane hides the Syntax pane; closing it brings the Syntax pane back', async () => {
+  test('opening the recent list\'s pane switches the Syntax pane off; it stays off when the list closes', async () => {
     await start();
     button('syntax').click();
     button('recent').click();
     expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
     expect([pressed('recent'), pressed('syntax')]).toEqual([true, false]);
     button('recent').click();
-    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
-    expect([pressed('recent'), pressed('syntax')]).toEqual([false, true]);
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
+    expect([pressed('recent'), pressed('syntax')]).toEqual([false, false]);
   });
 
   test('Syntax, clicked while the recent list\'s pane is open, closes that pane and shows the Syntax pane', async () => {
@@ -231,21 +231,31 @@ describe('the recent list\'s pane or the Syntax pane, never both (the user, 2026
     expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
   });
 
-  test('a blank tab shows the recent list\'s pane in place of the Syntax pane, which comes back on a flowchart\'s tab', async () => {
+  test('a blank tab opens the recent list\'s pane, which switches the Syntax pane off; it stays off on a flowchart\'s tab', async () => {
     const ui = await start();
     button('syntax').click();
     q<HTMLButtonElement>('[data-act="newtab"]')!.click();
     expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
     ui.showTab('a.mmd');
-    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
+    expect(pressed('syntax')).toBe(false);
   });
 
-  test('the Syntax pane, left open under the recent list\'s pane, is open at the next start', async () => {
+  test('the Syntax pane, switched off by the recent list\'s pane, is closed at the next start', async () => {
     await start();
     button('syntax').click();
     button('recent').click();
     await restart();
-    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, false]);
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([true, true]);
+  });
+
+  test('the Syntax pane, open at the start, is switched off by the blank tab\'s recent list\'s pane', async () => {
+    await start();
+    button('syntax').click();
+    await restart();
+    expect(syntaxPane().hidden).toBe(false);
+    q<HTMLButtonElement>('[data-act="newtab"]')!.click();
+    expect([recentPane().hidden, syntaxPane().hidden]).toEqual([false, true]);
   });
 });
 

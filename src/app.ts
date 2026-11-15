@@ -1,6 +1,7 @@
 // The window (its layout: the design handoff, T4.9, 2026-11-15): the rail on the left, in
 // three sections (the user, 2026-11-15, answering Q158 and Q159), the tabs row, the
-// recent list's pane or the Syntax pane (never both: the same answer) and the sidebar
+// recent list's pane or the Syntax pane (opening one switches the other off: the same
+// answer, and the user's correction) and the sidebar
 // with their grips, the Undo island and the floating pill on the shown tab's chart; the
 // choices made for
 // the whole window (View mode, About, the Touchpad and Mouse switch, the Highlight
@@ -941,40 +942,29 @@ export class App {
     if (!w.open) w.showModal();
   }
 
-  /**
-   * Whether the person wants the Syntax pane open: set by the Syntax button (and a
-   * notice's Show syntax), kept between runs. The recent list's pane and the Syntax pane
-   * are never open together (the user, 2026-11-15, Q158's answer): while the recent
-   * list's pane is open the Syntax pane gives way to it, and it comes back when that pane
-   * closes (`paintSyntax`).
+  /*
+   * The recent list's pane and the Syntax pane are never open together (the user,
+   * 2026-11-15, Q158's answer): opening one switches the other off, as its own button
+   * would, and it stays off (the user's correction the same day). Neither call below
+   * opens the other pane, so they never loop.
    */
-  private syntaxChosen = false;
-
   private toggleRecent(show?: boolean): void {
     if (!this.recent) return;
     const visible = show ?? !this.recent.visible;
     this.recent.show(visible);
     this.el.recentToggle.setAttribute('aria-pressed', String(visible));
     this.el.recentToggle.title = visible ? 'Hide recent files' : 'Show recent files';
-    this.paintSyntax();
+    if (visible && !this.el.pane.hidden) this.toggleText(false);
   }
 
   private toggleText(show?: boolean): void {
     const visible = show ?? this.el.pane.hidden !== false;
-    this.syntaxChosen = visible;
-    remember('syntaxpane', visible ? 'shown' : 'hidden');
-    // Opening the Syntax pane closes the recent list's pane: one or the other.
-    if (visible && this.recent?.visible) this.toggleRecent(false);
-    else this.paintSyntax();
-  }
-
-  /** Shows the Syntax pane if the person chose it and the recent list's pane is closed. */
-  private paintSyntax(): void {
-    const visible = this.syntaxChosen && !this.recent?.visible;
     this.el.pane.hidden = !visible;
     this.el.textToggle.setAttribute('aria-pressed', String(visible));
+    remember('syntaxpane', visible ? 'shown' : 'hidden');
     // A notice's Show syntax button is there only while the pane is hidden.
     for (const tab of this.tabs) tab.paintNotices();
+    if (visible && this.recent?.visible) this.toggleRecent(false);
   }
 
   // ------------------------------------------------------------------ input
