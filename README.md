@@ -50,8 +50,8 @@ flowchart**.
 
 | To | Do |
 |---|---|
-| Open several flowcharts | Each file opens in its own tab, in the strip above the chart. The **+** at the strip's end opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
-| Open a file you opened before | The **Recent files** button, a panel, at the left end of the toolbar, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. Naiad remembers whether the list is shown. A page from `naiad serve` has no list |
+| Open several flowcharts | Each file opens in its own tab, in the window's top row; the toolbar is the row beneath it. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A page from `naiad serve` shows one file and has no tabs |
+| Open a file you opened before | The **Recent files** button, a panel, at the left end of the top row, shows the last 50 files you opened, newest first: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. A page from `naiad serve` has no list |
 | Read a description | Click a node |
 | Read or write what the whole flowchart is about | Click empty space: the sidebar shows the flowchart's description, under any node, arrow or group you select. **About** hides or shows it, and Naiad remembers your choice |
 | Add a node | **+ Node**, or double-click empty space |
@@ -63,8 +63,8 @@ flowchart**.
 | Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |
 | Delete | Select, then Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows in the toolbar |
-| Zoom / pan | Pinch, or Ctrl with the mouse wheel / two fingers, the mouse wheel (Shift: sideways), or drag empty space |
-| Make the mouse wheel zoom | The **Touchpad mode** button, a touchpad, switches to Mouse mode: the wheel zooms, and the button shows a mouse. Naiad starts in Touchpad mode and remembers your choice |
+| Zoom / pan | Mouse wheel or pinch to zoom; drag empty space to pan |
+| Move the chart with two fingers on a touchpad | The **Mouse mode** button, a mouse, switches to Touchpad mode: two fingers or the mouse wheel move the chart (Shift: sideways), a pinch or Ctrl with the wheel zooms, and the button shows a touchpad. Naiad starts in Mouse mode and remembers your choice |
 | Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear** takes every highlight off |
 | Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>` (the syntax is hidden when Naiad starts, unless you left it open) |
 | Read without changing anything | The **View mode** button, an open book: no dots to drag, no dot grid, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. In View mode the button shows a pencil: click it to edit again. Naiad opens in the mode you left it in |
@@ -150,8 +150,8 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
-- Whether the Syntax pane is shown, its width, whether View mode is on, Touchpad or
-  Mouse mode, and whether the recent files are shown, in the window's own storage.
+- Whether the Syntax pane is shown, its width, whether View mode and **About** are on,
+  and Touchpad or Mouse mode once you choose one, in the window's own storage.
 - The full paths of the last 50 files you opened, for the recent files, in the same
   storage (`src/recent.ts`). While the list is shown, Naiad checks that each listed
   file is still there; it reads none of them until you click one.

@@ -249,8 +249,9 @@ export class Chart {
   };
   /** What a wheel event without Ctrl does (D1.5, the user's switch): in Touchpad mode it
    * moves the view, in Mouse mode it zooms. A Ctrl-marked event (a pinch, or Ctrl held
-   * with the wheel) zooms in both. Nothing is guessed from the event itself. */
-  private wheelMode: WheelMode = 'touchpad';
+   * with the wheel) zooms in both. Nothing is guessed from the event itself. Mouse mode
+   * until the person chooses (the user, 2026-11-14). */
+  private wheelMode: WheelMode = 'mouse';
   private view = { x: 0, y: 0, k: 1 };
   private size = { w: 0, h: 0 };
   private selected: Target | null = null;

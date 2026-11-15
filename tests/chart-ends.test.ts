@@ -142,7 +142,8 @@ describe('drag interactions', () => {
     expect(scale()).toBeGreaterThan(k);
     expect(line.getAttribute('x1')).not.toBe(afterZoom);
     for (let t = 348; t < 1000; t += 16) all(t); // the glide ends
-    // In Touchpad mode, the chart's start, two fingers past the border move the view.
+    // In Touchpad mode, two fingers past the border move the view.
+    chart.setWheelMode('touchpad');
     k = scale();
     const y = moved();
     const afterPinch = line.getAttribute('y1');

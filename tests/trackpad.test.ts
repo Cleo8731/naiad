@@ -43,11 +43,10 @@ describe('what a wheel event over the chart does', () => {
   });
   afterEach(() => { chart.destroy(); stage.remove(); vi.unstubAllGlobals(); });
 
-  test('Touchpad mode is where the chart starts', () => {
-    const e = wheel({ deltaY: 40 });
+  test('Mouse mode is where the chart starts (the user, 2026-11-14): the wheel zooms', () => {
+    wheel({ deltaY: 40 });
     run(400);
-    expect(view()).toEqual({ x: 0, y: -40, k: 1 });
-    expect(e.defaultPrevented).toBe(true);
+    expect(view().k).toBeLessThan(1);
   });
 
   test('in Touchpad mode, two fingers move the view in any direction, the way a page scrolls, and never zoom', () => {
