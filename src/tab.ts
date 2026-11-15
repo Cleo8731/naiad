@@ -366,6 +366,9 @@ export class Tab {
     this.hlText = '';
     this.hlVersion++;
     this.el.area.value = this.text;
+    // The sidebar opens before the first drawing, so the chart is fitted to the room it
+    // keeps: a side panel opening later only moves the chart, never fits it again.
+    this.sidebar.show(this.view());
     this.chart.resetView();
     this.win.opened(path);
     const stop = await this.backend.watch(path, () => { void this.diskChanged(); });

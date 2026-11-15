@@ -325,6 +325,16 @@ describe('what each tab keeps, and what the window keeps', () => {
     expect(charts.list[1].drawn).toEqual([TEXT]);
     expect(charts.most).toBe(1);
   });
+
+  test('a file opened in a blank tab is drawn with its sidebar already open, so the chart is fitted to the room it keeps', async () => {
+    await start(); // a.mmd, given at start, fills the first blank tab
+    expect(charts.list[0].sidebarShown).toEqual([true]);
+    plus().click();
+    disk.picked = B;
+    shownView().querySelector<HTMLButtonElement>('.empty [data-act="open"]')!.click();
+    await vi.waitFor(() => expect(charts.list[1].drawn).toEqual([TEXT]));
+    expect(charts.list[1].sidebarShown).toEqual([true]);
+  });
 });
 
 describe('closing the window', () => {

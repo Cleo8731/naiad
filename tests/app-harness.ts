@@ -17,22 +17,28 @@ export const chartEvents: { last: import('../src/chart').ChartEvents | null } = 
 export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { mode: null };
 
 /**
- * Every stand-in chart made, in order (one per tab, T1.16), each with the texts it drew;
- * and how many drew at the same moment, at most (one Mermaid for the page).
+ * Every stand-in chart made, in order (one per tab, T1.16), each with the texts it drew
+ * and, for each drawing, whether its tab's sidebar was showing as it started; and how
+ * many drew at the same moment, at most (one Mermaid for the page).
  */
-export const charts: { list: { drawn: string[]; destroyed: boolean }[]; drawing: number; most: number } = { list: [], drawing: 0, most: 0 };
+export const charts: {
+  list: { drawn: string[]; sidebarShown: boolean[]; destroyed: boolean }[]; drawing: number; most: number;
+} = { list: [], drawing: 0, most: 0 };
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: () => {},
   Chart: class {
     drawn: string[] = [];
+    sidebarShown: boolean[] = [];
     destroyed = false;
-    constructor(_stage: unknown, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
+    constructor(private stage: HTMLElement, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
     destroy() { this.destroyed = true; }
     setWheelMode(mode: import('../src/chart').WheelMode) { chartWheel.mode = mode; }
     async draw(text: string) {
+      const sidebar = this.stage.parentElement?.querySelector<HTMLElement>('.sidebar');
+      this.sidebarShown.push(!!sidebar && !sidebar.hidden);
       charts.most = Math.max(charts.most, ++charts.drawing);
       try {
         if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay);
