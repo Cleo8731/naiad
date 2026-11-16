@@ -262,13 +262,16 @@ describe('edits change only the lines they must', () => {
       removed: ['    clean -- yes --> train[Train model]'], added: ['    clean -- yes --> train{{"Train model"}}'] });
   });
 
+  // A new node is a Rounded node, as the shape advice recommends for a step (the user,
+  // 2026-11-16, Q165).
   test('add node and arrow', () => {
     const n = E.addNode(sample, 'New node');
     expect(n.id).toBe('n1');
-    expect(changed(sample, n.text)).toEqual({ removed: [], added: ['    n1[New node]'] });
-    expect(n.text.indexOf('n1[New node]')).toBeLessThan(n.text.indexOf('style ship'));
+    expect(changed(sample, n.text)).toEqual({ removed: [], added: ['    n1(New node)'] });
+    expect(n.text.indexOf('n1(New node)')).toBeLessThan(n.text.indexOf('style ship'));
     const inGroup = E.addNode(sample, 'Inside', 'review');
-    expect(changed(sample, inGroup.text)).toEqual({ removed: [], added: ['        n1[Inside]'] });
+    expect(changed(sample, inGroup.text)).toEqual({ removed: [], added: ['        n1(Inside)'] });
+    expect(changed(sample, E.addNode(sample, 'Check (twice)').text)).toEqual({ removed: [], added: ['    n1("Check (twice)")'] });
     expect(changed(sample, E.addEdge(sample, 'ship', 'collect'))).toEqual({ removed: [], added: ['    ship --> collect'] });
   });
 

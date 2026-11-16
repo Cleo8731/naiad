@@ -87,7 +87,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
     case 'setTitle': s.nodes[op.id].text = enc(op.title); break;
     case 'setShape': s.nodes[op.id].type = op.shape; break;
     case 'addNode':
-      s.nodes[res.created!] = { text: enc(op.title), type: 'square', styles: [], classes: [] };
+      s.nodes[res.created!] = { text: enc(op.title), type: 'round', styles: [], classes: [] };
       if (op.parent) s.subs[op.parent].nodes = [...s.subs[op.parent].nodes, res.created!].sort();
       break;
     case 'deleteNode':

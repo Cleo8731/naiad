@@ -320,6 +320,8 @@ export function setShape(text: string, id: string, type: string): string {
   return rw.finish();
 }
 
+/** A new node is a Rounded node, `id(Title)`, as the shape advice recommends for a step
+ * (the user, 2026-11-16, Q165). */
 export function addNode(text: string, title: string, parentSub: string | null = null): { text: string; id: string } {
   const doc = load(text);
   const id = newId(doc, 'n');
@@ -327,9 +329,9 @@ export function addNode(text: string, title: string, parentSub: string | null = 
   if (parentSub) {
     const sub = findSub(doc, parentSub);
     if (!sub) throw new EditError(`No group "${parentSub}" in this file.`);
-    rw.insertAfter(sub.endLine - 1, [{ text: `${innerIndent(doc, sub)}${id}[${encodeLabel(title)}]`, ids: [id] }], sub.line);
+    rw.insertAfter(sub.endLine - 1, [{ text: `${innerIndent(doc, sub)}${id}(${encodeLabel(title)})`, ids: [id] }], sub.line);
   } else {
-    rw.insertAfter(topInsertLine(doc), [{ text: `${topIndent(doc)}${id}[${encodeLabel(title)}]`, ids: [id] }], -1);
+    rw.insertAfter(topInsertLine(doc), [{ text: `${topIndent(doc)}${id}(${encodeLabel(title)})`, ids: [id] }], -1);
   }
   return { text: rw.finish(), id };
 }
