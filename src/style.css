@@ -457,9 +457,9 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
   stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
 }
 .canvas path.dir-mark.edge-thickness-thick { stroke-width: 2.5px !important; }
-/* Rounder corners (the user, 2026-11-13): a square node's 6 px and a group's 12 px; a
-   rounded node's (14 px) and an arrow's bends are set in `chart.ts`. Drawing only. */
-.canvas .node rect.label-container:not([rx]), .canvas .node rect.label-container[rx="0"] { rx: 6px; ry: 6px; }
+/* Node corners: a square node's 4 px (the user, 2026-11-16, Q164) and a group's 12 px
+   (2026-11-13); a rounded node's (16 px, Q164) and an arrow's bends are set in `chart.ts`. Drawing only. */
+.canvas .node rect.label-container:not([rx]), .canvas .node rect.label-container[rx="0"] { rx: 4px; ry: 4px; }
 .canvas .cluster > rect { rx: 12px; ry: 12px; }
 .canvas .node :is(polygon, path) { stroke-linejoin: round; }
 /* The item under the pointer: a softer kind of the selection's outline (the user,

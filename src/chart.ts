@@ -27,8 +27,9 @@ export interface ChartEvents {
   onBlocked(): void;
 }
 
-/** Rounder corners (the user, 2026-11-13): a rounded node's corners and an arrow's bends, in px. */
-const ROUNDED_NODE_RADIUS = 14;
+/** A rounded node's corners (the user, 2026-11-16, Q164: 16 px, far from a square node's 4 px)
+ * and an arrow's bends (the user, 2026-11-13), in px. */
+const ROUNDED_NODE_RADIUS = 16;
 const BEND_RADIUS = 14;
 
 /** Lexend (the design handoff, T4.9, 2026-11-15), bundled in `src/fonts/` and declared in `style.css`. */
