@@ -61,6 +61,14 @@ describe('the examples in the skill', () => {
 });
 
 describe('what the skill repeats from other files', () => {
+  test('neither lists the Ellipse as a form, and both say why (T5.17; the user, 2026-11-16, Q167)', () => {
+    const flat = (text: string): string => text.replace(/\s+/g, ' ');
+    for (const forms of [section(skill, 'Forms the user can change from the chart'), section(format, 'Mermaid syntax Naiad can edit from the chart')]) {
+      expect(forms).not.toContain('`(-ellipse-)`');
+      expect(flat(forms)).toContain('Not the Ellipse, `id(-Title-)`: Mermaid 12.3 reads it but cannot draw it');
+    }
+  });
+
   test('the forms that can be changed from the chart are those of FILE-FORMAT.md', () => {
     const inSkill = codeSpans(section(skill, 'Forms the user can change from the chart'));
     const inFormat = new Set(codeSpans(section(format, 'Mermaid syntax Naiad can edit from the chart')));

@@ -356,7 +356,10 @@ but must be edited as text:
 - Nodes: `id`, `id[Title]`, `id["Title with (punctuation)"]`, and the shapes `(round)`,
   `([stadium])`, `[[subroutine]]`, `[(cylinder)]`, `((circle))`, `(((double circle)))`,
   `{diamond}`, `{{hexagon}}`, `[/lean right/]`, `[\lean left\]`, `[/trapezoid\]`,
-  `[\inverted trapezoid/]`, `>flag]`, `(-ellipse-)`.
+  `[\inverted trapezoid/]`, `>flag]`.
+- Not the Ellipse, `id(-Title-)`: Mermaid 12.3 reads it but cannot draw it, so a file
+  that holds one shows no chart, in Naiad or anywhere else. `naiad check` reports it.
+  Use a Stadium, `id([Title])`, or a Circle, `id((Title))`, instead.
 - Links: `-->`, `---`, `-.->`, `==>`, `<-->`, `--o`, `--x`, with a label as
   `-->|label|` or `-- label -->`; chains (`a --> b --> c`) and `&` lists
   (`a & b --> c`).
@@ -422,8 +425,8 @@ naiad fix flow.mmd
   a comment after a statement on the same line; a description block whose id matches
   no node or group (`@flowchart`, the flowchart's description, excepted); a second
   description block for one id; a line Naiad's scanner
-  cannot read; a flowchart past Mermaid's limit of 50,000 characters. It reports
-  nothing about style.
+  cannot read; a flowchart past Mermaid's limit of 50,000 characters; a node Mermaid
+  reads but cannot draw (the Ellipse, `id(-Title-)`). It reports nothing about style.
 - `naiad fix` first puts right what cannot change the flowchart (see "What Naiad
   changes in a file"), then checks.
 - On Windows the installer adds the `naiad` command to the user's PATH. A terminal that

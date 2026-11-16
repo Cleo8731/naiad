@@ -4,11 +4,11 @@
 
 import { FLOWCHART_ID, parseDescriptions } from './descriptions';
 import { plainText, withEndingsOf } from './endings';
-import { parseDoc, usedIds, type LineKind } from './scan';
+import { allRefs, parseDoc, usedIds, type LineKind } from './scan';
 
 export type Rule =
   | 'mermaid' | 'comment-after-statement' | 'bare-comment' | 'unreadable-line'
-  | 'description-without-node' | 'second-description';
+  | 'description-without-node' | 'second-description' | 'undrawable-shape';
 
 export interface Finding {
   /** Line in the file, counted from 1. */
@@ -275,6 +275,24 @@ export async function checkFlowchart(text: string, read: Reader): Promise<Findin
   for (const p of doc.problems) {
     if (taken.has(p.line + 1)) continue;
     add(p.line, 'unreadable-line', `${p.message} Naiad shows the chart but refuses chart edits while this line stands: write it in a plainer form (one statement to a line).`);
+  }
+
+  // A shape Mermaid reads and cannot draw: the Ellipse, `id(-Title-)`, in Mermaid 12.3
+  // ("No such shape: ellipse"; T5.17, the user, 2026-11-16, Q167). The last shape given
+  // to a node is the one drawn, as in Mermaid, so only a node left an Ellipse counts.
+  const lastShape = new Map<string, { line: number; inner: string; ellipse: boolean }>();
+  for (const r of allRefs(doc)) {
+    const sh = r.ref.shape;
+    const text = doc.lines[r.line];
+    if (sh) {
+      lastShape.set(r.ref.id, { line: r.line, inner: text.slice(sh.innerStart, sh.innerEnd), ellipse: sh.open === '(-' && sh.close === '-)' });
+    } else if (r.ref.attrs && /\bshape\s*:/.test(text.slice(r.ref.attrs.start, r.ref.attrs.end))) {
+      lastShape.set(r.ref.id, { line: r.line, inner: '', ellipse: false });
+    }
+  }
+  for (const [id, at] of lastShape) {
+    if (!at.ellipse) continue;
+    add(at.line, 'undrawable-shape', `Mermaid reads the Ellipse "${id}(-${at.inner}-)" but cannot draw it ("No such shape: ellipse"), so no chart is shown at all. Write it as a Stadium, ${id}([${at.inner}]), or a Circle, ${id}((${at.inner})).`);
   }
 
   // Description blocks. When Mermaid rejected the text, the ids come from the scanner.

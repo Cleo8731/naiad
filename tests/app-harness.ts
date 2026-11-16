@@ -48,6 +48,8 @@ export const chartMock = () => ({
       charts.most = Math.max(charts.most, ++charts.drawing);
       try {
         if (chartTiming.drawDelay) await sleep(chartTiming.drawDelay);
+        // As Mermaid 12.3: it reads an Ellipse, `id(-Title-)`, and cannot draw it (T5.17).
+        if (/[\w)\]}]\(-[^\n]*-\)/.test(text)) throw new Error('No such shape: ellipse. Please check your syntax.');
         this.drawn.push(text);
       } finally {
         charts.drawing--;

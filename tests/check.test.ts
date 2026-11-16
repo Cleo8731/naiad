@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
 import { checkFile, checkFlowchart, fixFile, formatReport, mermaidLength, signsUnquoted, type Finding } from '../src/core/check';
 import { forMermaid, reading, snapshot } from '../src/semantics';
+import { SHAPES } from '../src/core/scan';
 import { runCli, wellFormed } from '../src/cli';
 import type { Backend } from '../src/backend';
 import { fixtures } from './fixtures';
@@ -359,6 +360,27 @@ describe('what breaks the Naiad file format', () => {
     const found = await check('flowchart TD\n  A --> B\n%% @A\n%% one\n\n%% @A\n%% two\n');
     expect(brief(found)).toEqual(['6 second-description']);
     expect(found[0].message).toMatch(/line 3/);
+  });
+
+  test('an Ellipse, which Mermaid reads but cannot draw (T5.17; the user, 2026-11-16, Q167)', async () => {
+    const found = await check('flowchart TD\n  a(Start) --> b(-Check the order-)\n  b --> c(Done)\n');
+    expect(brief(found)).toEqual(['2 undrawable-shape']);
+    expect(found[0].fixable).toBe(false);
+    expect(found[0].message).toContain('cannot draw');
+    expect(found[0].message).toContain('b([Check the order])');
+    expect(found[0].message).toContain('b((Check the order))');
+  });
+
+  test('of the shapes Naiad knows, only the Ellipse is reported', async () => {
+    for (const s of SHAPES) {
+      const found = await check(`flowchart TD\n  a${s.open}Title${s.close}\n`);
+      expect(brief(found), s.label).toEqual(s.type === 'ellipse' ? ['2 undrawable-shape'] : []);
+    }
+  });
+
+  test("an Ellipse that a later line gives another shape is drawn (the last shape wins, as in Mermaid), so it is not reported", async () => {
+    expect(await check('flowchart TD\n  b(-Check-)\n  b([Check]) --> c\n')).toEqual([]);
+    expect(brief(await check('flowchart TD\n  b([Check])\n  b(-Check-) --> c\n'))).toEqual(['3 undrawable-shape']);
   });
 
   test('a subgraph with no end is reported once', async () => {

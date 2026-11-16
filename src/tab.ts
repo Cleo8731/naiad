@@ -156,6 +156,8 @@ export class Tab {
   private doc: Doc = parseDoc('');
   private snap: Snap | null = null;
   private error: string | null = null;
+  /** Mermaid read the text and could not draw it (`error` holds why): an Ellipse, say (T5.17). */
+  private drawFailed = false;
   private selection: Target | null = null;
   /**
    * One step back (Undo) or forward (Redo): the text to put in, and whether the step
@@ -355,7 +357,7 @@ export class Tab {
 
   /** Why the text shown cannot be saved, for a question: ' (…)' or ''. */
   private unsavedWhy(): string {
-    if (this.error) return ' (Mermaid cannot read the text)';
+    if (this.error) return this.drawFailed ? ' (Mermaid cannot draw the text)' : ' (Mermaid cannot read the text)';
     return '';
   }
 
@@ -696,23 +698,29 @@ export class Tab {
   private async refresh(force: boolean): Promise<void> {
     this.doc = parseDoc(this.text);
     const before = this.snap;
+    let drawing = false;
     try {
       await oneAtATime(async () => {
+        drawing = false;
         const snap = await snapshot(this.text);
         const draw = force || !before || this.error !== null || this.chartText !== this.text || this.stale;
         // A hidden tab takes the new text in now and draws it when it is shown (`show`).
         if (draw && this.hidden) {
           this.stale = true;
         } else {
+          drawing = true;
           if (draw) await this.chart.draw(this.text, snap);
+          drawing = false;
           this.chartText = this.text;
           this.stale = false;
         }
         this.snap = snap;
         this.error = null;
+        this.drawFailed = false;
       });
     } catch (e) {
       this.error = errorText(e);
+      this.drawFailed = drawing;
       if (!this.snap) this.chart.clear();
     }
     this.keepSelection(before);
@@ -973,7 +981,10 @@ export class Tab {
     if (open) {
       if (/^(Could not|The file cannot)/.test(this.note)) { status = this.note; state = 'bad'; }
       else if (this.text === this.saved) status = this.note || 'Saved';
-      else if (this.error) { status = 'Not saved: syntax error (Ctrl+S saves anyway)'; state = 'bad'; }
+      else if (this.error) {
+        status = this.drawFailed ? 'Not saved: Mermaid cannot draw it (Ctrl+S saves anyway)' : 'Not saved: syntax error (Ctrl+S saves anyway)';
+        state = 'bad';
+      }
       else status = 'Saving…';
     }
     bar.status.textContent = status;
@@ -1036,10 +1047,18 @@ export class Tab {
       this.noticeDetails = false;
     } else if (this.error) {
       const details = button(this.noticeDetails ? 'Hide details' : 'Details', () => { this.noticeDetails = !this.noticeDetails; this.paintNotices(); });
-      // A file that was broken when it was opened has no last good version: the chart is empty.
-      const what = this.snap ? 'the chart shows the last good version' : 'the chart cannot be drawn';
       const unsaved = this.text !== this.saved ? ' Not saved: Ctrl+S saves anyway.' : '';
-      notice('bad', `Mermaid cannot read this text, so ${what}.${unsaved}`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
+      if (this.drawFailed) {
+        // Mermaid read the text and stopped while drawing it (T5.17; the user, 2026-11-16,
+        // Q168): say so, with Mermaid's reason, not that it cannot read it.
+        const reason = this.error.split('\n')[0].replace(/\s*Please check your syntax\.?\s*$/, '').replace(/\.$/, '');
+        const shown = this.chartText !== null ? 'The chart shows the last good version.' : 'No chart is shown.';
+        notice('bad', `Mermaid cannot draw this flowchart: ${reason}. ${shown}${unsaved}`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
+      } else {
+        // A file that was broken when it was opened has no last good version: the chart is empty.
+        const what = this.snap ? 'the chart shows the last good version' : 'the chart cannot be drawn';
+        notice('bad', `Mermaid cannot read this text, so ${what}.${unsaved}`, [details, ...showSyntax()], this.noticeDetails ? this.error : undefined);
+      }
     } else {
       this.noticeDetails = false;
       if (this.doc.problems.length) {

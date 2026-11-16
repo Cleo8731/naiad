@@ -30,6 +30,8 @@ const BASE = `flowchart TD
 `;
 const TYPED = BASE.replace('flowchart TD\n', 'flowchart TD\n    typed[Typed by the person]\n');
 const BROKEN = BASE + '    c[[[ unfinished\n';
+/** Mermaid reads it and cannot draw it (T5.17). */
+const ELLIPSE = BASE.replace('flowchart TD\n', 'flowchart TD\n    round(-Round about-)\n');
 
 afterEach(() => {
   stopApps();
@@ -1203,6 +1205,32 @@ describe('the Syntax pane', () => {
     for (let t0 = Date.now(); bad() && Date.now() - t0 < 3000;) await sleep(5);
     expect(bad()).toBeNull();
     localStorage.clear();
+  });
+
+  it('a file Mermaid reads but cannot draw: the notice says so, with Mermaid\'s reason (T5.17; the user, 2026-11-16, Q168)', async () => {
+    localStorage.clear();
+    const { disk } = await start();
+    disk.outside(FILE, ELLIPSE);
+    const bad = () => document.querySelector<HTMLElement>('.notice.bad');
+    for (let t0 = Date.now(); !bad() && Date.now() - t0 < 3000;) await sleep(5);
+    expect(bad()!.querySelector('.notice-text')!.textContent).toBe('Mermaid cannot draw this flowchart: No such shape: ellipse. The chart shows the last good version.');
+    [...bad()!.querySelectorAll('button')].find((b) => b.textContent === 'Details')!.click();
+    expect(bad()!.querySelector('pre')!.textContent).toMatch(/No such shape: ellipse/);
+  });
+
+  it('a file opened with a shape Mermaid cannot draw: the notice says no chart is shown (Q168)', async () => {
+    localStorage.clear();
+    await start(ELLIPSE);
+    expect(document.querySelector('.notice.bad .notice-text')!.textContent).toBe('Mermaid cannot draw this flowchart: No such shape: ellipse. No chart is shown.');
+  });
+
+  it('a typed shape Mermaid cannot draw: the status and the closing question say "cannot draw" (Q168)', async () => {
+    const { disk, ui } = await start();
+    ui.type(ELLIPSE);
+    await vi.waitFor(() => expect(ui.status()).toBe('Not saved: Mermaid cannot draw it (Ctrl+S saves anyway)'), { timeout: 3000 });
+    expect(await disk.closeGuard!()).toBe(false);
+    expect(disk.asked).toEqual(['flow.mmd holds a change that is not saved (Mermaid cannot draw the text). Close Naiad and lose it?']);
+    expect(disk.files.get(FILE)).toBe(BASE);
   });
 
   it('a file broken when it is opened: the notice says the chart cannot be drawn', async () => {
