@@ -74,6 +74,20 @@ describe('what the skill repeats from other files', () => {
     expect(snippet(skill)).toContain('following the naiad skill');
   });
 
+  test('the advice on choosing shapes is the same in FILE-FORMAT.md (the user, 2026-11-16)', () => {
+    const flat = (text: string): string => text.replace(/\s+/g, ' ').trim();
+    const inSkill = flat(section(skill, 'Choosing shapes'));
+    expect(inSkill).toContain('Draw an ordinary step as a Rounded node, `id(Title)`.');
+    expect(inSkill).toContain('Use a Rectangle, `id[Title]`, only when the chart needs a second kind');
+    expect(inSkill).toBe(flat(section(format, 'Choosing shapes')));
+  });
+
+  test('the skill\'s examples and starter template draw their steps as Rounded nodes', () => {
+    const blocks = [...skill.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
+    for (const text of [template, ...blocks]) expect(text).not.toMatch(/\w\[[^\]([(/\\]/);
+    expect(template).toContain('first(First step) --> second(Second step)');
+  });
+
   test('the commands and the install folder are those of FILE-FORMAT.md', () => {
     for (const text of ['naiad check flow.mmd', 'naiad fix flow.mmd', '%LOCALAPPDATA%\\Naiad\\bin\\naiad.exe']) {
       expect(skill).toContain(text);

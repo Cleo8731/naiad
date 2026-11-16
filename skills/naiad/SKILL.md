@@ -55,13 +55,13 @@ like this:
 flowchart TD
 %% @flowchart
 %% How a day's data gets from the warehouse to a trained model.
-    collect[Collect data] --> clean{Clean?}
-    clean -- yes --> train[Train model]
-    clean -- no --> fix[Fix the data]
+    collect(Collect data) --> clean{Clean?}
+    clean -- yes --> train(Train model)
+    clean -- no --> fix(Fix the data)
     fix --> clean
 
     subgraph review [Review]
-        train --> evaluate([Evaluate])
+        train --> evaluate(Evaluate)
     end
 
 %% @collect
@@ -77,7 +77,7 @@ flowchart TD
 
 ### Titles and ids
 
-- A node's **title** is its Mermaid label: `collect[Collect data]` has the id `collect`
+- A node's **title** is its Mermaid label: `collect(Collect data)` has the id `collect`
   and the title `Collect data`. The chart shows only the title. Keep titles short; put
   everything else in the description.
 - Give every node a short, stable id (letters, digits, `_`). The id ties a node to its
@@ -135,6 +135,25 @@ block named `@flowchart`, with the same rules. Write it right under the header l
 in the sidebar when nothing is selected. Never give a group the id `flowchart`:
 Mermaid accepts it, but `@flowchart` always means the whole flowchart.
 
+### Choosing shapes
+
+Naiad draws every shape Mermaid has, but a chart reads best when it uses few shapes
+and each shape means one thing:
+
+- Draw an ordinary step as a Rounded node, `id(Title)`. Naiad draws it with soft
+  corners.
+- Draw a question with more than one way out as a Diamond, `id{Title?}`, and label
+  each arrow that leaves it.
+- Draw the start or the end of a process, where the chart has one, as a Stadium,
+  `id([Title])`.
+- Draw a place where data is kept, such as a database or a folder of files, as a
+  Cylinder, `id[(Title)]`.
+- Use a Rectangle, `id[Title]`, only when the chart needs a second kind of ordinary
+  item beside its steps, such as the documents the steps make. Then say what each
+  shape means in the flowchart's description.
+- In a file that exists, keep the shapes it has. Change a node's shape only when the
+  user asks, or when what the node stands for changes.
+
 ### Forms the user can change from the chart
 
 Anything Mermaid's flowchart parser accepts is drawn. Prefer these forms, which the
@@ -162,7 +181,7 @@ Adding a node with a description to the flowchart above takes one new line among
 arrows and one new description block at the end, after one empty line:
 
 ```
-    train --> report[Write the report]
+    train --> report(Write the report)
 ```
 
 ```
