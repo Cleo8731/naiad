@@ -78,6 +78,10 @@ describe('what the skill repeats from other files', () => {
     const flat = (text: string): string => text.replace(/\s+/g, ' ').trim();
     const inSkill = flat(section(skill, 'Choosing shapes'));
     expect(inSkill).toContain('Draw an ordinary step as a Rounded node, `id(Title)`.');
+    // Only recommendations (the user, 2026-11-16): a chart whose items fit none of the kinds
+    // chooses its own shapes.
+    expect(inSkill).toContain('These are recommendations, not rules.');
+    expect(inSkill).toContain('Where it does not, choose the shapes that suit it.');
     expect(inSkill).toContain('Use a Rectangle, `id[Title]`, only when the chart needs a second kind');
     expect(inSkill).toBe(flat(section(format, 'Choosing shapes')));
   });

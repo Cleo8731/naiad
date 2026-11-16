@@ -383,8 +383,12 @@ its own.
 
 ## Choosing shapes
 
-Naiad draws every shape Mermaid has, but a chart reads best when it uses few shapes
-and each shape means one thing:
+These are recommendations, not rules. A file that does not follow them is still a
+correct Naiad file, and Naiad draws every shape Mermaid has. Follow them where what you
+are drawing fits the kinds below. Where it does not, choose the shapes that suit it.
+For example, the parts of a system or the people in a team are not steps or
+questions. Either way, a chart reads best when it uses few shapes and each shape means
+one thing:
 
 - Draw an ordinary step as a Rounded node, `id(Title)`. Naiad draws it with soft
   corners.
