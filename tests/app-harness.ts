@@ -94,6 +94,11 @@ export class FakeDisk {
   startFile: string | null = null;
   /** Whether another Naiad window is running as this one starts (`Backend.otherWindow`). */
   otherWindow = false;
+  /** What Naiad's own title bar asked of the window, in order (`Backend.windowControls`, T4.10). */
+  windowActs: string[] = [];
+  private maximized: ((max: boolean) => void) | null = null;
+  /** The window is maximized or restored (by Windows, or by its own button). */
+  setMaximized(max: boolean): void { this.maximized?.(max); }
 
   backend(): Backend {
     return {
@@ -144,6 +149,12 @@ export class FakeDisk {
       setTheme: (theme) => { this.theme = theme; },
       confirm: async (message) => { this.asked.push(message); this.onAsk?.(message); return this.answer; },
       guardClose: (canClose) => { this.closeGuard = canClose; },
+      windowControls: this.kind !== 'desktop' ? null : {
+        minimize: () => { this.windowActs.push('minimize'); },
+        toggleMaximize: () => { this.windowActs.push('toggleMaximize'); },
+        close: () => { this.windowActs.push('close'); },
+        onMaximized: (on) => { this.maximized = on; on(false); },
+      },
     };
   }
 

@@ -68,8 +68,9 @@ export interface Backend {
   openLink(url: string): void;
   setWindowTitle(title: string): void;
   /**
-   * The title bar's light or dark, as Appearance says (T4.8); null follows the computer's
-   * setting. Only the desktop app has a title bar of its own.
+   * The desktop window's light or dark, as Appearance says (T4.8); null follows the
+   * computer's setting. It coloured Windows' title bar until T4.10 put Naiad's own in its
+   * place; it is kept so any part of the window Windows still draws matches.
    */
   setTheme(theme: 'light' | 'dark' | null): void;
   /** Asks the person a yes-or-no question; true for yes. */
@@ -79,6 +80,18 @@ export interface Backend {
    * asks through `beforeunload` instead). If `canClose` fails, the window closes.
    */
   guardClose(canClose: () => Promise<boolean>): void;
+  /**
+   * What Naiad's own title bar asks of the desktop window (T4.10, Q171); null in a
+   * browser, which has its own frame. Closing goes through `guardClose` as Windows'
+   * own close did.
+   */
+  windowControls: {
+    minimize(): void;
+    toggleMaximize(): void;
+    close(): void;
+    /** Calls `on` with whether the window is maximized: now, and after each change of size. */
+    onMaximized(on: (max: boolean) => void): void;
+  } | null;
 }
 
 const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
@@ -130,6 +143,18 @@ async function desktop(): Promise<Backend> {
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
     setTheme: (theme) => { void getCurrentWindow().setTheme(theme).catch(() => {}); },
+    windowControls: {
+      minimize: () => { void getCurrentWindow().minimize(); },
+      toggleMaximize: () => { void getCurrentWindow().toggleMaximize(); },
+      // Emits the close request, so the question on closing is asked (`guardClose`).
+      close: () => { void getCurrentWindow().close(); },
+      onMaximized(on) {
+        const win = getCurrentWindow();
+        const tell = () => { void win.isMaximized().then(on).catch(() => {}); };
+        tell();
+        void win.onResized(tell);
+      },
+    },
     confirm: (message) => dialog.ask(message, { title: 'Naiad', kind: 'warning' }),
     guardClose(canClose) {
       void getCurrentWindow().onCloseRequested(async (event) => {
@@ -224,6 +249,7 @@ function browser(): Backend {
     setTheme: () => {},
     confirm: async (message) => window.confirm(message),
     guardClose: () => {},
+    windowControls: null,
   };
 }
 

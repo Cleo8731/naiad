@@ -32,6 +32,17 @@ import circleAlert from './icons/circle-alert.svg?raw';
 import chevronDown from './icons/chevron-down.svg?raw';
 import trash from './icons/trash-2.svg?raw';
 
+/**
+ * The window's own buttons (T4.10, Q171): Naiad's drawings, not Lucide's, thin and
+ * square like Windows' own, at 10 by 10 with a line one pixel wide at any scale.
+ */
+const caption = (paths: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke">${paths}</svg>`;
+const minimize = caption('<path d="M0 5.5h10"/>');
+const maximize = caption('<rect x="0.5" y="0.5" width="9" height="9" rx="1.5"/>');
+const restore = caption('<rect x="0.5" y="2.5" width="7" height="7" rx="1.2"/><path d="M2.5 2.5V2A1.5 1.5 0 0 1 4 .5h4A1.5 1.5 0 0 1 9.5 2v4A1.5 1.5 0 0 1 8 7.5h-.5"/>');
+const winClose = caption('<path d="M.5.5l9 9M9.5.5l-9 9"/>');
+
 /** An icon's markup, marked with its name (`data-icon`) and hidden from screen readers. */
 function icon(name: string, svg: string): string {
   return svg.trim().replace(/^<svg\b/, `<svg data-icon="${name}" aria-hidden="true" focusable="false"`);
@@ -79,4 +90,9 @@ export const ICONS = {
   close: icon('close', x),
   /** Opens a blank tab, at the tab strip's end (T1.16); the add-node button in the pill. */
   plus: icon('plus', plus),
+  /** Naiad's own title bar (T4.10): minimize, maximize, restore (while maximized), close. */
+  minimize: icon('minimize', minimize),
+  maximize: icon('maximize', maximize),
+  restore: icon('restore', restore),
+  winClose: icon('winclose', winClose),
 } as const;

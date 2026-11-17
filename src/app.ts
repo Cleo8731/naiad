@@ -238,6 +238,34 @@ export class App {
       this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="settings"]').forEach((b) => b.remove());
       this.el.strip = null;
     }
+    // Naiad's own title bar (T4.10; the user, 2026-11-17, Q171): the desktop window has
+    // no Windows title bar, so the tabs row is the top of the window. At its right end,
+    // minimize, maximize (restore while maximized) and close. A press on the row's empty
+    // part, or on the rail's mark, moves the window, and a double-click maximizes it
+    // (Tauri's drag script; "deep": anywhere in the row but on a button or a tab).
+    const win = this.backend.windowControls;
+    const top = this.root.querySelector('header.top');
+    if (win && top) {
+      top.setAttribute('data-tauri-drag-region', 'deep');
+      this.root.querySelector('.rail .mark')!.setAttribute('data-tauri-drag-region', '');
+      const box = document.createElement('div');
+      box.className = 'winctl';
+      box.innerHTML = `
+        <button data-win="min" title="Minimize" aria-label="Minimize">${ICONS.minimize}</button>
+        <button data-win="max"></button>
+        <button class="winclose" data-win="close" title="Close" aria-label="Close">${ICONS.winClose}</button>`;
+      const [min, max, close] = box.querySelectorAll('button');
+      min.addEventListener('click', () => win.minimize());
+      max.addEventListener('click', () => win.toggleMaximize());
+      close.addEventListener('click', () => win.close());
+      win.onMaximized((on) => {
+        const name = on ? 'Restore' : 'Maximize';
+        max.title = name;
+        max.setAttribute('aria-label', name);
+        max.innerHTML = on ? ICONS.restore : ICONS.maximize;
+      });
+      top.append(box);
+    }
     // The panes' widths, as the person last left them (T4.9).
     for (const pane of Object.keys(PANES) as PaneName[]) {
       const kept = Number(remember(PANES[pane].key));

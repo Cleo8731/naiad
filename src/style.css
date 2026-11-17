@@ -295,6 +295,19 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .tabs button.icon svg { width: 16px; height: 16px; display: block; }
 .tabs button.icon:hover { background: var(--accent-soft); border-color: transparent; color: var(--text); }
 
+/* Naiad's own title bar (T4.10, Q171): the window's three buttons at the tabs row's
+   right end, the row's full height and flush with the window's edge, 46 px wide as in
+   Windows; close turns Windows' red under the pointer. */
+.winctl { display: flex; align-self: stretch; flex: none; margin: 0 -8px 0 8px; }
+.winctl button {
+  display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 100%; padding: 0;
+  border: 0; border-radius: 0; background: transparent; color: var(--muted);
+}
+.winctl button svg { width: 10px; height: 10px; display: block; }
+.winctl button:hover { background: var(--accent-soft); color: var(--text); }
+.winctl button.winclose:hover { background: #c42b1c; color: #fff; }
+.winctl button:focus-visible { outline-offset: -2px; }
+
 /* Beside the recent list's pane: the Syntax pane, then the shown tab's chart area and
    sidebar. */
 .body { position: relative; flex: 1; display: flex; min-width: 0; min-height: 0; }
