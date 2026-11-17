@@ -1053,6 +1053,17 @@ export class App {
       }
     });
 
+    // The desktop window passes a touchpad pinch on to the page only with Tauri's
+    // `zoomHotkeysEnabled` on (T1.24; the user, 2026-11-16), which also lets Ctrl+wheel, a
+    // pinch and Ctrl with plus, minus or 0 zoom the whole window. Stop those here: the
+    // chart zooms on a pinch itself (`Chart.onWheel`). A browser keeps its own zoom.
+    if (this.backend.kind === 'desktop') {
+      window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '_', '0'].includes(e.key)) e.preventDefault();
+      });
+    }
+
     window.addEventListener('beforeunload', (e) => {
       // A change not yet on disk, in any tab: the browser asks before the page goes. (The
       // desktop app's window asks in canClose, before the page is unloaded.)
