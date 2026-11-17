@@ -138,7 +138,7 @@ export class Sidebar {
 
   /** Puts the cursor in the title box, with the text selected (used after "add node"). */
   focusTitle(): void {
-    const input = this.root.querySelector<HTMLInputElement>('input.title');
+    const input = this.root.querySelector<HTMLTextAreaElement>('textarea.title');
     input?.focus();
     input?.select();
   }
@@ -279,7 +279,13 @@ export class Sidebar {
    * oC58, oC56, E22). A write of the same text already under way is waited for, not
    * made twice.
    */
-  private textBox(cls: string, placeholder: string, what: string, read: (v: View) => string, commit: (value: string) => Promise<boolean>): HTMLInputElement {
+  /**
+   * A title, an arrow's label or a group's title: a text area one line high that grows
+   * as its text wraps (CSS `field-sizing: content`), so a long title shows whole while
+   * it is edited (the user, 2026-11-17). It is still one line in the file: Enter enters
+   * it, and a line break typed or pasted becomes a space.
+   */
+  private textBox(cls: string, placeholder: string, what: string, read: (v: View) => string, commit: (value: string) => Promise<boolean>): HTMLTextAreaElement {
     const built = this.built;
     let shown = '';
     let start = ''; // the value the box held before the person changed it, or last written
@@ -297,12 +303,18 @@ export class Sidebar {
       writing = now;
       return now.done;
     };
-    const input = h('input', {
-      class: cls, type: 'text', placeholder, spellcheck: 'false',
+    const input = h('textarea', {
+      class: cls, rows: '1', placeholder, spellcheck: 'false',
       keydown: (e) => {
         const k = (e as KeyboardEvent).key;
-        if (k === 'Enter') input.blur();
+        if (k === 'Enter') { e.preventDefault(); input.blur(); }
         if (k === 'Escape') { input.value = start = shown; input.blur(); e.stopPropagation(); }
+      },
+      input: () => {
+        if (!/[\r\n]/.test(input.value)) return;
+        const at = input.selectionStart;
+        input.value = input.value.replace(/\r\n|[\r\n]/g, ' ');
+        input.setSelectionRange(at, at);
       },
       blur: () => {
         if (this.built !== built) return; // the panel is going: its item is gone or changed

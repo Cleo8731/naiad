@@ -292,11 +292,11 @@ describe('what each tab keeps, and what the window keeps', () => {
   test('each tab keeps its selection and its sidebar as it was left', async () => {
     const ui = await start();
     (ui.app as unknown as { select(t: unknown): void }).select({ kind: 'node', id: 'a' });
-    expect(shownView().querySelector<HTMLInputElement>('.sidebar input.title')!.value).toBe('A');
+    expect(shownView().querySelector<HTMLTextAreaElement>('.sidebar textarea.title')!.value).toBe('A');
     await ui.app.open(B);
-    expect(shownView().querySelector('.sidebar input.title')).toBeNull();
+    expect(shownView().querySelector('.sidebar textarea.title')).toBeNull();
     ui.showTab('a.mmd');
-    expect(shownView().querySelector<HTMLInputElement>('.sidebar input.title')!.value).toBe('A');
+    expect(shownView().querySelector<HTMLTextAreaElement>('.sidebar textarea.title')!.value).toBe('A');
   });
 
   test('View mode and the Highlight switch are the window\'s, so they hold in every tab', async () => {

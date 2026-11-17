@@ -212,7 +212,7 @@ describe('in View, the sidebar shows the item as text, with no fields', () => {
     expect(fields()).toBe(0);
     viewButton().click();
     await vi.waitFor(() => expect(fields()).toBeGreaterThan(0));
-    expect(q<HTMLInputElement>('.sidebar input.title')!.value).toBe('Collect data');
+    expect(q<HTMLTextAreaElement>('.sidebar textarea.title')!.value).toBe('Collect data');
   });
 
   it('the text follows a change on disk', async () => {
@@ -229,7 +229,7 @@ describe('what was typed in the sidebar is written before View starts (C36, Q90)
   it('a title typed and not entered', async () => {
     const { disk, ui } = await start();
     select(ui, { kind: 'node', id: 'collect' });
-    q<HTMLInputElement>('.sidebar input.title')!.value = 'Collect everything';
+    q<HTMLTextAreaElement>('.sidebar textarea.title')!.value = 'Collect everything';
     await toView();
     await sleep(400);
     expect(disk.files.get(FILE)).toContain('collect[Collect everything]');
@@ -248,13 +248,13 @@ describe('what was typed in the sidebar is written before View starts (C36, Q90)
   it('one that cannot be written keeps Naiad in Edit, with the text still in its box', async () => {
     const { disk, ui } = await start();
     select(ui, { kind: 'node', id: 'collect' });
-    q<HTMLInputElement>('.sidebar input.title')!.value = 'Collect everything';
+    q<HTMLTextAreaElement>('.sidebar textarea.title')!.value = 'Collect everything';
     ui.type(BASE + '    c[[[ unfinished\n'); // Mermaid cannot read the text, so no edit can be made
     await sleep(400);
     viewButton().click();
     await vi.waitFor(() => expect(ui.toast()).toMatch(/The title you were typing was not saved, so Naiad stays in Edit mode\./));
     expect(viewButton().textContent!.trim()).toBe('Edit mode');
-    expect(q<HTMLInputElement>('.sidebar input.title')!.value).toBe('Collect everything');
+    expect(q<HTMLTextAreaElement>('.sidebar textarea.title')!.value).toBe('Collect everything');
     expect(disk.files.get(FILE)).not.toContain('Collect everything');
   });
 });

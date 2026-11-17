@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // The sidebar on its own, in jsdom: what it keeps while the file changes under it.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { Sidebar, SWATCHES, type EdgeView, type NodeView, type SidebarActions } from '../src/sidebar';
 
@@ -76,7 +77,7 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
     const s = sidebar();
     blurOnRemoval(s.root);
     s.side.show(EDGE);
-    const box = s.root.querySelector<HTMLInputElement>('input.title')!;
+    const box = s.root.querySelector<HTMLTextAreaElement>('textarea.title')!;
     box.focus();
     box.value = 'TYPED LABEL';
     return { ...s, box };
@@ -117,5 +118,56 @@ describe('an arrow\'s Colour row (the user, 2026-11-13, Q109)', () => {
     expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, SWATCHES[0]);
     row.querySelector<HTMLButtonElement>('[title="No colour"]')!.click();
     expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, null);
+  });
+});
+
+describe('a long title wraps while it is edited (the user, 2026-11-17)', () => {
+  // The user: "even in edit mode, titles (above descriptions, in the description panel)
+  // should wrap". A one-line text field cannot wrap, so the title box is a text area
+  // one line high that grows with its text (CSS `field-sizing: content`). A title is
+  // still one line in the file: Enter enters it, and a line break typed or pasted
+  // becomes a space.
+  const SUB = { kind: 'sub' as const, id: 'prep', title: 'Preparation', dir: '', fill: '', count: 2 };
+  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: 'Yes', stroke: 'normal', arrow: 'arrow', colour: '' };
+
+  it("a node's title, an arrow's label and a group's title are each a box that wraps", () => {
+    const { root, side } = sidebar();
+    for (const [view, value] of [[VIEW, 'Collect data'], [EDGE, 'Yes'], [SUB, 'Preparation']] as const) {
+      side.show(view);
+      const box = root.querySelector<HTMLTextAreaElement>('.title')!;
+      expect(box.tagName, view.kind).toBe('TEXTAREA');
+      expect(box.rows).toBe(1);
+      expect(box.value).toBe(value);
+    }
+    const css = readFileSync('src/style.css', 'utf8');
+    const rule = css.match(/\.sidebar textarea\.title\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toMatch(/field-sizing:\s*content/);
+    expect(rule).toMatch(/resize:\s*none/);
+    expect(rule).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it('Enter enters the title and adds no line break', () => {
+    const { root, actions, side } = sidebar();
+    side.show(VIEW);
+    const box = root.querySelector<HTMLTextAreaElement>('.title')!;
+    box.focus();
+    box.value = 'Collect every raw export';
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    box.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(box);
+    expect(actions.setTitle).toHaveBeenCalledWith('collect', 'Collect every raw export');
+  });
+
+  it('a line break typed or pasted into the box becomes a space', () => {
+    const { root, actions, side } = sidebar();
+    side.show(VIEW);
+    const box = root.querySelector<HTMLTextAreaElement>('.title')!;
+    box.focus();
+    box.value = 'Collect\r\nevery\nraw export';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(box.value).toBe('Collect every raw export');
+    box.blur();
+    expect(actions.setTitle).toHaveBeenCalledWith('collect', 'Collect every raw export');
   });
 });

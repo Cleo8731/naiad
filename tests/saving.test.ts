@@ -423,7 +423,7 @@ describe('the sidebar never puts back a value a change on disk replaced (bug hun
     const { disk, ui } = await start();
     select(ui, 'collect');
     await sleep(50);
-    const input = document.querySelector<HTMLInputElement>('input.title')!;
+    const input = document.querySelector<HTMLTextAreaElement>('textarea.title')!;
     expect(input.value).toBe('Collect data');
     input.focus();
     disk.outside(FILE, BASE.replace('collect[Collect data]', 'collect[Gather data]'));
@@ -439,7 +439,7 @@ describe('the sidebar never puts back a value a change on disk replaced (bug hun
     const { disk, ui } = await start();
     select(ui, 'collect');
     await sleep(50);
-    const input = document.querySelector<HTMLInputElement>('input.title')!;
+    const input = document.querySelector<HTMLTextAreaElement>('textarea.title')!;
     input.focus();
     input.value = 'Collect everything';
     disk.outside(FILE, BASE.replace('collect[Collect data]', 'collect[Gather data]'));
@@ -704,8 +704,8 @@ describe('a description being written is saved when the person leaves it (bug hu
   // Bug hunt round 6, C44 and oC45: a title, an arrow's label or a group's title typed in
   // the sidebar and not yet entered went with the window, unwritten and unasked: a box
   // commits when focus leaves it, and closing the window takes no focus away.
-  const titleBox = () => document.querySelector<HTMLInputElement>('input.title')!;
-  const typeInto = (input: HTMLInputElement, text: string) => {
+  const titleBox = () => document.querySelector<HTMLTextAreaElement>('textarea.title')!;
+  const typeInto = (input: HTMLTextAreaElement, text: string) => {
     input.value = text;
     input.dispatchEvent(new Event('input'));
   };
