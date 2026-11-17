@@ -23,7 +23,8 @@ async function start() {
   return startApp(disk, FILE);
 }
 const button = (act: string) => document.querySelector<HTMLButtonElement>(`[data-act="${act}"]`)!;
-const iconOf = (act: string) => button(act).querySelector('svg')?.getAttribute('data-icon') ?? null;
+/** A button's icon; a sliding toggle's (the user, 2026-11-17), the one its knob is on. */
+const iconOf = (act: string) => (button(act).querySelector('.track svg.on') ?? button(act).querySelector('svg'))?.getAttribute('data-icon') ?? null;
 
 beforeEach(() => localStorage.clear());
 afterEach(() => { stopApps(); localStorage.clear(); });

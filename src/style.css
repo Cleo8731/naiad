@@ -254,8 +254,26 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .rail button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .rail button[aria-pressed="true"]:hover { background: var(--accent-soft); }
 .rlabel { font-weight: 500; }
+/* The rail's two switches slide (the user, 2026-11-17): an upright track with both
+   modes' icons, Mouse over Touchpad and Edit over View; the knob slides onto the mode in
+   use, whose icon takes the accent. */
+.rail button.slide, .rail button.slide:hover { height: auto; padding: 4px; }
+.rail button.slide:hover { padding-right: 14px; }
+.slide .track {
+  position: relative; display: flex; flex-direction: column; gap: 2px; flex: none; padding: 2px;
+  border-radius: var(--radius-pill); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line);
+}
+.slide .knob {
+  position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); box-shadow: 0 0 0 1px var(--line), 0 1px 3px var(--shadow);
+  transition: transform 180ms ease;
+}
+.slide[data-pos="1"] .knob { transform: translateY(24px); }
+.rail .slide .track svg { position: relative; width: 14px; height: 14px; margin: 4px; color: var(--muted); transition: color 180ms; }
+.rail .slide .track svg.on { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .rail button { transition: none; }
+  .slide .knob, .rail .slide .track svg { transition: none; }
 }
 
 /* ---- the tabs row (T1.16): the strip of open files, the only row above the chart. The

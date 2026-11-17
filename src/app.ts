@@ -59,6 +59,21 @@ const WHEEL_TIP: Record<WheelMode, string> = {
   mouse: 'Mouse mode: the wheel zooms, a drag moves the chart. Click for Touchpad mode, where two fingers move it',
 };
 const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mouse: 'Mouse mode' };
+/**
+ * The rail's two switches, Touchpad and Mouse and the mode button, as vertical sliding
+ * toggles (the user, 2026-11-17): a short upright track holding both modes' icons, and a
+ * knob that slides onto the one in use (`setSlide`). The track is drawn once, so the
+ * knob can slide; the name beside it, shown on pointing, says the mode.
+ */
+const track = (first: string, second: string) =>
+  `<span class="track" aria-hidden="true"><span class="knob"></span>${first}${second}</span>`;
+/** Puts a sliding toggle's knob on its first (0) or second (1) mode, and names the mode. */
+function setSlide(button: HTMLElement, pos: 0 | 1, label: string, tip: string): void {
+  button.dataset.pos = String(pos);
+  button.querySelectorAll('.track svg').forEach((svg, i) => svg.classList.toggle('on', i === pos));
+  button.querySelector('.rlabel')!.textContent = label;
+  button.title = tip;
+}
 /** A blank tab's name (Q140). */
 const BLANK_NAME = 'New tab';
 /** The windows laid over Naiad's, opened from the rail (T1.21, T4.8, T4.9). */
@@ -162,8 +177,8 @@ export class App {
           <button data-act="about" title="About: show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">${ICONS.about}<span class="rlabel">About</span></button>
         </div>
         <div class="rail-mid">
-          <button data-act="wheel" title="${WHEEL_TIP.mouse}">${ICONS.mouse}<span class="rlabel">${WHEEL_LABEL.mouse}</span></button>
-          <button data-act="view" title="${VIEW_TIP.editing}">${ICONS.edit}<span class="rlabel">${VIEW_LABEL.editing}</span></button>
+          <button class="slide" data-act="wheel">${track(ICONS.mouse, ICONS.touchpad)}<span class="rlabel"></span></button>
+          <button class="slide" data-act="view">${track(ICONS.edit, ICONS.read)}<span class="rlabel"></span></button>
         </div>
         <div class="rail-foot">
           <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
@@ -231,6 +246,7 @@ export class App {
       strip: q('.tabs'), plus: q('[data-act="newtab"]'), body: q('.body'),
     };
     this.showDirection('TD');
+    setSlide(this.el.view, 0, VIEW_LABEL.editing, VIEW_TIP.editing); // Edit mode until `showViewing` says otherwise
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for: no tabs, so no
       // tabs row; no recent list, so no pane and no button for it; and no Settings, whose
@@ -733,8 +749,7 @@ export class App {
   private setWheelMode(mode: WheelMode): void {
     this.wheelMode = mode;
     for (const tab of this.tabs) tab.chart.setWheelMode(mode);
-    this.el.wheel.innerHTML = `${ICONS[mode]}<span class="rlabel">${WHEEL_LABEL[mode]}</span>`;
-    this.el.wheel.title = WHEEL_TIP[mode];
+    setSlide(this.el.wheel, mode === 'mouse' ? 0 : 1, WHEEL_LABEL[mode], WHEEL_TIP[mode]);
   }
 
   private showViewing(on: boolean): void {
@@ -742,8 +757,7 @@ export class App {
     for (const tab of this.tabs) tab.showViewing(on);
     // The mode button is named by the mode, so it is never "pressed" (Q158's answer).
     const mode = on ? 'viewing' : 'editing';
-    this.el.view.innerHTML = `${on ? ICONS.read : ICONS.edit}<span class="rlabel">${VIEW_LABEL[mode]}</span>`;
-    this.el.view.title = VIEW_TIP[mode];
+    setSlide(this.el.view, on ? 1 : 0, VIEW_LABEL[mode], VIEW_TIP[mode]);
     // The pill keeps Fit and Highlight, and the island goes (`Tab.paintBar`); the rail's
     // middle stays.
     this.el.pillEdit.hidden = on;

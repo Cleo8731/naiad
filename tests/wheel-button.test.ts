@@ -12,7 +12,7 @@ vi.mock('../src/chart', async () => (await import('./app-harness')).chartMock())
 describe('the Touchpad and Mouse button', () => {
   const FILE = 'C:/wheel/flow.mmd';
   const button = () => document.querySelector<HTMLButtonElement>('[data-act="wheel"]')!;
-  const icon = () => button().querySelector('svg')?.getAttribute('data-icon');
+  const icon = () => button().querySelector('.track svg.on')?.getAttribute('data-icon');
   async function start() {
     const disk = new FakeDisk();
     disk.files.set(FILE, 'flowchart TD\n    a[A] --> b[B]\n');

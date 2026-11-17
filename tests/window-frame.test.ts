@@ -19,7 +19,8 @@ const q = <T extends Element>(s: string) => document.querySelector<T>(s);
 const top = () => q<HTMLElement>('header.top');
 const rail = () => q<HTMLElement>('nav.rail')!;
 const button = (act: string) => q<HTMLButtonElement>(`[data-act="${act}"]`)!;
-const iconOf = (act: string) => button(act).querySelector('svg')?.getAttribute('data-icon') ?? null;
+/** A button's icon; a sliding toggle's (the user, 2026-11-17), the one its knob is on. */
+const iconOf = (act: string) => (button(act).querySelector('.track svg.on') ?? button(act).querySelector('svg'))?.getAttribute('data-icon') ?? null;
 const overlay = (name: string) => q<HTMLDialogElement>(`dialog.overlay-window[data-window="${name}"]`);
 const isOpen = (d: HTMLDialogElement | null) => !!d?.hasAttribute('open');
 const radio = (name: string, value: string) => q<HTMLInputElement>(`dialog[data-window="customize"] input[name="${name}"][value="${value}"]`)!;
@@ -98,7 +99,7 @@ describe('the window\'s frame (T4.9)', () => {
     expect(mark.matches('.mark')).toBe(true);
     expect(mark.getAttribute('aria-hidden')).toBe('true');
     const section = (sel: string) => [...q(sel)!.querySelectorAll('button')]
-      .map((b) => [b.dataset.act, b.querySelector('.rlabel')!.textContent, b.querySelector('svg')!.getAttribute('data-icon')]);
+      .map((b) => [b.dataset.act, b.querySelector('.rlabel')!.textContent, (b.querySelector('.track svg.on') ?? b.querySelector('svg'))!.getAttribute('data-icon')]);
     expect(section('.rail-top')).toEqual([['recent', 'Recent files', 'recent'], ['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about']]);
     expect(section('.rail-mid')).toEqual([['wheel', 'Mouse mode', 'mouse'], ['view', 'Edit mode', 'edit']]);
     expect(section('.rail-foot')).toEqual([['customize', 'Customize', 'customize'], ['settings', 'Settings', 'settings']]);
