@@ -48,10 +48,12 @@ flowchart**.
 
 ## Using it
 
-The tabs run across the top of the window. Down its left edge, the rail holds
-**Recent files**, **Syntax** and **About** at the top, the **Mouse mode** button and the
-mode button in the middle, and **Customize** and **Settings** at the foot; pointing at a
-button shows its name. On the chart, Undo and Redo sit at the top left, and a bar at the
+The tabs run across the top of the window, with the window's own minimize, maximize
+and close buttons at their right end; drag the empty part of that row to move the
+window, or double-click it to maximize the window. Down the window's left edge, the
+rail holds **Recent files**, **Syntax** and **About** at the top, two switches in the
+middle (Mouse or Touchpad, and Edit or View), and **Customize** and **Settings** at
+the foot; pointing at a button shows its name. On the chart, Undo and Redo sit at the top left, and a bar at the
 foot holds **+** (add a node), the direction button, **Fit** and **Highlight**.
 
 | To | Do |
@@ -75,10 +77,10 @@ foot holds **+** (add a node), the direction button, **Fit** and **Highlight**.
 | Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows at the chart's top left |
 | Change which way the chart runs | The direction button, an arrow, shows the way the chart runs now. Point at it or click it to show the other three ways, and click one: the file's first line changes, for example from `flowchart TD` to `flowchart LR` |
 | Zoom / pan | Mouse wheel or pinch to zoom; drag empty space to pan |
-| Move the chart with two fingers on a touchpad | The **Mouse mode** button, a mouse in the middle of the rail, switches to Touchpad mode: two fingers or the mouse wheel move the chart (Shift: sideways), a pinch or Ctrl with the wheel zooms, and the button shows a touchpad and the name **Touchpad mode**. Naiad starts in Mouse mode and remembers your choice |
+| Move the chart with two fingers on a touchpad | The first switch in the middle of the rail shows a mouse over a touchpad, with a knob on the mode in use. Click it to slide the knob to the touchpad: in Touchpad mode two fingers or the mouse wheel move the chart (Shift: sideways), and a pinch or Ctrl with the wheel zooms. Naiad starts in Mouse mode and remembers your choice |
 | Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear**, at the chart's top left with the number of highlights, takes every highlight off |
 | Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open). Opening it closes the **Recent files** list |
-| Read without changing anything | The mode button, under the **Mouse mode** button in the middle of the rail, shows the mode Naiad is in: a pencil and the name **Edit mode**, or an open book and the name **View mode**. Click it to switch. View mode has no dots to drag, no dot grid, no **+**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
+| Read without changing anything | The second switch in the middle of the rail shows a pencil (Edit mode) over an open book (View mode), with a knob on the mode Naiad is in. Click it to switch. View mode has no dots to drag, no dot grid, no **+**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
 view that way, at up to 1,200 px a second, until the chart's edge on that side comes
