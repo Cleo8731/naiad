@@ -7,6 +7,7 @@ import { parseDoc } from './core/scan';
 import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
 import { raiseGroupTitles } from './group-titles';
+import { markLabelsInGroups } from './label-pills';
 
 export type Target =
   | { kind: 'node'; id: string }
@@ -98,13 +99,15 @@ export function configureMermaid(dark: boolean): void {
     },
     // Group titles (Q173) and arrow labels (Q175), the user, 2026-11-18: a title is
     // semibold and a little larger than a node's text, in a grey lighter than the muted
-    // colour; an arrow label sits in a soft pill with no border and a small margin, a
-    // little lighter than the chart, its text a little smaller and grey, so it reads as a
-    // caption and not as a node. Mermaid applies these before it measures, so the layout
+    // colour; an arrow label sits in a soft pill with no border and a small margin, its
+    // text a little smaller and grey, so it reads as a caption and not as a node. Mermaid applies these before it measures, so the layout
     // makes room for them.
     themeCSS: [
       `.cluster-label span, .cluster-label p { font-weight: 600; font-size: 15px; color: ${softText(c)}; }`,
-      `.labelBkg { background-color: color-mix(in srgb, ${c.edge} 14%, ${c.bg}); padding: 2px 7px; border-radius: 999px; }`,
+      // The pill's colour (Q176, the user, 2026-11-18): the group colour outside every
+      // group, the chart's background inside one (`label-pills.ts` marks which).
+      `.labelBkg { background-color: ${c.group}; padding: 2px 7px; border-radius: 999px; }`,
+      `g.edgeLabel.in-group .labelBkg { background-color: ${c.bg}; }`,
       '.edgeLabel p, span.edgeLabel { background-color: transparent; }',
       `.labelBkg .edgeLabel { font-size: 13px; color: ${softText(c)}; }`,
     ].join('\n'),
@@ -419,6 +422,7 @@ export class Chart {
     });
     addDirectionMarks(svg);
     raiseGroupTitles(svg);
+    markLabelsInGroups(svg);
   }
 
   private targetAt(el: Element | null): Target | null {
