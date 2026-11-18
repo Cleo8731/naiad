@@ -79,22 +79,13 @@ describe('the rail\'s switches slide (the user, 2026-11-17)', () => {
 // On pointing (the user, 2026-11-17, answering Q172: "Yes, build it"): the switch widens
 // into two lines, both modes' names always shown; the knob stretches right over the mode
 // in use and its name, in the accent, and the other name stays grey outside it. The knob
-// is as wide as its own name.
+// reaches the end of the widened track, even on the shorter name (the user, 2026-11-18:
+// "Make sure the highlight reaches the end of the extended tab, even if the word is
+// shorter").
 describe('the rail\'s switches on pointing (T4.13, Q172)', () => {
   const opts = (act: 'wheel' | 'view') => [...toggle(act).querySelectorAll<HTMLElement>('.track .opt')];
   const css = () => readFileSync('src/style.css', 'utf8');
   const rule = (sel: string) => css().match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
-  // jsdom lays nothing out: a line's width here is 10 px a letter of its name.
-  const real = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!;
-  let perLetter = 10;
-  beforeEach(() => {
-    perLetter = 10;
-    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
-      configurable: true, get(this: HTMLElement) { return (this.dataset.name ?? '').length * perLetter; },
-    });
-  });
-  afterEach(() => Object.defineProperty(HTMLElement.prototype, 'offsetWidth', real));
-
   it('each line of the track holds its icon and its mode\'s name, in the order of the icons', async () => {
     await start();
     expect(opts('wheel').map((o) => [o.dataset.name, o.querySelector('svg')!.getAttribute('data-icon')]))
@@ -112,20 +103,12 @@ describe('the rail\'s switches on pointing (T4.13, Q172)', () => {
     await vi.waitFor(() => expect(opts('view').map((o) => o.classList.contains('on'))).toEqual([false, true]));
   });
 
-  it('the knob\'s width on pointing is the width of the line it covers, and follows a click', async () => {
+  it('the knob\'s width comes from the track alone, not from one line: nothing is measured', async () => {
     await start();
-    const knob = () => toggle('wheel').querySelector<HTMLElement>('.knob')!;
-    expect(knob().style.getPropertyValue('--kw')).toBe('100px'); // "Mouse mode"
-    toggle('wheel').click();
-    expect(knob().style.getPropertyValue('--kw')).toBe('130px'); // "Touchpad mode"
-    expect(toggle('view').querySelector<HTMLElement>('.knob')!.style.getPropertyValue('--kw')).toBe('90px'); // "Edit mode"
-  });
-
-  it('pointing measures the line again, so a font that loaded late gives the right width', async () => {
-    await start();
-    perLetter = 8;
-    toggle('wheel').dispatchEvent(new Event('pointerenter'));
-    expect(toggle('wheel').querySelector<HTMLElement>('.knob')!.style.getPropertyValue('--kw')).toBe('80px');
+    for (const act of ['wheel', 'view'] as const) {
+      toggle(act).click();
+      expect(toggle(act).querySelector<HTMLElement>('.knob')!.getAttribute('style'), act).toBeNull();
+    }
   });
 
   it('the button keeps one name, the mode in use, for screen readers', async () => {
@@ -141,7 +124,8 @@ describe('the rail\'s switches on pointing (T4.13, Q172)', () => {
     expect(rule('.slide .track')).toMatch(/max-width:\s*26px/);
     expect(rule('.slide .track')).toMatch(/overflow:\s*hidden/);
     expect(rule('.rail button.slide:hover .track')).toMatch(/max-width:\s*\d{3}px/);
-    expect(rule('.rail button.slide:hover .knob')).toMatch(/width:\s*var\(--kw/);
+    // The knob spans the track inside its 2 px edge: as wide as the longer name, on either line.
+    expect(rule('.rail button.slide:hover .knob')).toMatch(/width:\s*calc\(100% - 4px\)/);
     expect(rule('.slide .knob')).toMatch(/transition:[^;]*width/);
     expect(rule('.slide .rlabel')).toMatch(/clip-path:\s*inset\(50%\)/); // heard, not seen
   });

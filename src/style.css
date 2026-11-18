@@ -258,10 +258,10 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
    modes' icons, Mouse over Touchpad and Edit over View; the knob slides onto the mode in
    use, whose icon takes the accent. On pointing (T4.13, the user's answer to Q172,
    2026-11-17) the track widens into two lines, each icon with its mode's name (drawn from
-   `data-name`); the knob stretches over the line in use, as wide as that line (`--kw`,
-   measured in `src/app.ts`), and the other name stays grey. The names are laid out even
-   at rest, clipped by the track, so a line's width is the same whether pointed at or not.
-   The button's own name is heard, not seen. */
+   `data-name`); the knob stretches over the line in use to the track's end, even on the
+   shorter name (the user, 2026-11-18), and the other name stays grey. The track is as
+   wide as the longer line, and the knob follows it as it widens. The button's own name
+   is heard, not seen. */
 .rail button.slide, .rail button.slide:hover { height: auto; padding: 4px; }
 .slide .rlabel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .slide .track {
@@ -275,7 +275,7 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
   background: var(--accent-soft); box-shadow: 0 0 0 1px var(--line), 0 1px 3px var(--shadow);
   transition: transform 180ms ease, width 160ms ease;
 }
-.rail button.slide:hover .knob { width: var(--kw, 22px); }
+.rail button.slide:hover .knob { width: calc(100% - 4px); }
 .slide[data-pos="1"] .knob { transform: translateY(24px); }
 .slide .opt { position: relative; display: flex; align-items: center; flex: none; height: 22px; white-space: nowrap; }
 .slide .opt::after { content: attr(data-name); padding: 0 10px 0 2px; font-size: 13px; font-weight: 500; color: var(--muted); transition: color 180ms; }
