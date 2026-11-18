@@ -437,6 +437,9 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
    would go. */
 .tab.dragging { opacity: 0.45; }
 body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; user-select: none; }
+/* While a tab is dragged, the window doesn't answer the pointer: no hover, handles or trace.
+   Where it lands is worked out from the parts' boxes, not from what is under the pointer. */
+body.dragging-tab #app { pointer-events: none; }
 .tab-ghost {
   position: fixed; z-index: 50; display: flex; align-items: center; height: 30px; max-width: 200px; padding: 0 12px;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; pointer-events: none;

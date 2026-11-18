@@ -1045,6 +1045,8 @@ export class App {
       if (!bar || !inside(bar, x, y)) continue;
       const others = g.tabs.filter((t) => t !== tab).map((t) => this.parts.get(t)!.item.getBoundingClientRect());
       const index = others.filter((r) => r.left + r.width / 2 < x).length;
+      // Over its own place the tab would not move: no line, and letting go does nothing.
+      if (g.tabs[index] === tab) return null;
       const line = index < others.length ? others[index].left : others.length ? others[others.length - 1].right : bar.left + 4;
       return { kind: 'strip', group: g, index, line, bar };
     }

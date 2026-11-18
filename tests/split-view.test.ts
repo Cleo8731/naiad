@@ -184,6 +184,22 @@ describe('dragging a tab over a strip (Q180)', () => {
     window.dispatchEvent(pointer('pointerup', 260, 20));
     expect(bars().map(names)).toEqual([['b.mmd', 'c.mmd', 'a.mmd']]);
   });
+
+  test('over its own place, a tab shows no line, and letting go leaves it there', async () => {
+    await start(['a', 'b', 'c']);
+    for (const x of [60, 130]) {
+      dragTab('b.mmd', 100 + x, 20, true); // b sits from 100 to 200 px
+      expect(document.querySelector('.drop-line:not([hidden])')).toBeNull();
+      window.dispatchEvent(pointer('pointerup', 100 + x, 20));
+      lay();
+      expect(bars().map(names)).toEqual([['a.mmd', 'b.mmd', 'c.mmd']]);
+      await sleep(1);
+    }
+  });
+
+  test('while a tab is dragged, nothing in the window answers the pointer: no hover, no handles, no trace', () => {
+    expect(rule('body.dragging-tab #app')).toContain('pointer-events: none');
+  });
 });
 
 describe('two tab groups (Q185)', () => {
