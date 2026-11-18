@@ -83,7 +83,7 @@ describe('the window\'s frame (T4.9)', () => {
   test('the rail on the left, then the tabs row over the panes and the chart; no toolbar', async () => {
     await start();
     // The saved state stays in the page for screen readers, unseen (`.sr-only`).
-    const parts = [...q('#app')!.children].filter((c) => !c.matches('.toast, dialog, .sr-only'));
+    const parts = [...q('#app')!.children].filter((c) => !c.matches('.toast, dialog, .sr-only, .tab-ghost, .drop-zone, .drop-line'));
     expect(parts).toEqual([rail(), q('.column')]);
     expect([...q('.column')!.children]).toEqual([top(), q('main')]);
     expect([...q('main')!.children]).toEqual([q('nav.recent'), q('.body')]);

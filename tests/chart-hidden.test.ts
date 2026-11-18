@@ -80,4 +80,14 @@ describe('a chart hidden and shown again (T1.16, tabs)', () => {
     resize(1000); // the window was made wider while another tab was shown
     expect(transform()).toBe('translate(270px, 185px) scale(1.15)');
   });
+
+  test('a fit made after a width change, before the browser reports it, is not shifted again (T1.17)', async () => {
+    await chart.draw('flowchart TD\n  A\n', snap);
+    width = 320; // the window was split: the chart's half is narrower, not yet reported
+    chart.fit();
+    const fitted = transform();
+    resized();
+    expect(transform()).toBe(fitted);
+    expect(fitted).toBe('translate(24px, 232px) scale(0.68)');
+  });
 });

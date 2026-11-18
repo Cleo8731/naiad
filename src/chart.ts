@@ -232,6 +232,8 @@ type Drag = {
 const HOVER_GRACE = 400;
 
 const sameTarget = (a: Target | null, b: Target | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+/** The stage's width as the resize watcher reads it (whole pixels, without borders). */
+const stageWidth = (el: HTMLElement): number => el.clientWidth;
 
 /** Trace on hover (the user, 2026-11-13): how long the pointer rests before the rest fades, in ms. */
 const TRACE_REST = 150;
@@ -313,6 +315,9 @@ export class Chart {
   /** A fit asked for while the chart had no width (hidden while another tab is shown,
    * T1.16), so it is fitted as soon as it is shown. */
   private fitWaiting = false;
+  /** The stage's width the view was last placed for: the resize watcher keeps the centre
+   * from it, and a fit sets it, so a fit made before the watcher runs isn't shifted. */
+  private placedWidth = 0;
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
   private manual = false;
   private moved = false;
@@ -702,6 +707,7 @@ export class Chart {
     this.view.k = Math.max(MIN_ZOOM, k);
     this.view.x = (r.width - this.size.w * this.view.k) / 2;
     this.view.y = Math.max(pad / 2, (r.height - this.size.h * this.view.k) / 2);
+    this.placedWidth = stageWidth(this.stage);
     this.manual = false;
     this.apply();
   }
@@ -890,17 +896,18 @@ export class Chart {
     // When a side panel opens or closes, keep the chart centred and the selection in view.
     // A hidden chart (another tab shown, T1.16) has no width: its view stays as it was
     // left, and on showing it moves only to keep the centre if the width changed meanwhile.
-    let width = stage.clientWidth;
-    let shown = width > 0;
+    this.placedWidth = stageWidth(stage);
+    let shown = this.placedWidth > 0;
     this.observer = new ResizeObserver(() => {
-      const next = stage.clientWidth;
+      const next = stageWidth(stage);
+      const width = this.placedWidth;
       const showing = !shown;
       shown = next > 0;
       if (!next) return;
-      if (this.fitWaiting) { width = next; this.fit(); return; }
-      if (showing && (next === width || !width)) { width = next; return; }
+      if (this.fitWaiting) { this.fit(); return; }
+      this.placedWidth = next;
+      if (showing && (next === width || !width)) return;
       this.view.x += (next - width) / 2;
-      width = next;
       this.apply();
       this.reveal();
     });

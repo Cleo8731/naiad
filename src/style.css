@@ -390,6 +390,67 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .grip:hover::after, .grip.dragging::after { background: var(--accent); }
 .tabview:has(> .sidebar[hidden]) .grip.side { display: none; }
 
+/* ---- split view (T1.17; the user, 2026-11-18: Q180 to Q182, Q184, Q185): two halves,
+   each a tab group's shown tab, side by side (row) or one above the other (col), with the
+   divider between them; the Syntax pane on the left and the active half's sidebar on the
+   right, full height. The two shown views lay their parts into the body's grid. `--fa`
+   and `--fb` are the halves' shares (app.ts, setShare). */
+.split-divider { display: none; }
+.body.split { display: grid; }
+.body.split.split-row {
+  grid-template-columns: auto minmax(0, var(--fa, 1fr)) 1px minmax(0, var(--fb, 1fr)) auto;
+  grid-template-rows: minmax(0, 1fr); grid-template-areas: "syntax a div b side";
+}
+.body.split.split-col {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, var(--fa, 1fr)) 1px auto minmax(0, var(--fb, 1fr));
+  grid-template-areas: "syntax a side" "syntax div side" "syntax bar side" "syntax b side";
+}
+.body.split > .textpane { grid-area: syntax; }
+.body.split > .tabview { display: contents; }
+.body.split > .tabview.half-a > .chartarea { grid-area: a; }
+.body.split > .tabview.half-b > .chartarea { grid-area: b; }
+.body.split > .tabview > .sidebar { grid-area: side; }
+.body.split > .tabview:not(.active) > .sidebar { display: none; }
+/* The active half (Q181): a 2 px accent line along its top. */
+.body.split > .tabview.active > .chartarea::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 8;
+  background: var(--accent); pointer-events: none;
+}
+/* The sidebar's grip shows on the chart next to the sidebar. */
+.body.split .grip.side { display: none; }
+.body.split.split-col > .tabview.active:has(> .sidebar:not([hidden])) > .chartarea > .grip.side,
+.body.split.split-row:has(> .tabview.active > .sidebar:not([hidden])) > .tabview.half-b > .chartarea > .grip.side { display: flex; }
+/* The divider (Q182): a hairline, 3 px accent under the pointer; its grab area is wider. */
+.body.split > .split-divider { display: block; grid-area: div; position: relative; z-index: 7; background: var(--line); touch-action: none; }
+.split-divider::before { content: ''; position: absolute; inset: 0 -4px; cursor: col-resize; }
+.body.split-col > .split-divider::before { inset: -4px 0; cursor: row-resize; }
+.split-divider:hover, .split-divider.dragging { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+body.resizing-rows { cursor: row-resize; user-select: none; }
+/* The second group's strip (Q185): side by side, in the tabs row after the first, a line
+   between them; one above the other, above the lower half. */
+.bar.top > .tabs + .tabs { border-left: 1px solid var(--line); padding-left: 6px; }
+.body.split > .tabs { grid-area: bar; height: 40px; padding-left: 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+
+/* ---- a dragged tab (Q180): its copy follows the pointer; the half it would open in
+   fills with a soft accent and a dashed accent edge; in a strip, a line shows where it
+   would go. */
+.tab.dragging { opacity: 0.45; }
+body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; user-select: none; }
+.tab-ghost {
+  position: fixed; z-index: 50; display: flex; align-items: center; height: 30px; max-width: 200px; padding: 0 12px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius-tab);
+  box-shadow: 0 6px 20px var(--shadow); color: var(--text); font-weight: 600;
+}
+.drop-zone {
+  position: fixed; z-index: 45; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px dashed var(--accent);
+  border-radius: var(--radius-control); color: var(--text); font-weight: 600;
+}
+.drop-zone span { padding: 6px 14px; border-radius: var(--radius-pill); background: var(--panel); box-shadow: 0 4px 14px var(--shadow); }
+.drop-line { position: fixed; z-index: 45; width: 2px; margin-left: -1px; pointer-events: none; background: var(--accent); border-radius: 1px; }
+
 /* ---- the Syntax pane */
 .textpane {
   position: relative; width: var(--syntax-w, 330px); flex: none; display: flex; flex-direction: column;

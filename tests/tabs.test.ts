@@ -46,7 +46,9 @@ describe('the tab strip', () => {
     expect(ui.shown()).toBe('a.mmd');
     expect(tabOf('a.mmd').querySelector<HTMLElement>('.tname')!.title).toBe(A);
     expect(tabOf('a.mmd').querySelector('.tclose')!.getAttribute('aria-label')).toBe('Close a.mmd');
-    expect(strip().lastElementChild).toBe(plus());
+    // The + ends the strip; after it only the × that closes a split, hidden while unsplit (T1.17).
+    expect(strip().lastElementChild!.previousElementSibling).toBe(plus());
+    expect(q<HTMLButtonElement>('.tabs [data-act="unsplit"]')!.hidden).toBe(true);
     expect(plus().getAttribute('aria-label')).toBe('New tab');
     expect(plus().querySelector('svg')!.getAttribute('data-icon')).toBe('plus');
     // The tabs row, beside the rail, holds the tab strip alone (T1.18, T1.21, T4.9).

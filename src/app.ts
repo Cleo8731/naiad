@@ -100,19 +100,68 @@ function forget(key: string): void {
   try { localStorage.removeItem(key); } catch { /* as in `remember` */ }
 }
 
-/** What Remember opened files keeps (T1.23): the tabs' files in their order, and the shown tab's. */
-interface Kept { files: string[]; shown: string | null }
+/** Which way split view lies (T1.17): side by side, or one above the other. */
+type Axis = 'row' | 'col';
+
+/**
+ * What Remember opened files keeps (T1.23): the tabs' files in their order, and the shown
+ * tab's; while split (T1.17), also the second group's files, each group's shown file, the
+ * axis and the divider's place.
+ */
+interface Kept {
+  files: string[];
+  shown: string | null;
+  split?: { second: string[]; shown: [string | null, string | null]; axis: Axis; at: number };
+}
 
 /** The kept files, as written by `keep`; anything else is none. */
 function readKept(stored: string | null): Kept {
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((f): f is string => typeof f === 'string') : []);
+  const text = (v: unknown) => (typeof v === 'string' ? v : null);
   try {
-    const v = JSON.parse(stored ?? '') as { files?: unknown; shown?: unknown };
-    const files = Array.isArray(v.files) ? v.files.filter((f): f is string => typeof f === 'string') : [];
-    return { files, shown: typeof v.shown === 'string' ? v.shown : null };
+    const v = JSON.parse(stored ?? '') as { files?: unknown; shown?: unknown; split?: Record<string, unknown> };
+    const kept: Kept = { files: strings(v.files), shown: text(v.shown) };
+    const s = v.split;
+    if (s && typeof s === 'object' && (s.axis === 'row' || s.axis === 'col')) {
+      const shown = Array.isArray(s.shown) ? s.shown : [];
+      const at = typeof s.at === 'number' && s.at > 0 && s.at < 1 ? s.at : 0.5;
+      kept.split = { second: strings(s.second), shown: [text(shown[0]), text(shown[1])], axis: s.axis, at };
+    }
+    return kept;
   } catch {
     return { files: [], shown: null };
   }
 }
+
+/** A group's strip (T1.25, T1.17): its box, the tabs' list, the list of every tab and its button, the +, and the × that closes the split. */
+interface Strip {
+  box: HTMLElement;
+  list: HTMLElement;
+  more: HTMLButtonElement;
+  menu: HTMLElement;
+  unsplit: HTMLButtonElement;
+}
+
+/**
+ * A tab group (T1.17; the user, 2026-11-18, Q185): one half's tabs, in their strip's
+ * order, and the one it shows. Unsplit, the window has one. `naiad serve`'s page has no
+ * strip.
+ */
+interface Group {
+  tabs: Tab[];
+  shown: Tab;
+  bar: Strip | null;
+}
+
+/** Where a dragged tab would land (T1.17, Q180): in a strip, at a place among its tabs; on an edge of the unsplit chart; or on a half. */
+type Landing =
+  | { kind: 'strip'; group: Group; index: number; line: number; bar: DOMRect }
+  | { kind: 'edge'; side: 'left' | 'right' | 'top' | 'bottom'; zone: Box }
+  | { kind: 'half'; group: Group; zone: Box };
+interface Box { left: number; top: number; width: number; height: number }
+
+const px = (n: number) => `${String(Math.round(n))}px`;
+const inside = (r: DOMRect, x: number, y: number) => r.width > 0 && r.height > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 
 /** "a.mmd", "a.mmd and b.mmd", "a.mmd, b.mmd and c.mmd". */
 function listed(names: string[]): string {
@@ -147,10 +196,23 @@ export class App {
    */
   private about = true;
 
-  /** The open tabs, in the strip's order (T1.16). */
-  private tabs: Tab[] = [];
-  /** The tab shown. */
+  /** The tab groups (T1.17): one, or two while split, the first the left or top half. */
+  private groups: Group[] = [];
+  /** Split view's axis, and the first half's share of the two halves (the divider's place, Q182). */
+  private axis: Axis = 'row';
+  private at = 0.5;
+  /** The open tabs, in the strips' order (T1.16): the first group's, then the second's. */
+  private get tabs(): Tab[] { return this.groups.flatMap((g) => g.tabs); }
+  /** The shown tab: the active half's, while split (T1.17). */
   private tab!: Tab;
+  /** The tabs whose views show (one, or one per half), and the shown tab, as `render` last left them. */
+  private seen = new Set<Tab>();
+  private lastShown: Tab | null = null;
+  /** Right after a tab was dragged: the click that ends the press doesn't show it. */
+  private noClick = false;
+  /** Split view's divider, and what a dragged tab shows: its copy, the lit half, the line in a strip. */
+  private divider!: HTMLElement;
+  private drag!: { ghost: HTMLElement; zone: HTMLElement; line: HTMLElement };
   private parts = new Map<Tab, TabParts>();
   /** The tabs whose × was clicked and that are not yet closed, so a second click asks nothing more. */
   readonly closing = new Set<Tab>();
@@ -163,10 +225,8 @@ export class App {
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
     /** The Undo island and Clear beside it, and the pill (T4.9), moved to the shown tab's chart. */
     islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
-    /** The tab strip and its +; none in `naiad serve`'s page, which shows one file. */
-    strip: HTMLElement | null; plus: HTMLButtonElement; body: HTMLElement;
-    /** The button that lists every tab, and its list (T1.25, Q178). */
-    more: HTMLButtonElement; tabsMenu: HTMLElement;
+    /** The tabs row; none in `naiad serve`'s page, which shows one file. */
+    top: HTMLElement | null; body: HTMLElement;
   };
   /** The recent list's pane (T1.15); none in `naiad serve`'s page, which shows one file only. */
   private recent: RecentPane | null = null;
@@ -197,16 +257,7 @@ export class App {
         </div>
       </nav>
       <div class="column">
-        <header class="bar top">
-          <div class="tabs">
-            <div class="tablist" role="tablist" aria-label="Open flowcharts"></div>
-            <div class="more-wrap">
-              <button class="more" data-act="alltabs" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.chevron}<span></span></button>
-              <div class="tabs-menu" role="menu" aria-label="Every open tab" hidden></div>
-            </div>
-            <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
-          </div>
-        </header>
+        <header class="bar top"></header>
         <main>
           <nav class="recent" aria-label="Recent files" hidden>
             <div class="rlist"></div>
@@ -217,11 +268,15 @@ export class App {
               <div class="pane-head">Mermaid syntax</div>
               ${grip('syntax', 'the Syntax pane')}
             </section>
+            <div class="split-divider" role="separator" aria-orientation="vertical" aria-label="Divider between the two halves" title="Drag to resize; double-click for half and half"></div>
           </div>
         </main>
       </div>
       <span class="status sr-only"></span>
-      <div class="toast" role="status" hidden></div>`;
+      <div class="toast" role="status" hidden></div>
+      <div class="tab-ghost" aria-hidden="true" hidden></div>
+      <div class="drop-zone" aria-hidden="true" hidden></div>
+      <div class="drop-line" aria-hidden="true" hidden></div>`;
     // The chart's tools (T4.9), laid over the shown tab's chart (`show`): Undo and Redo in
     // an island at its top left, with Clear beside it while anything is highlighted; and
     // the floating pill at its foot: the add-node button, a plus alone (Q158's answer),
@@ -259,9 +314,10 @@ export class App {
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
       islandRow: q('.island-row'), island: q('.island'), pill: q('.pill'), pillEdit: q('.pill-edit'),
-      strip: q('.tabs .tablist'), plus: q('[data-act="newtab"]'), body: q('.body'),
-      more: q('[data-act="alltabs"]'), tabsMenu: q('.tabs-menu'),
+      top: q('header.top'), body: q('.body'),
     };
+    this.divider = q('.split-divider');
+    this.drag = { ghost: q('.tab-ghost'), zone: q('.drop-zone'), line: q('.drop-line') };
     this.showDirection('TD');
     setSlide(this.el.view, 0, VIEW_LABEL.editing, VIEW_TIP.editing); // Edit mode until `showViewing` says otherwise
     if (this.backend.kind === 'served') {
@@ -269,9 +325,8 @@ export class App {
       // tabs row; no recent list, so no pane and no button for it; and no Settings, whose
       // one setting, Remember opened files, is the app's.
       this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="settings"]').forEach((b) => b.remove());
-      this.el.strip = null;
+      this.el.top = null;
     }
-    if (this.el.strip) this.watchStrip(this.el.strip);
     // Naiad's own title bar (T4.10; the user, 2026-11-17, Q171): the desktop window has
     // no Windows title bar, so the tabs row is the top of the window. At its right end,
     // minimize, maximize (restore while maximized) and close. A press on the row's empty
@@ -282,8 +337,6 @@ export class App {
     if (win && top) {
       top.setAttribute('data-tauri-drag-region', 'deep');
       this.root.querySelector('.rail .mark')!.setAttribute('data-tauri-drag-region', '');
-      // The list of every tab (T1.25) lies in the row; a press on its edge doesn't move the window.
-      this.el.tabsMenu.setAttribute('data-tauri-drag-region', 'false');
       const box = document.createElement('div');
       box.className = 'winctl';
       box.innerHTML = `
@@ -319,10 +372,12 @@ export class App {
     this.applyAppearance();
     this.system.addEventListener('change', () => this.applyAppearance());
 
-    // A window with no file open holds one blank tab (Q140).
+    // A window with no file open holds one blank tab (Q140), in its one tab group.
     const first = this.makeTab();
-    this.place(first);
-    this.show(first);
+    this.groups = [{ tabs: [first], shown: first, bar: this.makeStrip() }];
+    this.tab = first;
+    this.render();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.fitHeader()).observe(this.el.body);
 
     this.bind();
     // The Syntax pane starts hidden, and opens at start only if the person left it open.
@@ -360,8 +415,9 @@ export class App {
     // The shown tab's highlights file is looked at once a second (and at once when the
     // view comes back into sight), so an agent's highlights show without Naiad watching
     // a folder that comes and goes. A hidden tab's are read when it is shown.
-    window.setInterval(() => { void this.tab.readHighlights(); }, 1000);
-    document.addEventListener('visibilitychange', () => { void this.tab.readHighlights(); });
+    const readShown = () => { for (const g of this.groups) void g.shown.readHighlights(); };
+    window.setInterval(readShown, 1000);
+    document.addEventListener('visibilitychange', readShown);
     this.backend.guardClose(() => this.canClose());
   }
 
@@ -411,7 +467,8 @@ export class App {
     const v = <T extends HTMLElement>(sel: string) => view.querySelector<T>(sel)!;
     let tab!: Tab;
     tab = new Tab(this.tabWindow(() => tab), { stage: v('.stage'), empty: v('.empty'), area, sidebar: v('.sidebar'), notices: v('.notices') });
-    name.addEventListener('click', () => this.show(tab));
+    name.addEventListener('click', () => { if (!this.noClick) this.show(tab); });
+    name.addEventListener('pointerdown', (e) => this.dragTab(e, tab));
     close.addEventListener('click', () => { void this.closeTab(tab); });
     this.parts.set(tab, { item, name, close, view, area, chartarea: v('.chartarea') });
     // The window's choices hold in every tab.
@@ -421,36 +478,72 @@ export class App {
     return tab;
   }
 
-  /** Puts a tab into the strip, right after `after`, or last. */
+  /** A tab's group. */
+  private groupOf(tab: Tab): Group | undefined {
+    return this.groups.find((g) => g.tabs.includes(tab));
+  }
+
+  /** Puts a tab into the shown tab's group, right after `after`, or last. */
   private place(tab: Tab, after?: Tab): void {
-    const at = after ? this.tabs.indexOf(after) + 1 : this.tabs.length;
-    this.tabs.splice(at, 0, tab);
+    const g = (after && this.groupOf(after)) || this.groupOf(this.tab) || this.groups[0];
+    const at = after && g.tabs.includes(after) ? g.tabs.indexOf(after) + 1 : g.tabs.length;
+    g.tabs.splice(at, 0, tab);
     this.paintStrip();
   }
 
-  /** Shows a tab, as it was left; the one shown before keeps everything as it is. */
+  /** Shows a tab in its group's half, as it was left, and makes that half the active one; the tab it hides keeps everything as it is. */
   private show(tab: Tab): void {
-    const was = this.tab;
-    if (tab === was) return;
+    if (tab === this.tab) return;
+    const g = this.groupOf(tab);
+    if (!g) return;
+    g.shown = tab;
     this.tab = tab;
+    this.render();
+  }
+
+  /**
+   * Lays the window out for its groups and the shown tab (T1.16, T1.17): each group's
+   * shown tab's view shows, in its half while split; the shown tab's Syntax text, the
+   * island and the pill (T4.9), the window's title and the recent list's mark follow the
+   * shown tab. A tab whose view goes is hidden; one whose view comes is shown.
+   */
+  private render(): void {
+    const tab = this.tab;
+    const split = this.groups.length > 1;
+    const seen = new Set(this.groups.map((g) => g.shown));
     for (const [t, p] of this.parts) {
-      p.view.hidden = t !== tab;
+      p.view.hidden = !seen.has(t);
       p.area.hidden = t !== tab;
+      p.view.classList.toggle('half-a', split && t === this.groups[0].shown);
+      p.view.classList.toggle('half-b', split && t === this.groups[1].shown);
+      p.view.classList.toggle('active', split && t === tab);
     }
-    was?.hide();
-    // The island and the pill go with the shown tab's chart (T4.9).
+    const body = this.el.body;
+    body.classList.toggle('split', split);
+    body.classList.toggle('split-row', split && this.axis === 'row');
+    body.classList.toggle('split-col', split && this.axis === 'col');
+    this.divider.setAttribute('aria-orientation', this.axis === 'row' ? 'vertical' : 'horizontal');
+    this.setShare(this.at);
+    for (const t of this.seen) if (!seen.has(t)) t.hide();
     this.showDirMenu(false);
     this.parts.get(tab)!.chartarea.append(this.el.islandRow, this.el.pill);
+    this.placeStrips();
     this.paintStrip();
-    this.parts.get(tab)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    // The list has scrolled now; its scroll event can come a frame later, or not at all
-    // while the window is hidden.
+    for (const g of this.groups) this.parts.get(g.shown)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    // The lists have scrolled now; their scroll events can come a frame later, or not at
+    // all while the window is hidden.
     this.fitStrip();
     this.backend.setWindowTitle(tab.file ? `${basename(tab.file)} - Naiad` : 'Naiad');
     this.recent?.mark(tab.file);
     this.recentFollows(tab);
-    tab.show();
+    const before = this.seen;
+    const was = this.lastShown;
+    this.seen = seen;
+    this.lastShown = tab;
+    for (const t of seen) if (t !== tab && !before.has(t)) t.show();
+    if (tab !== was || !before.has(tab)) tab.show();
     this.keep();
+    this.fitHeader();
   }
 
   // ------------------------------------------------------------------ remember opened files
@@ -478,8 +571,11 @@ export class App {
    */
   private keep(): void {
     if (!this.keeping || this.backend.kind === 'served' || !this.remembering) return;
-    const files = this.tabs.flatMap((t) => (t.file ? [t.file] : []));
-    remember('opentabs', JSON.stringify({ files, shown: this.tab.file }));
+    const filesOf = (tabs: Tab[]) => tabs.flatMap((t) => (t.file ? [t.file] : []));
+    const kept: Kept = { files: filesOf(this.tabs), shown: this.tab.file };
+    const [a, b] = this.groups;
+    if (b) kept.split = { second: filesOf(b.tabs), shown: [a.shown.file, b.shown.file], axis: this.axis, at: this.at };
+    remember('opentabs', JSON.stringify(kept));
   }
 
   /**
@@ -508,6 +604,23 @@ export class App {
     } finally {
       this.reopening = false;
     }
+    // The split (T1.17): the second group's files that opened go back into a group of
+    // their own, unless none did, or every tab would.
+    const split = kept.split;
+    const second = split ? this.tabs.filter((t) => t.file !== null && split.second.some((f) => samePath(f, t.file!))) : [];
+    if (split && second.length && second.length < this.tabs.length) {
+      const first = this.groups[0];
+      first.tabs = first.tabs.filter((t) => !second.includes(t));
+      const pick = (tabs: Tab[], file: string | null) => tabs.find((t) => file !== null && t.file !== null && samePath(t.file, file)) ?? tabs[0];
+      first.shown = pick(first.tabs, split.shown[0]);
+      this.groups.push({ tabs: second, shown: pick(second, split.shown[1]), bar: this.makeStrip() });
+      this.axis = split.axis;
+      this.at = split.at;
+      this.tab = first.shown;
+      this.render();
+      // A chart drawn before the split was as wide as the window: each half fits its own.
+      for (const g of this.groups) g.shown.chart.fit();
+    }
     const shown = kept.shown === null ? undefined : this.tabs.find((t) => t.file !== null && samePath(t.file, kept.shown!));
     if (shown && !named) this.show(shown);
     if (gone.length === 1) this.toast(`${gone[0]} was not found, so it was not opened again.`);
@@ -531,10 +644,10 @@ export class App {
     this.toggleRecent(kind === 'blank');
   }
 
-  /** The + (Q140): a blank tab after the shown one, shown. */
-  private newTab(): void {
+  /** The + (Q140): a blank tab after its group's shown one, shown. */
+  private newTab(group = this.groupOf(this.tab)!): void {
     const tab = this.makeTab();
-    this.place(tab, this.tab);
+    this.place(tab, group.shown);
     this.show(tab);
     this.recentFollows(tab, true);
   }
@@ -553,25 +666,35 @@ export class App {
 
   /**
    * Takes a tab out of the window: after `leave`, or a blank tab, which has nothing to
-   * lose. The tab to its right is shown, or else the one to its left; the last tab closed
-   * leaves a blank one.
+   * lose. Its group shows the tab to its right, or else the one to its left. A group left
+   * with no tab closes the split (T1.17, Q184); the window's last tab closed leaves a
+   * blank one.
    */
   private drop(tab: Tab): void {
-    const at = this.tabs.indexOf(tab);
-    if (at < 0) return;
-    this.tabs.splice(at, 1);
+    const g = this.groupOf(tab);
+    if (!g) return;
+    const at = g.tabs.indexOf(tab);
+    g.tabs.splice(at, 1);
     const p = this.parts.get(tab)!;
     this.parts.delete(tab);
     tab.close();
     p.item.remove();
     p.view.remove();
     p.area.remove();
+    this.seen.delete(tab);
     const last = !this.tabs.length;
-    if (last) this.place(this.makeTab());
-    if (tab === this.tab) this.show(this.tabs[Math.min(at, this.tabs.length - 1)]);
-    else this.paintStrip();
+    if (last) {
+      const blank = this.makeTab();
+      g.tabs.push(blank);
+      g.shown = blank;
+    } else if (!g.tabs.length) {
+      this.removeGroup(g);
+    } else if (g.shown === tab) {
+      g.shown = g.tabs[Math.min(at, g.tabs.length - 1)];
+    }
+    if (tab === this.tab) this.tab = (this.groups.includes(g) ? g : this.groups[0]).shown;
+    this.render();
     if (last) this.recentFollows(this.tab, true); // a new blank tab
-    this.keep();
     // The shell deletes the highlights file of a flowchart no view shows: the closed tab's
     // file is kept in the window's list until its highlight writes are done, so none lands
     // after the delete (bug hunt H5).
@@ -585,32 +708,101 @@ export class App {
   /** Closed tabs whose highlight writes are not done yet (`drop`). */
   private readonly draining = new Set<Tab>();
 
-  /** The files the window shows, for the shell: its tabs', in the strip's order, then any closed tab's still writing its highlights. */
+  /** The files the window shows, for the shell: its tabs', in the strips' order, then any closed tab's still writing its highlights. */
   private files(): string[] {
     return [...this.tabs, ...this.draining].flatMap((t) => (t.file ? [t.file] : []));
   }
 
-  /** The strip: each tab's name (its file's, or New tab), the shown one marked, then the +. */
-  private paintStrip(): void {
-    if (!this.el.strip) return;
-    const lone = this.tabs.length === 1;
-    const items = this.tabs.map((tab) => {
-      const p = this.parts.get(tab)!;
-      const file = tab.file;
-      const label = file ? basename(file) : BLANK_NAME;
-      const shown = tab === this.tab;
-      p.name.textContent = label;
-      p.name.title = file ?? '';
-      p.name.setAttribute('aria-selected', String(shown));
-      p.item.classList.toggle('shown', shown);
-      p.close.setAttribute('aria-label', `Close ${label}`);
-      // A lone blank tab has nothing to close: closing it would leave a blank tab.
-      p.close.hidden = lone && !file;
-      return p.item;
+  // ------------------------------------------------------------------ the strips
+
+  /** A group's strip (T1.16, T1.25, T1.17): the tabs' list, the button that lists every tab, the + and the × that closes the split. None in `naiad serve`'s page. */
+  private makeStrip(): Strip | null {
+    if (!this.el.top) return null;
+    const box = document.createElement('div');
+    box.className = 'tabs';
+    box.innerHTML = `
+      <div class="tablist" role="tablist" aria-label="Open flowcharts"></div>
+      <div class="more-wrap">
+        <button class="more" data-act="alltabs" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.chevron}<span></span></button>
+        <div class="tabs-menu" role="menu" aria-label="Every open tab" hidden></div>
+      </div>
+      <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
+      <button class="icon" data-act="unsplit" title="Close the split: move these tabs to the other side" aria-label="Close the split: move these tabs to the other side" hidden>${ICONS.close}</button>`;
+    const q = <T extends HTMLElement>(sel: string) => box.querySelector<T>(sel)!;
+    const strip: Strip = { box, list: q('.tablist'), more: q('[data-act="alltabs"]'), menu: q('.tabs-menu'), unsplit: q('[data-act="unsplit"]') };
+    // The list of every tab (T1.25) can lie in the tabs row, the window's title bar
+    // (T4.10); a press on its edge doesn't move the window.
+    if (this.backend.windowControls) strip.menu.setAttribute('data-tauri-drag-region', 'false');
+    this.watchStrip(strip);
+    return strip;
+  }
+
+  /** The group whose strip holds an element. */
+  private groupAt(el: Element): Group | undefined {
+    const box = el.closest('.tabs');
+    return this.groups.find((g) => g.bar?.box === box);
+  }
+
+  /**
+   * Puts each strip in its place (T1.17, Q185): the first group's in the tabs row; the
+   * second's after it, side by side, or above the lower half, one above the other. Each
+   * strip's × shows while split, and each list names its side.
+   */
+  private placeStrips(): void {
+    const top = this.el.top;
+    const [a, b] = this.groups.map((g) => g.bar);
+    if (!top || !a) return;
+    if (top.firstElementChild !== a.box) top.prepend(a.box);
+    if (b) {
+      if (this.axis === 'row' && a.box.nextElementSibling !== b.box) a.box.after(b.box);
+      if (this.axis === 'col' && b.box.parentElement !== this.el.body) this.el.body.append(b.box);
+    }
+    const sides = this.axis === 'row' ? ['left side', 'right side'] : ['top half', 'bottom half'];
+    this.groups.forEach((g, i) => {
+      g.bar!.unsplit.hidden = !b;
+      g.bar!.list.setAttribute('aria-label', b ? `Open flowcharts, ${sides[i]}` : 'Open flowcharts');
     });
-    this.el.strip.replaceChildren(...items);
-    this.fitStrip();
-    if (!this.el.tabsMenu.hidden) this.fillTabsMenu();
+  }
+
+  /**
+   * Side by side (T1.17), the first strip is as wide as the panes before the charts and
+   * the left half, so each strip sits over its own half.
+   */
+  private fitHeader(): void {
+    const [a, b] = this.groups;
+    if (!a?.bar) return;
+    a.bar.box.style.flex = '';
+    if (!b || this.axis !== 'row') return;
+    const right = this.parts.get(a.shown)!.chartarea.getBoundingClientRect().right;
+    const width = right - a.bar.box.getBoundingClientRect().left;
+    if (width > 0) a.bar.box.style.flex = `0 0 ${String(Math.round(width))}px`;
+  }
+
+  /** The strips: each tab's name (its file's, or New tab), each group's shown one marked. */
+  private paintStrip(): void {
+    for (const [t, p] of this.parts) p.view.dataset.file = t.file ? basename(t.file) : '';
+    const split = this.groups.length > 1;
+    for (const g of this.groups) {
+      if (!g.bar) continue;
+      const lone = !split && g.tabs.length === 1;
+      const items = g.tabs.map((tab) => {
+        const p = this.parts.get(tab)!;
+        const file = tab.file;
+        const label = file ? basename(file) : BLANK_NAME;
+        const shown = tab === g.shown;
+        p.name.textContent = label;
+        p.name.title = file ?? '';
+        p.name.setAttribute('aria-selected', String(shown));
+        p.item.classList.toggle('shown', shown);
+        p.close.setAttribute('aria-label', `Close ${label}`);
+        // A lone blank tab has nothing to close: closing it would leave a blank tab.
+        p.close.hidden = lone && !file;
+        return p.item;
+      });
+      g.bar.list.replaceChildren(...items);
+      this.fitStrip(g);
+      if (!g.bar.menu.hidden) this.fillTabsMenu(g);
+    }
   }
 
   /**
@@ -619,64 +811,274 @@ export class App {
    * down, scrolls it, while tabs are out of sight; a touchpad's sideways swipe is the
    * browser's own.
    */
-  private watchStrip(list: HTMLElement): void {
+  private watchStrip(strip: Strip): void {
+    const list = strip.list;
+    const fit = () => { const g = this.groups.find((x) => x.bar === strip); if (g) this.fitStrip(g); };
     list.addEventListener('wheel', (e) => {
       if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
       if (list.scrollWidth <= list.clientWidth) return;
       e.preventDefault();
       list.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? list.clientWidth : 1);
-      this.fitStrip();
+      fit();
     }, { passive: false });
-    list.addEventListener('scroll', () => this.fitStrip());
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.fitStrip()).observe(list);
+    list.addEventListener('scroll', fit);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fit).observe(list);
   }
 
   /**
-   * Which tabs are out of sight, wholly or in part (T1.25): a fade on each edge that cuts
-   * one (Q177), and the button that lists every tab, with how many are out of sight
-   * (Q178); with every tab in sight, neither.
+   * Which tabs of a group (every group's, with none named) are out of sight, wholly or in
+   * part (T1.25): a fade on each edge that cuts one (Q177), and the button that lists
+   * every tab, with how many are out of sight (Q178); with every tab in sight, neither.
    */
-  private fitStrip(): void {
-    const list = this.el.strip;
-    if (!list) return;
-    const box = list.getBoundingClientRect();
-    let before = 0;
-    let after = 0;
-    for (const tab of this.tabs) {
-      const r = this.parts.get(tab)!.item.getBoundingClientRect();
-      if (r.width === 0) continue; // not laid out
-      if (r.left < box.left - 0.5) before++;
-      else if (r.right > box.right + 0.5) after++;
+  private fitStrip(group?: Group): void {
+    for (const g of group ? [group] : this.groups) {
+      if (!g.bar) continue;
+      const { list, more } = g.bar;
+      const box = list.getBoundingClientRect();
+      let before = 0;
+      let after = 0;
+      for (const tab of g.tabs) {
+        const r = this.parts.get(tab)!.item.getBoundingClientRect();
+        if (r.width === 0) continue; // not laid out
+        if (r.left < box.left - 0.5) before++;
+        else if (r.right > box.right + 0.5) after++;
+      }
+      list.classList.toggle('fade-start', before > 0);
+      list.classList.toggle('fade-end', after > 0);
+      const n = before + after;
+      more.hidden = n === 0;
+      more.querySelector('span')!.textContent = String(n);
+      const label = `${String(n)} more tab${n === 1 ? '' : 's'}: list every tab`;
+      more.setAttribute('aria-label', label);
+      more.title = label;
+      if (n === 0) this.showTabsMenu(g, false);
     }
-    list.classList.toggle('fade-start', before > 0);
-    list.classList.toggle('fade-end', after > 0);
-    const n = before + after;
-    const more = this.el.more;
-    more.hidden = n === 0;
-    more.querySelector('span')!.textContent = String(n);
-    const label = `${String(n)} more tab${n === 1 ? '' : 's'}: list every tab`;
-    more.setAttribute('aria-label', label);
-    more.title = label;
-    if (n === 0) this.showTabsMenu(false);
   }
 
-  /** The list of every tab (Q178): each tab's name, its path on pointing, the shown one marked. */
-  private fillTabsMenu(): void {
-    this.el.tabsMenu.replaceChildren(...this.tabs.map((tab, i) => {
+  /** A group's list of every tab (Q178): each tab's name, its path on pointing, the shown one marked. */
+  private fillTabsMenu(g: Group): void {
+    g.bar?.menu.replaceChildren(...g.tabs.map((tab, i) => {
       const b = document.createElement('button');
       b.setAttribute('role', 'menuitem');
       b.dataset.tab = String(i);
       b.textContent = tab.file ? basename(tab.file) : BLANK_NAME;
       b.title = tab.file ?? '';
-      if (tab === this.tab) b.setAttribute('aria-current', 'true');
+      if (tab === g.shown) b.setAttribute('aria-current', 'true');
       return b;
     }));
   }
 
-  private showTabsMenu(open: boolean): void {
-    if (open) this.fillTabsMenu();
-    this.el.tabsMenu.hidden = !open;
-    this.el.more.setAttribute('aria-expanded', String(open));
+  private showTabsMenu(g: Group, open: boolean): void {
+    if (!g.bar) return;
+    if (open) this.fillTabsMenu(g);
+    g.bar.menu.hidden = !open;
+    g.bar.more.setAttribute('aria-expanded', String(open));
+  }
+
+  /** Whether any group's list of every tab is open. */
+  private get tabsMenuOpen(): boolean {
+    return this.groups.some((g) => g.bar && !g.bar.menu.hidden);
+  }
+
+  private closeTabsMenus(): void {
+    for (const g of this.groups) this.showTabsMenu(g, false);
+  }
+
+  // ------------------------------------------------------------------ split view
+
+  /** Takes a group out of the window, its strip with it (its tabs are elsewhere already). */
+  private removeGroup(g: Group): void {
+    this.groups = this.groups.filter((x) => x !== g);
+    g.bar?.box.remove();
+  }
+
+  /**
+   * A group's × (T1.17, Q184): closes the split, moving the group's tabs after the other
+   * group's, so no tab closes; the other group's shown tab is shown.
+   */
+  private closeSplit(g: Group): void {
+    const other = this.groups.find((x) => x !== g);
+    if (!other) return;
+    other.tabs.push(...g.tabs);
+    this.removeGroup(g);
+    this.tab = other.shown;
+    this.render();
+  }
+
+  /** Moves a tab to a place among a group's tabs (`index`, counted without it); into another group, it is shown there. */
+  private moveTab(tab: Tab, to: Group, index: number): void {
+    const from = this.groupOf(tab)!;
+    const at = from.tabs.indexOf(tab);
+    from.tabs.splice(at, 1);
+    to.tabs.splice(Math.min(index, to.tabs.length), 0, tab);
+    if (to !== from) {
+      to.shown = tab;
+      this.tab = tab;
+      if (!from.tabs.length) this.removeGroup(from);
+      else if (from.shown === tab) from.shown = from.tabs[Math.min(at, from.tabs.length - 1)];
+    }
+    this.render();
+  }
+
+  /** Splits the window (T1.17, Q180): the tab alone in a new group on that side, the rest in the other; the new half is the active one. */
+  private splitWith(tab: Tab, side: 'left' | 'right' | 'top' | 'bottom'): void {
+    const from = this.groups[0];
+    const at = from.tabs.indexOf(tab);
+    if (this.groups.length > 1 || at < 0 || from.tabs.length < 2) return;
+    from.tabs.splice(at, 1);
+    if (from.shown === tab) from.shown = from.tabs[Math.min(at, from.tabs.length - 1)];
+    const g: Group = { tabs: [tab], shown: tab, bar: this.makeStrip() };
+    this.groups = side === 'left' || side === 'top' ? [g, from] : [from, g];
+    this.axis = side === 'left' || side === 'right' ? 'row' : 'col';
+    this.at = 0.5;
+    this.tab = tab;
+    this.render();
+  }
+
+  /** The divider's place (Q182): the first half's share, each half at least 240 px of `size` (less than 480 px: half and half). */
+  private setShare(share: number, size = 0): void {
+    const least = size > 0 ? 240 / size : 0;
+    this.at = size > 0 && size < 480 ? 0.5 : Math.min(1 - least, Math.max(least, share));
+    const a = Number(this.at.toFixed(3));
+    this.el.body.style.setProperty('--fa', `${String(a)}fr`);
+    this.el.body.style.setProperty('--fb', `${String(Number((1 - a).toFixed(3)))}fr`);
+  }
+
+  /** A drag on the divider (Q182): the halves follow the pointer; the place is kept when it is let go. */
+  private dragDivider(e: PointerEvent): void {
+    const [a, b] = this.groups;
+    if (!b || e.button !== 0) return;
+    e.preventDefault();
+    const row = this.axis === 'row';
+    const ra = this.parts.get(a.shown)!.chartarea.getBoundingClientRect();
+    const rb = this.parts.get(b.shown)!.chartarea.getBoundingClientRect();
+    const from = row ? ra.left : ra.top;
+    const size = (row ? rb.right : rb.bottom) - from;
+    try { this.divider.setPointerCapture(e.pointerId); } catch { /* no pointer to capture */ }
+    this.divider.classList.add('dragging');
+    document.body.classList.add(row ? 'resizing' : 'resizing-rows');
+    const move = (m: PointerEvent) => {
+      if (size <= 0) return;
+      this.setShare(((row ? m.clientX : m.clientY) - from) / size, size);
+      this.fitHeader();
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      this.divider.classList.remove('dragging');
+      document.body.classList.remove('resizing', 'resizing-rows');
+      this.keep();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  /**
+   * A press on a tab (T1.17, Q180): a move of more than 6 px starts a drag, with pointer
+   * events (Tauri's file dropping takes the browser's drag and drop on Windows). A copy of
+   * the tab follows the pointer, and where it would land shows (`landing`); letting go
+   * moves it there. Escape cancels. The click that ends the press doesn't show the tab.
+   */
+  private dragTab(e: PointerEvent, tab: Tab): void {
+    if (e.button !== 0 || !this.groups[0].bar) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const { ghost, zone, line } = this.drag;
+    const item = this.parts.get(tab)!.item;
+    let on = false;
+    let land: Landing | null = null;
+    const move = (m: PointerEvent) => {
+      if (!on) {
+        if (Math.hypot(m.clientX - x0, m.clientY - y0) <= 6) return;
+        on = true;
+        ghost.textContent = tab.file ? basename(tab.file) : BLANK_NAME;
+        ghost.hidden = false;
+        item.classList.add('dragging');
+        document.body.classList.add('dragging-tab');
+        this.closeTabsMenus();
+      }
+      ghost.style.left = `${String(m.clientX + 12)}px`;
+      ghost.style.top = `${String(m.clientY + 8)}px`;
+      land = this.landing(tab, m.clientX, m.clientY);
+      const box = land && land.kind !== 'strip' ? land.zone : null;
+      zone.hidden = !box;
+      if (box) {
+        const label = document.createElement('span');
+        label.textContent = `${ghost.textContent} opens here`;
+        zone.replaceChildren(label);
+        Object.assign(zone.style, { left: px(box.left), top: px(box.top), width: px(box.width), height: px(box.height) });
+      }
+      line.hidden = land?.kind !== 'strip';
+      if (land?.kind === 'strip') {
+        Object.assign(line.style, { left: px(land.line), top: px(land.bar.top + 6), height: px(Math.max(0, land.bar.height - 12)) });
+      }
+    };
+    const end = (drop: boolean) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('keydown', key, true);
+      if (!on) return;
+      ghost.hidden = true;
+      zone.hidden = true;
+      line.hidden = true;
+      item.classList.remove('dragging');
+      document.body.classList.remove('dragging-tab');
+      this.noClick = true;
+      window.setTimeout(() => { this.noClick = false; }, 0);
+      if (drop && land) this.land(tab, land);
+    };
+    const up = () => end(true);
+    const key = (k: KeyboardEvent) => {
+      if (k.key !== 'Escape' || !on) return;
+      k.stopImmediatePropagation();
+      end(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('keydown', key, true);
+  }
+
+  /** Where a tab dragged to (x, y) would land, if anywhere (Q180, Q185). */
+  private landing(tab: Tab, x: number, y: number): Landing | null {
+    for (const g of this.groups) {
+      const bar = g.bar?.box.getBoundingClientRect();
+      if (!bar || !inside(bar, x, y)) continue;
+      const others = g.tabs.filter((t) => t !== tab).map((t) => this.parts.get(t)!.item.getBoundingClientRect());
+      const index = others.filter((r) => r.left + r.width / 2 < x).length;
+      const line = index < others.length ? others[index].left : others.length ? others[others.length - 1].right : bar.left + 4;
+      return { kind: 'strip', group: g, index, line, bar };
+    }
+    if (this.groups.length === 1) {
+      // A group's only tab can't split it: the other half would have no tab.
+      if (this.groups[0].tabs.length < 2) return null;
+      const r = this.parts.get(this.tab)!.chartarea.getBoundingClientRect();
+      if (!inside(r, x, y)) return null;
+      const near = [
+        ['left', (x - r.left) / r.width], ['right', (r.right - x) / r.width],
+        ['top', (y - r.top) / r.height], ['bottom', (r.bottom - y) / r.height],
+      ] as const;
+      const side = near.reduce((m, s) => (s[1] < m[1] ? s : m))[0];
+      const w = r.width / 2;
+      const h = r.height / 2;
+      const zone = side === 'left' ? { left: r.left, top: r.top, width: w, height: r.height }
+        : side === 'right' ? { left: r.left + w, top: r.top, width: w, height: r.height }
+          : side === 'top' ? { left: r.left, top: r.top, width: r.width, height: h }
+            : { left: r.left, top: r.top + h, width: r.width, height: h };
+      return { kind: 'edge', side, zone };
+    }
+    for (const g of this.groups) {
+      const r = this.parts.get(g.shown)!.chartarea.getBoundingClientRect();
+      if (inside(r, x, y)) return { kind: 'half', group: g, zone: { left: r.left, top: r.top, width: r.width, height: r.height } };
+    }
+    return null;
+  }
+
+  /** A dragged tab let go where it would land. */
+  private land(tab: Tab, at: Landing): void {
+    if (at.kind === 'strip') this.moveTab(tab, at.group, at.index);
+    else if (at.kind === 'edge') this.splitWith(tab, at.side);
+    else if (at.group.tabs.includes(tab)) this.show(tab);
+    else this.moveTab(tab, at.group, at.group.tabs.indexOf(at.group.shown) + 1);
   }
 
   /** What a tab uses of the window: the chart's tools (the island and the pill), the window's choices, the toast. */
@@ -1115,19 +1517,22 @@ export class App {
       }
       if (!target.closest('.dir-wrap')) this.showDirMenu(false);
       const listed = target.closest<HTMLElement>('.tabs-menu [data-tab]')?.dataset.tab;
+      const group = this.groupAt(target);
       if (listed !== undefined) {
-        const tab = this.tabs[Number(listed)];
-        this.showTabsMenu(false);
+        const tab = group?.tabs[Number(listed)];
+        this.closeTabsMenus();
         if (tab) this.show(tab);
         return;
       }
-      if (!target.closest('.more-wrap')) this.showTabsMenu(false);
+      const wrap = target.closest('.more-wrap');
+      for (const g of this.groups) if (!wrap || g !== group) this.showTabsMenu(g, false);
       const act = target.closest<HTMLElement>('button[data-act]')?.dataset.act;
       if (act === 'dir' && !(this.dirHover && !this.el.dirMenu.hidden)) this.showDirMenu(!!this.el.dirMenu.hidden);
       if (act === 'open') void this.pickAndOpen();
       if (act === 'new') void this.newFile();
-      if (act === 'newtab') this.newTab();
-      if (act === 'alltabs') this.showTabsMenu(!!this.el.tabsMenu.hidden);
+      if (act === 'newtab') this.newTab(group);
+      if (act === 'alltabs' && group?.bar) this.showTabsMenu(group, !!group.bar.menu.hidden);
+      if (act === 'unsplit' && group) this.closeSplit(group);
       if (act === 'add') void this.addNode(null);
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
@@ -1163,7 +1568,17 @@ export class App {
     this.root.addEventListener('pointerdown', (e) => {
       const g = (e.target as Element).closest<HTMLElement>('.grip[data-pane]');
       if (g) this.dragGrip(e, g);
+      if ((e.target as Element).closest('.split-divider')) this.dragDivider(e);
     });
+    this.divider.addEventListener('dblclick', () => { this.setShare(0.5); this.fitHeader(); this.keep(); });
+    // While split, a press anywhere in a half makes it the active half (Q181); the press
+    // still does what it does there.
+    this.el.body.addEventListener('pointerdown', (e) => {
+      if (this.groups.length < 2) return;
+      const view = (e.target as Element).closest('.tabview');
+      const g = this.groups.find((x) => this.parts.get(x.shown)?.view === view);
+      if (g && g.shown !== this.tab) this.show(g.shown);
+    }, true);
 
     // The keys act on the shown tab only, and not while a window lies over Naiad's (T1.21).
     window.addEventListener('keydown', (e) => {
@@ -1183,7 +1598,7 @@ export class App {
       else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.tab.history(false); }
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.tab.deleteSelection(); }
       else if (key === 'escape') {
-        if (!this.el.tabsMenu.hidden) this.showTabsMenu(false);
+        if (this.tabsMenuOpen) this.closeTabsMenus();
         else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
         else if (this.hlOn) this.setHighlighting(false);
         else this.select(null);

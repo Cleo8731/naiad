@@ -55,7 +55,7 @@ describe('the strip\'s parts (Q177)', () => {
     expect(items()).toHaveLength(5);
     expect(list().querySelector('[data-act="newtab"]')).toBeNull();
     const after = [...q('.tabs').children].slice([...q('.tabs').children].indexOf(list()) + 1);
-    expect(after.map((el) => el.querySelector('[data-act]')?.getAttribute('data-act') ?? el.getAttribute('data-act'))).toEqual(['alltabs', 'newtab']);
+    expect(after.map((el) => el.querySelector('[data-act]')?.getAttribute('data-act') ?? el.getAttribute('data-act'))).toEqual(['alltabs', 'newtab', 'unsplit']);
   });
 
   test('a tab shrinks to 72 px before the list scrolls; the list has no scroll bar', () => {
