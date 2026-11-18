@@ -6,6 +6,7 @@ import { forMermaid, type Snap } from './semantics';
 import { parseDoc } from './core/scan';
 import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
+import { raiseGroupTitles } from './group-titles';
 
 export type Target =
   | { kind: 'node'; id: string }
@@ -71,6 +72,9 @@ function pageColours(dark: boolean): Record<keyof typeof CHART_COLOURS, string> 
   return out;
 }
 
+/** The grey of a group's title and an arrow label's text: between the muted colour and the text's. */
+const softText = (c: Record<'muted' | 'text', string>) => `color-mix(in srgb, ${c.muted} 55%, ${c.text})`;
+
 /**
  * Sets Mermaid up to draw in the palette's colours, light or dark (Appearance, T4.8; the
  * palette, T4.9). Called again when either changes, before every tab is drawn again.
@@ -92,6 +96,18 @@ export function configureMermaid(dark: boolean): void {
       lineColor: c.edge, textColor: c.text, clusterBkg: c.group, clusterBorder: c['group-border'],
       edgeLabelBackground: c.bg, titleColor: c.muted,
     },
+    // Group titles (Q173) and arrow labels (Q175), the user, 2026-11-18: a title is
+    // semibold and a little larger than a node's text, in a grey lighter than the muted
+    // colour; an arrow label sits in a soft pill with no border and a small margin, a
+    // little lighter than the chart, its text a little smaller and grey, so it reads as a
+    // caption and not as a node. Mermaid applies these before it measures, so the layout
+    // makes room for them.
+    themeCSS: [
+      `.cluster-label span, .cluster-label p { font-weight: 600; font-size: 15px; color: ${softText(c)}; }`,
+      `.labelBkg { background-color: color-mix(in srgb, ${c.edge} 14%, ${c.bg}); padding: 2px 7px; border-radius: 999px; }`,
+      '.edgeLabel p, span.edgeLabel { background-color: transparent; }',
+      `.labelBkg .edgeLabel { font-size: 13px; color: ${softText(c)}; }`,
+    ].join('\n'),
     flowchart: { useMaxWidth: false, htmlLabels: true, padding: 14, nodeSpacing: 44, rankSpacing: 52 },
     // Gaps at crossings (the user, 2026-11-13): where two arrows cross, Mermaid's layout
     // (ELK, its default) cuts a short gap in one, as on road maps, instead of its own
@@ -402,6 +418,7 @@ export class Chart {
       if (i >= 0) g.dataset.edge = String(i);
     });
     addDirectionMarks(svg);
+    raiseGroupTitles(svg);
   }
 
   private targetAt(el: Element | null): Target | null {
