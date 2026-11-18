@@ -121,8 +121,6 @@ export function configureMermaid(dark: boolean): void {
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 4;
-/** The dot grid's spacing at 100%, in chart units (T4.18). */
-const GRID = 22;
 /** How much one wheel event changes the zoom, per unit of its deltaY: a mouse wheel's
  * notch is 100, so a plain notch zooms e^0.16, 17.4%. A Ctrl-marked event is a pinch
  * (or Ctrl held), which a browser that takes the pinch itself sends as many small
@@ -695,15 +693,6 @@ export class Chart {
   private apply(): void {
     const { x, y, k } = this.view;
     this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
-    // The dot grid moves and scales with the chart (T4.18, Q187): 22 chart units apart,
-    // doubled or halved until 12 to 44 px apart on screen, so every step keeps the dots
-    // of the one before it.
-    let step = GRID * k;
-    while (step < 12) step *= 2;
-    while (step > 44) step /= 2;
-    const wrap = (v: number) => (((v % step) + step) % step).toFixed(2);
-    this.stage.style.backgroundSize = `${step.toFixed(2)}px ${step.toFixed(2)}px`;
-    this.stage.style.backgroundPosition = `${wrap(x)}px ${wrap(y)}px`;
     this.placeHandles();
     this.refreshDrag();
   }

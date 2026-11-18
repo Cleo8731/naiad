@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// The dot grid (T4.18): it moves with the chart and its spacing follows the zoom, in
-// steps that keep the dots 12 to 44 px apart on screen (Q187); its dots stand out from
-// the background at about 1.5 to 1 in every theme and mode (Q188).
+// The dot grid (T4.18): it stays fixed to the window, 22 px apart, while panning and
+// zooming move the chart (Q187, changed back by the user, 2026-11-18); its dots stand
+// out from the background at about 1.5 to 1 in every theme and mode (Q188).
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import mermaid from 'mermaid';
@@ -14,20 +14,10 @@ const snap: Snap = {
   edges: [], edgeIds: [], subs: {}, accTitle: '', accDescr: '',
 };
 
-describe('the dot grid follows the chart (Q187)', () => {
+describe('the dot grid stays fixed to the window (Q187, changed back)', () => {
   let stage: HTMLElement, chart: Chart;
   const box = (w: number, h: number) =>
     ({ left: 0, top: 0, right: w, bottom: h, width: w, height: h, x: 0, y: 0, toJSON() {} }) as DOMRect;
-  /** The view's translate and scale, from the canvas's transform. */
-  const view = () => {
-    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(stage.querySelector<HTMLElement>('.canvas')!.style.transform)!;
-    return { x: Number(m[1]), y: Number(m[2]), k: Number(m[3]) };
-  };
-  const grid = () => {
-    const [w, h] = stage.style.backgroundSize.split(' ').map(parseFloat);
-    const [x, y] = stage.style.backgroundPosition.split(' ').map(parseFloat);
-    return { w, h, x, y };
-  };
 
   beforeEach(() => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -44,43 +34,19 @@ describe('the dot grid follows the chart (Q187)', () => {
   });
   afterEach(() => { chart.destroy(); stage.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-  test('the dots are 22 chart units apart and line up with the chart', async () => {
+  test('panning and zooming leave the grid\'s spacing and place as the style sheet sets them', async () => {
     await chart.draw('flowchart TD\n  A\n', snap);
-    const v = view();
-    const g = grid();
-    expect(g.w).toBeCloseTo(22 * v.k, 2);
-    expect(g.h).toBe(g.w);
-    // The grid's tiles start where the chart's origin is, wrapped into one tile.
-    expect(g.x).toBeCloseTo(((v.x % g.w) + g.w) % g.w, 2);
-    expect(g.y).toBeCloseTo(((v.y % g.w) + g.w) % g.w, 2);
-  });
-
-  test('panning moves the grid with the chart', async () => {
-    await chart.draw('flowchart TD\n  A\n', snap);
-    const before = grid();
-    const v = view();
     chart.setWheelMode('touchpad'); // a two-finger move pans
     stage.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 200, clientY: 150, deltaX: 7, deltaY: 5 }));
-    const after = view();
-    expect(after.k).toBe(v.k);
-    expect(after.x).not.toBe(v.x);
-    const g = grid();
-    expect(g.w).toBe(before.w);
-    expect(g.x).toBeCloseTo(((after.x % g.w) + g.w) % g.w, 2);
-    expect(g.y).toBeCloseTo(((after.y % g.w) + g.w) % g.w, 2);
+    chart.zoom(0.5, 400, 300);
+    chart.zoom(3, 400, 300);
+    expect(stage.style.backgroundSize).toBe('');
+    expect(stage.style.backgroundPosition).toBe('');
   });
 
-  test('at every zoom the dots are 12 to 44 px apart on screen, each step a power of two of 22 chart units', async () => {
-    await chart.draw('flowchart TD\n  A\n', snap);
-    for (const factor of [0.9, 0.8, 0.7, 0.5, 0.5, 0.5, 2, 2, 2, 2, 2, 2]) {
-      chart.zoom(factor, 400, 300);
-      const { k } = view();
-      const { w } = grid();
-      expect(w).toBeGreaterThanOrEqual(12);
-      expect(w).toBeLessThanOrEqual(44);
-      const steps = Math.log2(w / (22 * k));
-      expect(Math.abs(steps - Math.round(steps))).toBeCloseTo(0, 2); // the size is written to 0.01 px
-    }
+  test('the style sheet puts the dots 22 px apart', () => {
+    const stageRule = /\n\.stage \{([^}]*)\}/.exec(readFileSync('src/style.css', 'utf8'))![1];
+    expect(stageRule).toContain('background-size: 22px 22px;');
   });
 });
 
