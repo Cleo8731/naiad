@@ -50,7 +50,7 @@
   --on-accent: light-dark(#ffffff, #04202a);
   --accent-soft: light-dark(#d6ecee, #133740);
   --highlight: light-dark(#e9a83a, #f2bc55);
-  --grid-dot: light-dark(#cfe2e1, #163238);
+  --grid-dot: light-dark(#b0cfce, #1c3e44);
   --node: light-dark(#ffffff, #12303a);
   --node-border: light-dark(#95c2c8, #34727f);
   --edge: light-dark(#66979f, #5592a0);
@@ -70,7 +70,7 @@
   --on-accent: light-dark(#ffffff, #15123a);
   --accent-soft: light-dark(#e3e0fa, #29264f);
   --highlight: light-dark(#d9971f, #f2c45a);
-  --grid-dot: light-dark(#d3d0e6, #22203a);
+  --grid-dot: light-dark(#c6c2df, #323055);
   --node: light-dark(#ffffff, #1f1d3a);
   --node-border: light-dark(#aaa5cf, #4f4a85);
   --edge: light-dark(#8580ad, #7a76a8);
@@ -90,7 +90,7 @@
   --on-accent: light-dark(#ffffff, #16220c);
   --accent-soft: light-dark(#dfe9d0, #25331b);
   --highlight: light-dark(#d47a22, #f0a24a);
-  --grid-dot: light-dark(#d0d5c0, #20281a);
+  --grid-dot: light-dark(#c2c9ae, #2d3924);
   --node: light-dark(#ffffff, #1d2618);
   --node-border: light-dark(#a7b38f, #4c5e3a);
   --edge: light-dark(#7f8b6b, #7a8a66);
@@ -110,7 +110,7 @@
   --on-accent: light-dark(#ffffff, #3a0a1d);
   --accent-soft: light-dark(#f9dbe5, #44202f);
   --highlight: light-dark(#4fa83a, #84d66a);
-  --grid-dot: light-dark(#edd3da, #2c1a22);
+  --grid-dot: light-dark(#e3bfc9, #492b3a);
   --node: light-dark(#ffffff, #2b1820);
   --node-border: light-dark(#dfaebd, #77445a);
   --edge: light-dark(#b08391, #a07888);
@@ -130,7 +130,7 @@
   --on-accent: light-dark(#ffffff, #0a121b);
   --accent-soft: light-dark(#dfe8f2, #172331);
   --highlight: light-dark(#38bdf8, #5fd0ff);
-  --grid-dot: light-dark(#cfdbe7, #141e29);
+  --grid-dot: light-dark(#b9cadb, #233243);
   --node: light-dark(#ffffff, #111a24);
   --node-border: light-dark(#a4b4c6, #3a4c60);
   --edge: light-dark(#7a8b9d, #6f8296);
@@ -150,7 +150,7 @@
   --on-accent: light-dark(#ffffff, #2a0f06);
   --accent-soft: light-dark(#f8ded3, #3e2419);
   --highlight: light-dark(#1f9bb8, #4fd0ec);
-  --grid-dot: light-dark(#e6d5c9, #2a1f19);
+  --grid-dot: light-dark(#dbc3b3, #413128);
   --node: light-dark(#ffffff, #281d17);
   --node-border: light-dark(#d3b3a3, #6d4a3a);
   --edge: light-dark(#a08273, #9a7d70);
