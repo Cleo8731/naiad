@@ -337,10 +337,19 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 .tab:hover { background: var(--bg); color: var(--text); }
 .tab.shown { background: var(--accent-soft); color: var(--text); }
+/* A tab is as wide as its name in bold, the shown tab's weight, plus room for its ×,
+   shown or not, so neither pointing at a tab nor showing it changes its width and moves
+   the tabs after it (Q189). The bold copy is an invisible twin in the same grid cell. */
 .tab .tname {
   flex: 1; min-width: 0; height: 30px; padding: 0 28px 0 12px; border: 0; border-radius: var(--radius-tab); background: transparent;
-  color: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: inherit; text-align: left; white-space: nowrap; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr); align-items: center;
 }
+.tab .tname::after {
+  content: attr(data-label); grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap;
+  font-weight: 600; visibility: hidden;
+}
+.tab .tname > .tlabel { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tab.shown .tname { font-weight: 600; cursor: default; }
 .tab .tclose {
   position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center;
@@ -349,8 +358,6 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .tab .tclose svg { width: 14px; height: 14px; display: block; }
 .tab .tclose:hover { background: var(--panel); color: var(--text); }
 .tab:not(.shown):not(:hover):not(:focus-within) .tclose { visibility: hidden; }
-/* Where the × is hidden, the name takes its room, so a 72 px tab shows about 6 letters (T1.25). */
-.tab:not(.shown):not(:hover):not(:focus-within) .tname { padding-right: 10px; }
 .tabs button.icon {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   width: 30px; height: 30px; padding: 0; border-color: transparent; border-radius: var(--radius-pill);

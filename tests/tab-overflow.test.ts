@@ -164,9 +164,26 @@ describe('the fade and the list of all tabs (Q177, Q178)', () => {
   });
 });
 
-describe('a narrow tab\'s name (Q177)', () => {
-  test('where the × is hidden, the name takes its room', () => {
-    expect(rule('.tab:not(.shown):not(:hover):not(:focus-within) .tname')).toMatch(/padding-right:\s*10px/);
+describe('a tab\'s width never changes on pointing or showing (Q189)', () => {
+  test('every tab keeps room for its ×: no rule changes the name\'s padding by state', () => {
+    expect(rule('.tab .tname')).toMatch(/padding:\s*0 28px 0 12px/);
+    const byState = css().replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.split('{'))
+      .filter(([sel, body]) => /\.tab[^{]*(:hover|:focus-within|\.shown)[^{]*\.tname/.test(sel ?? '') && /padding|width|margin/.test(body ?? ''));
+    expect(byState).toEqual([]);
+  });
+
+  test('each name keeps room for itself in bold, the shown tab\'s weight, so showing a tab doesn\'t widen it', async () => {
+    await start();
+    for (const item of items()) {
+      const name = item.querySelector<HTMLElement>('.tname')!;
+      expect(name.querySelector('.tlabel')!.textContent).toBe(name.textContent);
+      expect(name.dataset.label).toBe(name.textContent);
+    }
+    const reserve = rule('.tab .tname::after');
+    expect(reserve).toMatch(/content:\s*attr\(data-label\)/);
+    expect(reserve).toMatch(/font-weight:\s*600/);
+    expect(reserve).toMatch(/visibility:\s*hidden/);
+    expect(rule('.tab.shown .tname')).toMatch(/font-weight:\s*600/);
   });
 });
 

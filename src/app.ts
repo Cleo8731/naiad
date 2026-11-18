@@ -790,7 +790,14 @@ export class App {
         const file = tab.file;
         const label = file ? basename(file) : BLANK_NAME;
         const shown = tab === g.shown;
-        p.name.textContent = label;
+        if (p.name.dataset.label !== label) {
+          // The name, and its bold twin's text, which keeps the tab's width (Q189).
+          const text = document.createElement('span');
+          text.className = 'tlabel';
+          text.textContent = label;
+          p.name.replaceChildren(text);
+          p.name.dataset.label = label;
+        }
         p.name.title = file ?? '';
         p.name.setAttribute('aria-selected', String(shown));
         p.item.classList.toggle('shown', shown);
