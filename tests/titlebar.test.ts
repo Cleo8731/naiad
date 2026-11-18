@@ -77,6 +77,8 @@ describe("Naiad's own title bar (T4.10, Q171)", () => {
     // (Tauri's drag script skips those).
     expect(document.querySelector('header.top')!.getAttribute('data-tauri-drag-region')).toBe('deep');
     expect(document.querySelector('.rail .mark')!.hasAttribute('data-tauri-drag-region')).toBe(true);
+    // The list of every tab (T1.25) opens in the row: a press on its edge doesn't move the window.
+    expect(document.querySelector('.tabs-menu')!.getAttribute('data-tauri-drag-region')).toBe('false');
   });
 
   it('the close button is the red one, as in Windows', async () => {

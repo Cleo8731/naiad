@@ -165,6 +165,8 @@ export class App {
     islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
     /** The tab strip and its +; none in `naiad serve`'s page, which shows one file. */
     strip: HTMLElement | null; plus: HTMLButtonElement; body: HTMLElement;
+    /** The button that lists every tab, and its list (T1.25, Q178). */
+    more: HTMLButtonElement; tabsMenu: HTMLElement;
   };
   /** The recent list's pane (T1.15); none in `naiad serve`'s page, which shows one file only. */
   private recent: RecentPane | null = null;
@@ -196,7 +198,12 @@ export class App {
       </nav>
       <div class="column">
         <header class="bar top">
-          <div class="tabs" role="tablist" aria-label="Open flowcharts">
+          <div class="tabs">
+            <div class="tablist" role="tablist" aria-label="Open flowcharts"></div>
+            <div class="more-wrap">
+              <button class="more" data-act="alltabs" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.chevron}<span></span></button>
+              <div class="tabs-menu" role="menu" aria-label="Every open tab" hidden></div>
+            </div>
             <button class="icon" data-act="newtab" title="New tab" aria-label="New tab">${ICONS.plus}</button>
           </div>
         </header>
@@ -252,7 +259,8 @@ export class App {
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
       islandRow: q('.island-row'), island: q('.island'), pill: q('.pill'), pillEdit: q('.pill-edit'),
-      strip: q('.tabs'), plus: q('[data-act="newtab"]'), body: q('.body'),
+      strip: q('.tabs .tablist'), plus: q('[data-act="newtab"]'), body: q('.body'),
+      more: q('[data-act="alltabs"]'), tabsMenu: q('.tabs-menu'),
     };
     this.showDirection('TD');
     setSlide(this.el.view, 0, VIEW_LABEL.editing, VIEW_TIP.editing); // Edit mode until `showViewing` says otherwise
@@ -263,6 +271,7 @@ export class App {
       this.root.querySelectorAll('header.top, nav.recent, [data-act="recent"], [data-act="settings"]').forEach((b) => b.remove());
       this.el.strip = null;
     }
+    if (this.el.strip) this.watchStrip(this.el.strip);
     // Naiad's own title bar (T4.10; the user, 2026-11-17, Q171): the desktop window has
     // no Windows title bar, so the tabs row is the top of the window. At its right end,
     // minimize, maximize (restore while maximized) and close. A press on the row's empty
@@ -273,6 +282,8 @@ export class App {
     if (win && top) {
       top.setAttribute('data-tauri-drag-region', 'deep');
       this.root.querySelector('.rail .mark')!.setAttribute('data-tauri-drag-region', '');
+      // The list of every tab (T1.25) lies in the row; a press on its edge doesn't move the window.
+      this.el.tabsMenu.setAttribute('data-tauri-drag-region', 'false');
       const box = document.createElement('div');
       box.className = 'winctl';
       box.innerHTML = `
@@ -432,6 +443,9 @@ export class App {
     this.parts.get(tab)!.chartarea.append(this.el.islandRow, this.el.pill);
     this.paintStrip();
     this.parts.get(tab)!.item.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    // The list has scrolled now; its scroll event can come a frame later, or not at all
+    // while the window is hidden.
+    this.fitStrip();
     this.backend.setWindowTitle(tab.file ? `${basename(tab.file)} - Naiad` : 'Naiad');
     this.recent?.mark(tab.file);
     this.recentFollows(tab);
@@ -594,7 +608,75 @@ export class App {
       p.close.hidden = lone && !file;
       return p.item;
     });
-    this.el.strip.replaceChildren(...items, this.el.plus);
+    this.el.strip.replaceChildren(...items);
+    this.fitStrip();
+    if (!this.el.tabsMenu.hidden) this.fillTabsMenu();
+  }
+
+  /**
+   * Many tabs (T1.25; the user, 2026-11-18, Q177): tabs shrink to 72 px (the CSS); past
+   * that the list scrolls sideways, with no scroll bar. The wheel, which turns up and
+   * down, scrolls it, while tabs are out of sight; a touchpad's sideways swipe is the
+   * browser's own.
+   */
+  private watchStrip(list: HTMLElement): void {
+    list.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      if (list.scrollWidth <= list.clientWidth) return;
+      e.preventDefault();
+      list.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? list.clientWidth : 1);
+      this.fitStrip();
+    }, { passive: false });
+    list.addEventListener('scroll', () => this.fitStrip());
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.fitStrip()).observe(list);
+  }
+
+  /**
+   * Which tabs are out of sight, wholly or in part (T1.25): a fade on each edge that cuts
+   * one (Q177), and the button that lists every tab, with how many are out of sight
+   * (Q178); with every tab in sight, neither.
+   */
+  private fitStrip(): void {
+    const list = this.el.strip;
+    if (!list) return;
+    const box = list.getBoundingClientRect();
+    let before = 0;
+    let after = 0;
+    for (const tab of this.tabs) {
+      const r = this.parts.get(tab)!.item.getBoundingClientRect();
+      if (r.width === 0) continue; // not laid out
+      if (r.left < box.left - 0.5) before++;
+      else if (r.right > box.right + 0.5) after++;
+    }
+    list.classList.toggle('fade-start', before > 0);
+    list.classList.toggle('fade-end', after > 0);
+    const n = before + after;
+    const more = this.el.more;
+    more.hidden = n === 0;
+    more.querySelector('span')!.textContent = String(n);
+    const label = `${String(n)} more tab${n === 1 ? '' : 's'}: list every tab`;
+    more.setAttribute('aria-label', label);
+    more.title = label;
+    if (n === 0) this.showTabsMenu(false);
+  }
+
+  /** The list of every tab (Q178): each tab's name, its path on pointing, the shown one marked. */
+  private fillTabsMenu(): void {
+    this.el.tabsMenu.replaceChildren(...this.tabs.map((tab, i) => {
+      const b = document.createElement('button');
+      b.setAttribute('role', 'menuitem');
+      b.dataset.tab = String(i);
+      b.textContent = tab.file ? basename(tab.file) : BLANK_NAME;
+      b.title = tab.file ?? '';
+      if (tab === this.tab) b.setAttribute('aria-current', 'true');
+      return b;
+    }));
+  }
+
+  private showTabsMenu(open: boolean): void {
+    if (open) this.fillTabsMenu();
+    this.el.tabsMenu.hidden = !open;
+    this.el.more.setAttribute('aria-expanded', String(open));
   }
 
   /** What a tab uses of the window: the chart's tools (the island and the pill), the window's choices, the toast. */
@@ -1032,11 +1114,20 @@ export class App {
         return;
       }
       if (!target.closest('.dir-wrap')) this.showDirMenu(false);
+      const listed = target.closest<HTMLElement>('.tabs-menu [data-tab]')?.dataset.tab;
+      if (listed !== undefined) {
+        const tab = this.tabs[Number(listed)];
+        this.showTabsMenu(false);
+        if (tab) this.show(tab);
+        return;
+      }
+      if (!target.closest('.more-wrap')) this.showTabsMenu(false);
       const act = target.closest<HTMLElement>('button[data-act]')?.dataset.act;
       if (act === 'dir' && !(this.dirHover && !this.el.dirMenu.hidden)) this.showDirMenu(!!this.el.dirMenu.hidden);
       if (act === 'open') void this.pickAndOpen();
       if (act === 'new') void this.newFile();
       if (act === 'newtab') this.newTab();
+      if (act === 'alltabs') this.showTabsMenu(!!this.el.tabsMenu.hidden);
       if (act === 'add') void this.addNode(null);
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
@@ -1092,7 +1183,8 @@ export class App {
       else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); void this.tab.history(false); }
       else if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.tab.deleteSelection(); }
       else if (key === 'escape') {
-        if (!this.el.dirMenu.hidden) this.showDirMenu(false);
+        if (!this.el.tabsMenu.hidden) this.showTabsMenu(false);
+        else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
         else if (this.hlOn) this.setHighlighting(false);
         else this.select(null);
       }
