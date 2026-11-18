@@ -75,3 +75,74 @@ describe('the rail\'s switches slide (the user, 2026-11-17)', () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{(?:[^{}]*\{[^}]*\})*?[^{}]*\.slide \.knob[^{]*\{\s*transition:\s*none/);
   });
 });
+
+// On pointing (the user, 2026-11-17, answering Q172: "Yes, build it"): the switch widens
+// into two lines, both modes' names always shown; the knob stretches right over the mode
+// in use and its name, in the accent, and the other name stays grey outside it. The knob
+// is as wide as its own name.
+describe('the rail\'s switches on pointing (T4.13, Q172)', () => {
+  const opts = (act: 'wheel' | 'view') => [...toggle(act).querySelectorAll<HTMLElement>('.track .opt')];
+  const css = () => readFileSync('src/style.css', 'utf8');
+  const rule = (sel: string) => css().match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+  // jsdom lays nothing out: a line's width here is 10 px a letter of its name.
+  const real = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!;
+  let perLetter = 10;
+  beforeEach(() => {
+    perLetter = 10;
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true, get(this: HTMLElement) { return (this.dataset.name ?? '').length * perLetter; },
+    });
+  });
+  afterEach(() => Object.defineProperty(HTMLElement.prototype, 'offsetWidth', real));
+
+  it('each line of the track holds its icon and its mode\'s name, in the order of the icons', async () => {
+    await start();
+    expect(opts('wheel').map((o) => [o.dataset.name, o.querySelector('svg')!.getAttribute('data-icon')]))
+      .toEqual([['Mouse mode', 'mouse'], ['Touchpad mode', 'touchpad']]);
+    expect(opts('view').map((o) => [o.dataset.name, o.querySelector('svg')!.getAttribute('data-icon')]))
+      .toEqual([['Edit mode', 'edit'], ['View mode', 'read']]);
+  });
+
+  it('the line of the mode in use is marked, and the mark moves with a click', async () => {
+    await start();
+    expect(opts('wheel').map((o) => o.classList.contains('on'))).toEqual([true, false]);
+    toggle('wheel').click();
+    expect(opts('wheel').map((o) => o.classList.contains('on'))).toEqual([false, true]);
+    toggle('view').click();
+    await vi.waitFor(() => expect(opts('view').map((o) => o.classList.contains('on'))).toEqual([false, true]));
+  });
+
+  it('the knob\'s width on pointing is the width of the line it covers, and follows a click', async () => {
+    await start();
+    const knob = () => toggle('wheel').querySelector<HTMLElement>('.knob')!;
+    expect(knob().style.getPropertyValue('--kw')).toBe('100px'); // "Mouse mode"
+    toggle('wheel').click();
+    expect(knob().style.getPropertyValue('--kw')).toBe('130px'); // "Touchpad mode"
+    expect(toggle('view').querySelector<HTMLElement>('.knob')!.style.getPropertyValue('--kw')).toBe('90px'); // "Edit mode"
+  });
+
+  it('pointing measures the line again, so a font that loaded late gives the right width', async () => {
+    await start();
+    perLetter = 8;
+    toggle('wheel').dispatchEvent(new Event('pointerenter'));
+    expect(toggle('wheel').querySelector<HTMLElement>('.knob')!.style.getPropertyValue('--kw')).toBe('80px');
+  });
+
+  it('the button keeps one name, the mode in use, for screen readers', async () => {
+    await start();
+    expect(toggle('wheel').textContent!.trim()).toBe('Mouse mode');
+    expect(toggle('view').textContent!.trim()).toBe('Edit mode');
+  });
+
+  it('the names show only on pointing; the knob then stretches; the other name is grey', () => {
+    expect(rule('.slide .opt::after')).toMatch(/content:\s*attr\(data-name\)/);
+    expect(rule('.slide .opt::after')).toMatch(/color:\s*var\(--muted\)/);
+    expect(rule('.slide .opt.on::after')).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule('.slide .track')).toMatch(/max-width:\s*26px/);
+    expect(rule('.slide .track')).toMatch(/overflow:\s*hidden/);
+    expect(rule('.rail button.slide:hover .track')).toMatch(/max-width:\s*\d{3}px/);
+    expect(rule('.rail button.slide:hover .knob')).toMatch(/width:\s*var\(--kw/);
+    expect(rule('.slide .knob')).toMatch(/transition:[^;]*width/);
+    expect(rule('.slide .rlabel')).toMatch(/clip-path:\s*inset\(50%\)/); // heard, not seen
+  });
+});

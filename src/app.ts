@@ -63,16 +63,30 @@ const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mous
  * The rail's two switches, Touchpad and Mouse and the mode button, as vertical sliding
  * toggles (the user, 2026-11-17): a short upright track holding both modes' icons, and a
  * knob that slides onto the one in use (`setSlide`). The track is drawn once, so the
- * knob can slide; the name beside it, shown on pointing, says the mode.
+ * knob can slide. On pointing (T4.13, the user's answer to Q172, 2026-11-17) the track
+ * widens into two lines, each icon with its mode's name, and the knob stretches over the
+ * line in use, as wide as that line (`--kw`); the other name stays grey. The names are
+ * drawn by the style sheet from `data-name`, so the button's own name, `.rlabel`, heard
+ * and not seen, stays the mode in use.
  */
-const track = (first: string, second: string) =>
-  `<span class="track" aria-hidden="true"><span class="knob"></span>${first}${second}</span>`;
+const track = (first: string, firstName: string, second: string, secondName: string) =>
+  `<span class="track" aria-hidden="true"><span class="knob"></span>` +
+  `<span class="opt" data-name="${firstName}">${first}</span><span class="opt" data-name="${secondName}">${second}</span></span>`;
+/** Sets the knob's width on pointing to that of the line it covers. */
+function measureSlide(button: HTMLElement): void {
+  const line = button.querySelectorAll<HTMLElement>('.track .opt')[Number(button.dataset.pos ?? 0)];
+  if (line) button.querySelector<HTMLElement>('.knob')!.style.setProperty('--kw', `${line.offsetWidth}px`);
+}
 /** Puts a sliding toggle's knob on its first (0) or second (1) mode, and names the mode. */
 function setSlide(button: HTMLElement, pos: 0 | 1, label: string, tip: string): void {
   button.dataset.pos = String(pos);
-  button.querySelectorAll('.track svg').forEach((svg, i) => svg.classList.toggle('on', i === pos));
+  button.querySelectorAll('.track .opt').forEach((opt, i) => {
+    opt.classList.toggle('on', i === pos);
+    opt.querySelector('svg')?.classList.toggle('on', i === pos);
+  });
   button.querySelector('.rlabel')!.textContent = label;
   button.title = tip;
+  measureSlide(button);
 }
 /** A blank tab's name (Q140). */
 const BLANK_NAME = 'New tab';
@@ -177,8 +191,8 @@ export class App {
           <button data-act="about" title="About: show or hide the flowchart's description, shown in the sidebar when nothing is selected" aria-pressed="true">${ICONS.about}<span class="rlabel">About</span></button>
         </div>
         <div class="rail-mid">
-          <button class="slide" data-act="wheel">${track(ICONS.mouse, ICONS.touchpad)}<span class="rlabel"></span></button>
-          <button class="slide" data-act="view">${track(ICONS.edit, ICONS.read)}<span class="rlabel"></span></button>
+          <button class="slide" data-act="wheel">${track(ICONS.mouse, WHEEL_LABEL.mouse, ICONS.touchpad, WHEEL_LABEL.touchpad)}<span class="rlabel"></span></button>
+          <button class="slide" data-act="view">${track(ICONS.edit, VIEW_LABEL.editing, ICONS.read, VIEW_LABEL.viewing)}<span class="rlabel"></span></button>
         </div>
         <div class="rail-foot">
           <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
@@ -247,6 +261,8 @@ export class App {
     };
     this.showDirection('TD');
     setSlide(this.el.view, 0, VIEW_LABEL.editing, VIEW_TIP.editing); // Edit mode until `showViewing` says otherwise
+    // Pointing measures the knob again: the font may have loaded after the last measure.
+    for (const b of [this.el.wheel, this.el.view]) b.addEventListener('pointerenter', () => measureSlide(b));
     if (this.backend.kind === 'served') {
       // The in-browser version shows the one file it was started for: no tabs, so no
       // tabs row; no recent list, so no pane and no button for it; and no Settings, whose

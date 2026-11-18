@@ -53,7 +53,8 @@ and close buttons at their right end; drag the empty part of that row to move th
 window, or double-click it to maximize the window. Down the window's left edge, the
 rail holds **Recent files**, **Syntax** and **About** at the top, two switches in the
 middle (Mouse or Touchpad, and Edit or View), and **Customize** and **Settings** at
-the foot; pointing at a button shows its name. On the chart, Undo and Redo sit at the top left, and a bar at the
+the foot; pointing at a button shows its name, and pointing at a switch shows both of
+its modes' names, the one in use under the knob. On the chart, Undo and Redo sit at the top left, and a bar at the
 foot holds **+** (add a node), the direction button, **Fit** and **Highlight**.
 
 | To | Do |
