@@ -10,15 +10,18 @@ tools a node holds only its label, so detail either crowds the chart or lives in
 second document. With Naiad the file stays the only copy, opens in any Mermaid tool, and
 you, an agent or Naiad can change it.
 
-![Naiad in its light Coral colours showing a made-up help-desk flowchart: pointing at a step fades the steps not joined to it by an arrow, clicking it shows its description in the sidebar, a step is renamed on the chart and given another shape, and the Syntax pane shows the file's text, coloured and numbered, beside the chart and then filling the window](media/reading-and-editing.gif)
+![Naiad in its light Coral colours showing a made-up help-desk flowchart, in Touchpad mode: pointing at a step fades the steps not joined to it by an arrow, clicking it shows its description in the sidebar, a pinch zooms the chart in, two fingers move it down and back, a pinch zooms it out, a step's title is retyped in the sidebar's title box, its shape is picked from the Shape list, and the Syntax pane shows the file's text, coloured and numbered, beside the chart and then filling the window](media/reading-and-editing.gif)
 
-![Naiad in its dark Kelp colours showing a made-up newsroom flowchart: two steps are highlighted, an agent adds a decision and a step by writing to the file and the chart redraws at once, the highlights are cleared, and a second file's tab is dragged onto the chart to show the two flowcharts side by side](media/working-with-an-agent.gif)
+![Naiad in its dark Kelp colours showing a made-up newsroom flowchart: two steps are highlighted; while an orange border and the label "An agent is editing newsroom.mmd" are shown, an agent adds a decision and a step by writing to the file and the chart redraws at once; the highlights are cleared, and a second file's tab is dragged onto the chart to show the two flowcharts side by side](media/working-with-an-agent.gif)
 
-The flowcharts in the recordings are made up. In the second, a script stands in for
-the agent: it adds the decision "Cleared?" and the step "Hold the story" by writing to
-`newsroom.mmd` while Naiad is open. Both were recorded in the browser version
-(`npm run dev`), which has the desktop window's contents without its minimize,
-maximize and close buttons.
+The flowcharts in the recordings are made up, and a script drives both. It draws the
+pointer, and in the first recording the open Shape list, which the browser draws
+outside the page, where the recording could not capture it. In the second, the script
+stands in for the agent: it adds the decision "Cleared?" and the step "Hold the story"
+by writing to `newsroom.mmd` while Naiad is open, and shows the orange border and label
+that mark the agent's turn; Naiad itself shows neither. Both were recorded in the
+browser version (`npm run dev`), which has the desktop window's contents without its
+minimize, maximize and close buttons.
 
 Here is the first recording's file before the rename, with one of its nine step
 descriptions. GitHub draws the chart; the lines starting `%%` are descriptions, which
