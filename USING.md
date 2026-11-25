@@ -1,0 +1,70 @@
+# Using Naiad
+
+Everything Naiad's window does, for reference. The [README](README.md) has the
+everyday steps.
+
+## The window
+
+The tabs run across the top of the window, with the window's own minimize, maximize
+and close buttons at their right end; drag the empty part of that row to move the
+window, or double-click it to maximize the window. Down the window's left edge, the
+rail holds **Recent files**, **Syntax** and **About** at the top, two switches in the
+middle (Mouse or Touchpad, and Edit or View), and **Customize** and **Settings** at
+the bottom; pointing at a button shows its name, and pointing at a switch shows both of
+its modes' names, the one in use under the knob. On the chart, Undo and Redo sit at the
+top left, and a bar along the bottom holds **+** (add a node), the direction button,
+**Fit** and **Highlight**.
+
+A page from `naiad serve` (README, [From a terminal](README.md#from-a-terminal)) shows
+one file in the same way, without tabs, split view, the recent files list or
+**Settings**.
+
+## What to do
+
+| To do this | Do this |
+|---|---|
+| Open several flowcharts | Each file opens in its own tab. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. With many tabs open, the tabs grow narrower; past that, the mouse wheel scrolls them, and a button after them, showing how many are out of sight, lists every tab. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab |
+| See two flowcharts at once | Drag a tab onto the chart, toward the side where it should open: that half lights up and names the tab, and letting go splits the window, side by side or one above the other. Each half has its own row of tabs, with its own **+** and list of every tab; a click on a tab shows it in its own half. Drag a tab onto the other half, or into the other row of tabs, to move it there. The half you last clicked is the active one: it has an accent line along its top, and the sidebar, Undo and the keys work on it. Drag the line between the halves to resize them (each at least 240 pixels across); double-click it for half and half. The **×** at the end of a row of tabs closes the split and moves its tabs to the other row; closing a half's last tab closes it too |
+| Open a file you opened before | The **Recent files** button, at the top of the rail, shows the last 50 files you opened, newest first, in a pane beside the rail: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. The list and the Mermaid syntax are never shown together: opening the list closes the syntax, which stays closed until you open it again |
+| Choose light or dark, the colours and the Syntax pane's font | **Customize**, a brush at the bottom of the rail, opens a window with three choices. **Appearance**: **Light**, **Dark** or **System**; System, the choice until you pick another, follows the light or dark setting of your computer. **Theme**: one of six sets of colours, each with a light and a dark form: Naiad Default (the choice until you pick another), Moonpool, Kelp, Water Lily, Glacier and Coral; the chart takes its colours too. **Syntax font**: JetBrains Mono (the choice until you pick another), DM Mono or Recursive Casual, each shown on a line of a flowchart. The window closes with its ×, Escape, or a click outside it. Naiad remembers each choice |
+| Have your files open again when Naiad starts | **Settings**, a gear under **Customize**, opens a window with the switch **Remember opened files**, on until you turn it off. While it is on, Naiad opens again the files that were open when it last closed, each in its tab and in the same order, and shows the tab that was shown. A file that is no longer there is skipped, and a notice names it. A file you start Naiad on, with a double-click or `naiad flow.mmd`, opens after them and is shown. A second window, opened while another Naiad window is open, opens only its own file; of two windows, the one closed last is remembered. Turning the switch off forgets the list at once |
+| Read a description | Click a node |
+| Write or change a description | Click the node, then **Edit** beside **Description** in the sidebar. **Done** (Ctrl+Enter) keeps the text; **Cancel** (Escape) drops it |
+| Read or write what the whole flowchart is about | Click empty space, so that nothing is selected: the sidebar shows the flowchart's description. A selected node, arrow or group covers it in the sidebar; close that and the description shows again. **About**, on the rail, hides or shows it, and Naiad remembers your choice |
+| Make a pane wider or narrower | Drag the grip on the pane's edge that faces the chart. The recent files pane is 180 to 420 px wide (232 at first), the Syntax pane 220 to 640 px (330), and the sidebar 280 to 560 px (340). Naiad remembers each width |
+| Add a node | **+** in the bar at the bottom of the chart, or double-click empty space |
+| Rename | Double-click a node, press Enter / F2, or type in the title box at the top of the sidebar; there, Escape puts back the old title |
+| Connect two nodes | Point at a node and drag the dot beside it to another node, or Shift-click the second node |
+| Change an arrow | Click it: label, line, head, colour |
+| See where a node's arrows go | Rest the pointer on the node: its arrows and the nodes at their other ends stay, and the rest fades |
+| See which way a long arrow goes | Look along it: an arrow at least 250 px long at 100% zoom, with a head at one end only, carries a small arrowhead about every 150 px, pointing the way it goes |
+| Move an arrow's start or end | Point at the arrow and drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |
+| Group nodes | Click a node and pick **New group…** under **Group** in the sidebar; then click each other node and pick that group there |
+| Delete | Select, then Delete |
+| Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows at the chart's top left |
+| Change which way the chart runs | The direction button, an arrow, shows the way the chart runs now. Point at it or click it to show the other three ways, and click one: the file's first line changes, for example from `flowchart TD` to `flowchart LR` |
+| Zoom / pan | Mouse wheel or pinch to zoom; drag empty space to pan |
+| Fit the whole chart in the window | **Fit**, in the bar at the bottom of the chart |
+| Move the chart with two fingers on a touchpad | The first switch in the middle of the rail shows a mouse over a touchpad, with a knob on the mode in use. Click it to slide the knob to the touchpad: in Touchpad mode two fingers or the mouse wheel move the chart (Shift: sideways), and a pinch or Ctrl with the wheel zooms. Naiad starts in Mouse mode and remembers your choice |
+| Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear**, at the chart's top left with the number of highlights, takes every highlight off |
+| Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open). Opening it closes the **Recent files** list. The pane colours the parts of each line (ids, titles, arrows, labels, classes and descriptions) and numbers the lines; a long line wraps, and a bar beside the numbers marks its wrapped rows |
+| Read or edit the syntax with the whole window | The button at the Syntax pane's top right makes the pane fill the window, over the chart and the sidebar. Click it again, or hide the pane, to see the chart again |
+| Read without changing anything | The second switch in the middle of the rail shows a pencil (Edit mode) over an open book (View mode), with a knob on the mode Naiad is in. Click it to switch. View mode has no dots to drag, no dot grid, no **+**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
+
+## Dragging near the edge
+
+While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
+view that way, at up to 1,200 px a second, until the chart's edge on that side comes
+into view; the wheel and a pinch work as they do outside a drag, and Escape cancels the
+drag.
+
+## Saving
+
+The file is saved by itself while it is a valid flowchart; Ctrl+S saves it at once.
+Naiad shows no "Saved" mark. A notice at the top of the chart says when the file could
+not be saved or read, and when its text is not a flowchart Mermaid can read. Text like
+that, typed in Naiad, is saved only when you press Ctrl+S. When the file changes on
+disk while Naiad holds an edit not yet saved, the version on disk wins and the edit
+stays in Undo ([FILE-FORMAT.md](FILE-FORMAT.md#what-naiad-changes-in-a-file-and-what-it-never-does)).
+Highlights are kept in a small file of their own beside the flowchart, which an agent
+reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
