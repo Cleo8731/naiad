@@ -10,34 +10,53 @@ tools a node holds only its label, so detail either crowds the chart or lives in
 second document. With Naiad the file stays the only copy, opens in any Mermaid tool, and
 you, an agent or Naiad can change it.
 
-![Naiad showing a made-up flowchart of an online order: pointing at a step fades the steps not joined to it by an arrow, clicking it shows its description, a new step appears when the file changes on disk, a step is renamed, and the Syntax pane shows the file's text](media/demo.gif)
+![Naiad in its light Coral colours showing a made-up help-desk flowchart: pointing at a step fades the steps not joined to it by an arrow, clicking it shows its description in the sidebar, a step is renamed on the chart and given another shape, and the Syntax pane shows the file's text, coloured and numbered, beside the chart and then filling the window](media/reading-and-editing.gif)
 
-The flowchart in the recording is made up. A script stands in for the agent: it adds
-the step "Cancel the order" by writing two lines to `orders.mmd` while Naiad is open.
-It was recorded in the browser version (`npm run dev`), which has the desktop window's
-contents without its minimize, maximize and close buttons.
+![Naiad in its dark Kelp colours showing a made-up newsroom flowchart: two steps are highlighted, an agent adds a decision and a step by writing to the file and the chart redraws at once, the highlights are cleared, and a second file's tab is dragged onto the chart to show the two flowcharts side by side](media/working-with-an-agent.gif)
 
-Here is that file before the agent's change, with one of its five step descriptions.
-GitHub draws the chart; the lines starting `%%` are descriptions, which Mermaid leaves
-out and Naiad shows in the sidebar. A description is Markdown, and `%% .` is an empty
-line in it:
+The flowcharts in the recordings are made up. In the second, a script stands in for
+the agent: it adds the decision "Cleared?" and the step "Hold the story" by writing to
+`newsroom.mmd` while Naiad is open. Both were recorded in the browser version
+(`npm run dev`), which has the desktop window's contents without its minimize,
+maximize and close buttons.
+
+Here is the first recording's file before the rename, with one of its nine step
+descriptions. GitHub draws the chart; the lines starting `%%` are descriptions, which
+Mermaid leaves out and Naiad shows in the sidebar. A description is Markdown, and `%% .`
+is an empty line in it:
 
 ```mermaid
 flowchart TD
 %% @flowchart
-%% How an online order gets from the shop's website to the customer's door. Click a
-%% step to read what happens there.
-    order(Order placed) --> pay{Payment OK?}
-    pay -- yes --> pack(Pick and pack)
-    pay -- no --> remind(Email the customer)
-    pack --> ship(Hand to the courier)
+%% How a help desk answers a customer's question, from the first message to closing the request. Click a step to read what happens there.
+    ask([Customer writes in]) --> sort{Seen it before?}
+    sort -- yes --> answer(Send the saved answer)
+    sort -- no --> look
+    subgraph solve [Find a fix]
+        look(Reproduce the problem) --> fix(Fix it or find a workaround)
+    end
+    fix -.-> team(Tell the product team)
+    answer --> check{Did it help?}
+    fix --> check
+    check -- yes --> done([Close the request])
+    check -- no --> phone(Call the customer)
 
-%% @pack
-%% A picker collects each item from its shelf, scanning it as it goes, then packs
-%% them in the smallest box that fits.
+    classDef start fill:#f3e8ff,stroke:#8257b5,color:#3b1d61
+    classDef work fill:#fdf0e4,stroke:#c98a5a,color:#4a2a12
+    classDef choice fill:#ffffff,stroke:#c4513a,color:#4a1d12,stroke-width:2px
+    classDef good fill:#e4f3e2,stroke:#4f8a4a,color:#1f3d1c
+    classDef side fill:#e3f0fa,stroke:#3d7fb0,color:#163650
+    class ask start
+    class answer,look,fix,phone work
+    class sort,check choice
+    class done good
+    class team side
+
+%% @look
+%% Follow the customer's steps on a test account until the problem shows.
 %% .
-%% - Out of stock: the order waits, and the customer gets an email.
-%% - Damaged: pick another one.
+%% - Ask for a screenshot if the steps are unclear.
+%% - Note the version and the browser.
 ```
 
 - The flowchart is one `.mmd` or `.mermaid` file.
@@ -54,7 +73,7 @@ The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
 
 Download the installer, the file ending in `_x64-setup.exe`, from the
 [latest release](https://github.com/Cleo8731/naiad/releases/latest) and run it. For
-version 0.3.12 it is `Naiad_0.3.12_x64-setup.exe`, 3.3 MB; the release page gives its
+version 0.3.13 it is `Naiad_0.3.13_x64-setup.exe`, 3.3 MB; the release page gives its
 SHA-256 checksum. The installer is not signed, so Windows may show "Windows protected
 your PC": click **More info**, then **Run anyway**.
 
@@ -100,7 +119,8 @@ foot holds **+** (add a node), the direction button, **Fit** and **Highlight**.
 | Zoom / pan | Mouse wheel or pinch to zoom; drag empty space to pan |
 | Move the chart with two fingers on a touchpad | The first switch in the middle of the rail shows a mouse over a touchpad, with a knob on the mode in use. Click it to slide the knob to the touchpad: in Touchpad mode two fingers or the mouse wheel move the chart (Shift: sideways), and a pinch or Ctrl with the wheel zooms. Naiad starts in Mouse mode and remembers your choice |
 | Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear**, at the chart's top left with the number of highlights, takes every highlight off |
-| Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open). Opening it closes the **Recent files** list |
+| Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open). Opening it closes the **Recent files** list. The pane colours the parts of each line (ids, titles, arrows, labels, classes and descriptions) and numbers the lines; a long line wraps, and a bar beside the numbers marks its wrapped rows |
+| Read or edit the syntax with the whole window | The button at the Syntax pane's top right makes the pane fill the window, over the chart and the sidebar. Click it again, or hide the pane, to see the chart again |
 | Read without changing anything | The second switch in the middle of the rail shows a pencil (Edit mode) over an open book (View mode), with a knob on the mode Naiad is in. Click it to switch. View mode has no dots to drag, no dot grid, no **+**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
 
 While you drag a dot, holding the pointer within 48 px of the chart's edge moves the
@@ -205,7 +225,7 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 
 ## Limits
 
-- Naiad 0.3.12 has been made and tested on Windows 11 (x64) only. There are no macOS or
+- Naiad 0.3.13 has been made and tested on Windows 11 (x64) only. There are no macOS or
   Linux builds.
 - It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`), in
   `.mmd` and `.mermaid` files. It does not open a Markdown file (`.md`), even one with a
