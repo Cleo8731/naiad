@@ -355,6 +355,12 @@ export class Chart {
   /** Call when another file is opened, so the next drawing is fitted to the window. */
   resetView(): void { this.fitted = false; }
 
+  /** Call when the chart's tools (Undo's island, the pill) over this chart have been
+   * shown or hidden: a view still fitted is fitted again around them; one the user
+   * panned or zoomed stays. (Seen 2026-11-25: a file's first drawing came before its
+   * tab showed the tools, so the first fit put a tall chart's last node under the pill.) */
+  toolsChanged(): void { if (!this.manual) this.fit(); }
+
   async draw(text: string, snap: Snap): Promise<void> {
     this.cancelDrag();
     const id = `chart${++drawCount}`;

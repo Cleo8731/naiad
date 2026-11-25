@@ -28,7 +28,7 @@ export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { m
  * many drew at the same moment, at most (one Mermaid for the page).
  */
 export const charts: {
-  list: { drawn: string[]; sidebarShown: boolean[]; destroyed: boolean }[]; drawing: number; most: number;
+  list: { drawn: string[]; sidebarShown: boolean[]; steps: string[]; destroyed: boolean }[]; drawing: number; most: number;
 } = { list: [], drawing: 0, most: 0 };
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
@@ -40,6 +40,10 @@ export const chartMock = () => ({
     destroyed = false;
     constructor(private stage: HTMLElement, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    /** In order, each drawing finished ("drawn") and each time the app said the chart's
+     * tools were shown or hidden, with whether the pill showed then ("tools shown", "tools hidden"). */
+    steps: string[] = [];
+    toolsChanged() { this.steps.push(document.querySelector<HTMLElement>('.pill')?.hidden === false ? 'tools shown' : 'tools hidden'); }
     destroy() { this.destroyed = true; }
     setWheelMode(mode: import('../src/chart').WheelMode) { chartWheel.mode = mode; }
     async draw(text: string) {
@@ -51,6 +55,7 @@ export const chartMock = () => ({
         // As Mermaid 12.3: it reads an Ellipse, `id(-Title-)`, and cannot draw it (T5.17).
         if (/[\w)\]}]\(-[^\n]*-\)/.test(text)) throw new Error('No such shape: ellipse. Please check your syntax.');
         this.drawn.push(text);
+        this.steps.push('drawn');
       } finally {
         charts.drawing--;
       }

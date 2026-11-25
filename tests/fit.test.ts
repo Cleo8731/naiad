@@ -60,6 +60,20 @@ describe('Fit and the chart\'s tools', () => {
     expect(at.y).toBeCloseTo(66 + (656 - 200 * at.k) / 2, 6);
   });
 
+  test('a chart fitted before the tools showed is fitted again around them; a moved view stays', () => {
+    fit(400, 1000); // drawn before its tab showed the tools, as an opened file is
+    tool('island-row', rect(14, 14, 80, 40));
+    tool('pill', rect(400, 734, 200, 48));
+    chart.toolsChanged();
+    const { y, k } = (chart as any).view;
+    expect(y).toBe(66);
+    expect(y + 1000 * k).toBeCloseTo(722, 6);
+    (chart as any).manual = true; // the user has panned or zoomed
+    (chart as any).view.y = 300;
+    chart.toolsChanged();
+    expect((chart as any).view.y).toBe(300);
+  });
+
   test('a hidden tool (no size) takes no room', () => {
     tool('island-row', rect(0, 0, 0, 0)); // in View mode Undo's island is hidden
     tool('pill', rect(400, 734, 200, 48));

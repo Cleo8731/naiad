@@ -989,8 +989,12 @@ export class Tab {
     }
     bar.status.textContent = status;
     bar.status.dataset.state = state;
+    const shown = [bar.pill.hidden, bar.island.hidden].join();
     bar.pill.hidden = !open;
     bar.island.hidden = !open || this.win.viewing();
+    // A file's first drawing comes before this shows the tools, so it was fitted without
+    // them: fit it again around them (seen 2026-11-25).
+    if ([bar.pill.hidden, bar.island.hidden].join() !== shown) this.chart.toolsChanged();
     bar.undo.disabled = !this.undoStack.length;
     bar.redo.disabled = !this.redoStack.length;
     bar.add.disabled = bar.fit.disabled = bar.dir.disabled = bar.highlight.disabled = !open || !this.snap;
