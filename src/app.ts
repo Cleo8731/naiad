@@ -21,6 +21,7 @@ import {
 } from './overlays';
 import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
+import { SyntaxBox } from './syntax-box';
 import { basename, errorText, Tab, type TabWindow } from './tab';
 
 const NEW_FILE = 'flowchart TD\n    start[Start]\n';
@@ -178,6 +179,8 @@ interface TabParts {
   /** The chart area: the stage, the notices, the sidebar's grip, and the island and the pill while shown. */
   chartarea: HTMLElement;
   area: HTMLTextAreaElement;
+  /** The Syntax pane's box around the text area: its colours and line numbers. */
+  code: SyntaxBox;
 }
 
 export class App {
@@ -265,7 +268,7 @@ export class App {
           </nav>
           <div class="body">
             <section class="textpane" hidden>
-              <div class="pane-head">Mermaid syntax</div>
+              <div class="pane-head"><span>Mermaid syntax</span><button class="icon" data-act="syntax-full" title="Fill the window with the syntax" aria-label="Fill the window" aria-pressed="false">${ICONS.expand}</button></div>
               ${grip('syntax', 'the Syntax pane')}
             </section>
             <div class="split-divider" role="separator" aria-orientation="vertical" aria-label="Divider between the two halves" title="Drag to resize; double-click for half and half"></div>
@@ -446,10 +449,10 @@ export class App {
     area.spellcheck = false;
     area.setAttribute('autocomplete', 'off');
     area.setAttribute('autocapitalize', 'off');
-    area.setAttribute('wrap', 'off');
     area.setAttribute('aria-label', "The flowchart's Mermaid syntax");
-    area.hidden = true;
-    this.el.pane.append(area);
+    const code = new SyntaxBox(area);
+    code.hidden = true;
+    this.el.pane.append(code.el);
     this.el.body.append(view);
 
     const item = document.createElement('div');
@@ -470,7 +473,7 @@ export class App {
     name.addEventListener('click', () => { if (!this.noClick) this.show(tab); });
     name.addEventListener('pointerdown', (e) => this.dragTab(e, tab));
     close.addEventListener('click', () => { void this.closeTab(tab); });
-    this.parts.set(tab, { item, name, close, view, area, chartarea: v('.chartarea') });
+    this.parts.set(tab, { item, name, close, view, area, code, chartarea: v('.chartarea') });
     // The window's choices hold in every tab.
     tab.showViewing(this.viewing);
     tab.chart.setWheelMode(this.wheelMode);
@@ -513,7 +516,7 @@ export class App {
     const seen = new Set(this.groups.map((g) => g.shown));
     for (const [t, p] of this.parts) {
       p.view.hidden = !seen.has(t);
-      p.area.hidden = t !== tab;
+      p.code.hidden = t !== tab;
       p.view.classList.toggle('half-a', split && t === this.groups[0].shown);
       p.view.classList.toggle('half-b', split && t === this.groups[1].shown);
       p.view.classList.toggle('active', split && t === tab);
@@ -680,7 +683,7 @@ export class App {
     tab.close();
     p.item.remove();
     p.view.remove();
-    p.area.remove();
+    p.code.remove();
     this.seen.delete(tab);
     const last = !this.tabs.length;
     if (last) {
@@ -1504,11 +1507,23 @@ export class App {
   private toggleText(show?: boolean): void {
     const visible = show ?? this.el.pane.hidden !== false;
     this.el.pane.hidden = !visible;
+    if (!visible) this.fillWithText(false);
     this.el.textToggle.setAttribute('aria-pressed', String(visible));
     remember('syntaxpane', visible ? 'shown' : 'hidden');
     // A notice's Show syntax button is there only while the pane is hidden.
     for (const tab of this.tabs) tab.paintNotices();
     if (visible && this.recent?.visible) this.toggleRecent(false);
+  }
+
+  /** The Syntax pane fills the window's body, over the chart and the sidebar, or goes
+   * back to its own width (the user, 2026-11-25): the button at the pane's top right. */
+  private fillWithText(on: boolean): void {
+    this.el.pane.classList.toggle('full', on);
+    const button = this.el.pane.querySelector<HTMLButtonElement>('[data-act="syntax-full"]')!;
+    button.setAttribute('aria-pressed', String(on));
+    button.title = on ? 'Show the chart again' : 'Fill the window with the syntax';
+    button.setAttribute('aria-label', on ? 'Show the chart again' : 'Fill the window');
+    button.innerHTML = on ? ICONS.shrink : ICONS.expand;
   }
 
   // ------------------------------------------------------------------ input
@@ -1547,6 +1562,7 @@ export class App {
       if (act === 'redo') void this.tab.history(false);
       if (act === 'fit') this.tab.chart.fit();
       if (act === 'syntax') this.toggleText();
+      if (act === 'syntax-full') this.fillWithText(!this.el.pane.classList.contains('full'));
       if (act === 'recent') this.toggleRecent();
       if (act === 'customize' || act === 'settings') this.openWindow(act);
       if (act === 'highlight') this.setHighlighting(!this.hlOn);

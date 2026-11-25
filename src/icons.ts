@@ -4,6 +4,8 @@
  * 2026-11-14; twelve more with the design handoff, T4.9, 2026-11-15). Each is drawn
  * inline in its button, so its lines take the button's text colour in every theme; the
  * button's name says what it does, so the drawing itself is hidden from screen readers.
+ * Two more, Maximize 2 and Minimize 2, the Syntax pane's full-window button (2026-11-25),
+ * were written out by hand from Lucide's drawings, in the same form as the others.
  * Naiad's own mark is not an icon: `brand/naiad-mark.svg`, drawn through a mask.
  */
 import undo from './icons/undo-2.svg?raw';
@@ -31,6 +33,8 @@ import filePlus from './icons/file-plus.svg?raw';
 import circleAlert from './icons/circle-alert.svg?raw';
 import chevronDown from './icons/chevron-down.svg?raw';
 import trash from './icons/trash-2.svg?raw';
+import maximize2 from './icons/maximize-2.svg?raw';
+import minimize2 from './icons/minimize-2.svg?raw';
 
 /**
  * The window's own buttons (T4.10, Q171): Naiad's drawings, not Lucide's, thin and
@@ -86,6 +90,9 @@ export const ICONS = {
   chevron: icon('chevron', chevronDown),
   /** The sidebar's Delete and Ungroup. */
   trash: icon('trash', trash),
+  /** The Syntax pane fills the window, and goes back to its own width (2026-11-25). */
+  expand: icon('expand', maximize2),
+  shrink: icon('shrink', minimize2),
   /** Takes an entry off the recent list; closes a tab (T1.16) and a window. */
   close: icon('close', x),
   /** Opens a blank tab, at the tab strip's end (T1.16); the add-node button in the pill. */

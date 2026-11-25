@@ -148,7 +148,9 @@ describe('the window\'s frame (T4.9)', () => {
 
   test('the Syntax pane has its head, "Mermaid syntax"', async () => {
     await start();
-    expect(q('.textpane > .pane-head')!.textContent).toBe('Mermaid syntax');
+    expect(q('.textpane > .pane-head > span')!.textContent).toBe('Mermaid syntax');
+    // and, at its right, the button that fills the window with it (2026-11-25)
+    expect(q('.textpane > .pane-head > button[data-act="syntax-full"]')).not.toBeNull();
   });
 });
 
@@ -579,8 +581,9 @@ describe('the look (T4.9)', () => {
   test('the Syntax font\'s choices, and no ligatures in the Syntax pane', () => {
     expect(rule(':root[data-syntaxfont="dm-mono"]')).toMatch(/--font-mono:\s*'DM Mono'/);
     expect(rule(':root[data-syntaxfont="recursive"]')).toMatch(/--mono-fvs:\s*'MONO' 1, 'CASL' 1/);
-    expect(rule('.textpane textarea')).toMatch(/font-variant-ligatures:\s*none/);
-    expect(rule('.textpane textarea')).toMatch(/font-variation-settings:\s*var\(--mono-fvs/);
+    // the text area, whose rule the coloured copy under it shares (2026-11-25)
+    expect(rule('.code textarea')).toMatch(/font-variant-ligatures:\s*none/);
+    expect(rule('.code textarea')).toMatch(/font-variation-settings:\s*var\(--mono-fvs/);
   });
 
   test('the mark is drawn through a mask, in the accent; the page has it as its icon', () => {
