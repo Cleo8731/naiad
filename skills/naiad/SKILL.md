@@ -1,6 +1,6 @@
 ---
 name: naiad
-description: Make or change a flowchart as a Naiad file, a plain Mermaid flowchart (a .mmd or .mermaid file) in which a node has a short title and can have a longer description kept in %% comment lines. Use when asked to draw, create, update or fix a flowchart or a diagram of a process, pipeline or architecture, when working on a .mmd or .mermaid file.
+description: Make or change a flowchart as a Naiad file, a plain Mermaid flowchart (a .mmd or .mermaid file) in which a node has a short title and can have a longer description kept in %% comment lines. Use when asked to draw, create, update or fix a flowchart or a diagram of a process, pipeline or architecture that a project is made of or carries out, when working on a .mmd or .mermaid file. Not for the plan of how to build something (its tasks, phases or order of work).
 ---
 
 # Naiad flowcharts
@@ -11,6 +11,12 @@ and so can a description of the whole flowchart.
 The file is the only copy of the flowchart and opens in every Mermaid tool. Naiad is the
 desktop app the user reads and edits it in; it redraws the chart whenever the file
 changes on disk.
+
+What a flowchart is for: what a project is or does. That means its parts and how they
+connect, how data moves through it, the steps a user or the program goes through, and
+the choices its code makes. A flowchart is not for how the work of building it is
+planned: the tasks, phases, order of work or review steps of a change. Never offer to
+draw such a plan; draw one only when the user asks for it by name.
 
 Work in this order: find out whether `naiad` can run (step 1), write the file by the
 rules (step 2), check it (step 3), show it (step 4), report (step 5).

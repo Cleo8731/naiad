@@ -138,6 +138,13 @@ describe('what the skill repeats from other files', () => {
     expect(flat).toContain('flowchart TD %% @flowchart %% '); // the example has one, under the header
   });
 
+  test('the skill draws what a project is or does, and never offers a flowchart of a plan for building it', () => {
+    const flat = skill.replace(/\s+/g, ' ');
+    expect(flat).toContain('Not for the plan of how to build something'); // in the description, which decides when the skill is used
+    expect(flat).toContain('What a flowchart is for: what a project is or does.');
+    expect(flat).toContain('Never offer to draw such a plan');
+  });
+
   test('the skill says to write a chart in everyday words', () => {
     expect(section(skill, 'Titles and ids').replace(/\s+/g, ' ')).toContain('everyday words');
   });
