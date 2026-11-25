@@ -702,14 +702,35 @@ export class Chart {
     const r = this.stage.getBoundingClientRect();
     this.fitWaiting = !!this.size.w && !r.width;
     if (!this.size.w || !r.width) return;
-    const pad = 48;
-    const k = Math.min(1.15, (r.width - pad) / this.size.w, (r.height - pad) / this.size.h);
+    // 24 px clear at each side; at the top and the foot, 12 px clear of the chart's tools
+    // laid over the chart (Undo's island, the pill), so no node is fitted under them
+    // (seen 2026-11-25: a tall chart's last node sat under the pill).
+    const pad = 24;
+    const tools = this.toolBands(r);
+    const top = Math.max(pad, tools.top ? tools.top + 12 : 0);
+    const foot = Math.max(pad, tools.foot ? tools.foot + 12 : 0);
+    const band = Math.max(1, r.height - top - foot);
+    const k = Math.min(1.15, (r.width - 2 * pad) / this.size.w, band / this.size.h);
     this.view.k = Math.max(MIN_ZOOM, k);
     this.view.x = (r.width - this.size.w * this.view.k) / 2;
-    this.view.y = Math.max(pad / 2, (r.height - this.size.h * this.view.k) / 2);
+    this.view.y = top + Math.max(0, (band - this.size.h * this.view.k) / 2);
     this.placedWidth = stageWidth(this.stage);
     this.manual = false;
     this.apply();
+  }
+
+  /** How far down from the chart's top, and up from its foot, the chart's tools reach
+   * (`.island-row` and `.pill`, laid over the chart beside the stage), in px; 0 where
+   * none is shown. A tool counts at the top or the foot by which half its middle is in. */
+  private toolBands(r: DOMRect): { top: number; foot: number } {
+    let top = 0, foot = 0;
+    for (const el of this.stage.parentElement?.querySelectorAll<HTMLElement>(':scope > .island-row, :scope > .pill') ?? []) {
+      const t = el.getBoundingClientRect();
+      if (!t.width || !t.height || t.bottom <= r.top || t.top >= r.bottom) continue;
+      if ((t.top + t.bottom) / 2 < r.top + r.height / 2) top = Math.max(top, t.bottom - r.top);
+      else foot = Math.max(foot, r.bottom - t.top);
+    }
+    return { top, foot };
   }
 
   zoom(factor: number, cx?: number, cy?: number): void {
