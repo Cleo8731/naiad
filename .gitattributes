@@ -2,6 +2,7 @@
 # compare the sample flowchart's exact text.
 * text=auto eol=lf
 *.png binary
+*.gif binary
 *.ico binary
 *.icns binary
 *.woff2 binary

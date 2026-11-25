@@ -10,20 +10,34 @@ tools a node holds only its label, so detail either crowds the chart or lives in
 second document. With Naiad the file stays the only copy, opens in any Mermaid tool, and
 you, an agent or Naiad can change it.
 
-The example below is made up. GitHub draws the chart; the lines starting `%%` are a
-description, which Mermaid leaves out and Naiad shows in the sidebar:
+![Naiad showing a made-up flowchart of an online order: pointing at a step fades the steps not joined to it by an arrow, clicking it shows its description, a new step appears when the file changes on disk, a step is renamed, and the Syntax pane shows the file's text](media/demo.gif)
+
+The flowchart in the recording is made up. A script stands in for the agent: it adds
+the step "Cancel the order" by writing two lines to `orders.mmd` while Naiad is open.
+It was recorded in the browser version (`npm run dev`), which has the desktop window's
+contents without its minimize, maximize and close buttons.
+
+Here is that file before the agent's change, with one of its five step descriptions.
+GitHub draws the chart; the lines starting `%%` are descriptions, which Mermaid leaves
+out and Naiad shows in the sidebar. A description is Markdown, and `%% .` is an empty
+line in it:
 
 ```mermaid
 flowchart TD
-    collect[Collect data] --> clean{Clean?}
-    clean -- yes --> train[Train model]
-    clean -- no --> fix[Fix the data]
-    fix --> clean
+%% @flowchart
+%% How an online order gets from the shop's website to the customer's door. Click a
+%% step to read what happens there.
+    order(Order placed) --> pay{Payment OK?}
+    pay -- yes --> pack(Pick and pack)
+    pay -- no --> remind(Email the customer)
+    pack --> ship(Hand to the courier)
 
-%% @collect
-%% Pull the raw exports from the warehouse.
+%% @pack
+%% A picker collects each item from its shelf, scanning it as it goes, then packs
+%% them in the smallest box that fits.
 %% .
-%% Descriptions are **Markdown**: lists, `code` and links all work.
+%% - Out of stock: the order waits, and the customer gets an email.
+%% - Damaged: pick another one.
 ```
 
 - The flowchart is one `.mmd` or `.mermaid` file.
@@ -38,13 +52,18 @@ The full rules, for people and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
 
 ## Install
 
-No installer is published yet. To use Naiad now, make the installer yourself
-([Building from source](#building-from-source)) and run
-`src-tauri/target/release/bundle/nsis/Naiad_0.3.7_x64-setup.exe` (3.3 MB). It installs
-Naiad for your Windows user in `%LOCALAPPDATA%\Naiad`, registers it for `.mmd` and
-`.mermaid` files, so a double-click on a `.mmd` file opens it, and adds the `naiad`
-command to your PATH. Then open a file with **Open a file**, or start one with **New
-flowchart**.
+Download the installer, the file ending in `_x64-setup.exe`, from the
+[latest release](https://github.com/Cleo8731/naiad/releases/latest) and run it. For
+version 0.3.12 it is `Naiad_0.3.12_x64-setup.exe`, 3.3 MB; the release page gives its
+SHA-256 checksum. The installer is not signed, so Windows may show "Windows protected
+your PC": click **More info**, then **Run anyway**.
+
+It installs Naiad for your Windows user in `%LOCALAPPDATA%\Naiad` (about 5.9 MB),
+without administrator rights. It registers Naiad for `.mmd` and `.mermaid` files, so a
+double-click on a `.mmd` file opens it, and adds the `naiad` command to your PATH. Then
+open a file with **Open a file**, or start one with **New flowchart**.
+
+To make the installer yourself instead, see [Building from source](#building-from-source).
 
 ## Using it
 
@@ -186,7 +205,7 @@ The skill offers to add this for you when an agent creates a flowchart of the pr
 
 ## Limits
 
-- Naiad 0.3.7 has been made and tested on Windows 11 (x64) only. There are no macOS or
+- Naiad 0.3.12 has been made and tested on Windows 11 (x64) only. There are no macOS or
   Linux builds.
 - It works on Mermaid flowcharts only (text that starts `flowchart` or `graph`), in
   `.mmd` and `.mermaid` files. It does not open a Markdown file (`.md`), even one with a
