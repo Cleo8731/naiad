@@ -168,6 +168,15 @@
   --warn-text: light-dark(#664700, #f0d48a);
   --shadow: light-dark(color-mix(in srgb, var(--text) 24%, transparent), rgb(0 0 0 / .6));
   --scrim: light-dark(color-mix(in srgb, var(--text) 32%, transparent), rgb(0 0 0 / .56));
+  /* the Syntax pane's colours (2026-11-25), from each palette's own */
+  --syn-keyword: var(--accent);
+  --syn-id: color-mix(in oklab, var(--accent) 55%, var(--text));
+  --syn-title: var(--text);
+  --syn-bracket: var(--muted);
+  --syn-arrow: color-mix(in oklab, var(--edge) 70%, var(--text));
+  --syn-label: color-mix(in oklab, var(--highlight-ink) 75%, var(--text));
+  --syn-comment: color-mix(in srgb, var(--muted) 70%, transparent);
+  --syn-desc: var(--muted);
   /* the names the rules below use */
   --hl: var(--highlight); --dot: var(--grid-dot); --ui: var(--font-ui); --mono: var(--font-mono);
 }
@@ -467,14 +476,59 @@ body.dragging-tab #app { pointer-events: none; }
   background: var(--panel); border-right: 1px solid var(--line);
 }
 .pane-head {
-  flex: none; padding: 14px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 8px 2px 16px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--muted); user-select: none;
 }
-.textpane textarea {
-  flex: 1; width: 100%; border: 0; outline: 0; resize: none; padding: 8px 16px 16px; background: transparent;
-  font: 12.5px/1.7 var(--mono); font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
-  tab-size: 4; white-space: pre;
+.pane-head button.icon {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px;
+  padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted);
 }
+.pane-head button.icon:hover { background: var(--accent-soft); color: var(--text); }
+.pane-head button.icon svg { width: 16px; height: 16px; display: block; }
+/* Filling the window (the user, 2026-11-25): over the chart and the sidebar, both halves
+   of a split too; the grip goes, as there is no edge to drag. */
+.textpane.full { position: absolute; inset: 0; z-index: 20; width: auto; border-right: 0; }
+.body.split > .textpane.full { grid-area: auto; }
+.textpane.full > .grip { display: none; }
+
+/* The text box (`syntax-box.ts`): a coloured copy of the text under the text area, whose
+   own letters are see-through. Both have the same font, padding and wrapping, so every
+   letter of the copy sits under its own. A long line wraps at the left edge: a text area
+   cannot indent only the wrapped parts (Chromium 156 ignores `each-line` in one, tried
+   2026-11-25), so a line's number marks its start and a bar beside the numbers marks its
+   wrapped rows. The line numbers sit in the left padding. */
+.code { flex: 1; min-height: 0; overflow: auto; --gutter: calc(var(--digits, 2) * 1ch); }
+.code-grid { display: grid; min-height: 100%; }
+.code-grid > * { grid-area: 1 / 1; }
+.code-copy, .code textarea {
+  margin: 0; border: 0; padding: 8px 16px 16px calc(10px + var(--gutter) + 14px);
+  font: 12.5px/1.7 var(--mono); font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
+  letter-spacing: normal; tab-size: 4; white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal;
+}
+.code textarea {
+  position: relative; width: 100%; min-height: 100%; field-sizing: content; resize: none; overflow: hidden;
+  outline: 0; background: transparent; color: transparent; caret-color: var(--text);
+}
+.code textarea::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: transparent; }
+.code-copy { pointer-events: none; user-select: none; color: var(--text); counter-reset: line; }
+.code-copy .ln { position: relative; min-height: 1lh; }
+.code-copy .ln::before {
+  content: counter(line); counter-increment: line; position: absolute; top: 0; left: calc(-14px - var(--gutter));
+  width: var(--gutter); text-align: right; color: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+.code-copy .ln.wraps::after {
+  content: ''; position: absolute; top: calc(1lh + 2px); bottom: 5px; left: -8px; width: 2px; border-radius: 1px;
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+.s-keyword, .s-direction, .s-mark { color: var(--syn-keyword); }
+.s-id { color: var(--syn-id); }
+.s-title { color: var(--syn-title); }
+.s-bracket, .s-prop { color: var(--syn-bracket); }
+.s-arrow { color: var(--syn-arrow); }
+.s-label, .s-class, .s-value { color: var(--syn-label); }
+.s-comment { color: var(--syn-comment); }
+.s-desc { color: var(--syn-desc); }
 
 /* ---- the recent list's pane (T1.15): the files opened before, on the window's left. A
    name wraps rather than being cut off; the × shows on hover; a file not found is
@@ -710,7 +764,10 @@ code { font-family: var(--mono); font-size: 0.92em; }
 
 .props { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
 .row { display: flex; align-items: center; gap: 12px; }
-.row > span { width: 64px; flex: none; color: var(--muted); }
+/* The label only: the box beside it is a span too (`.select-wrap`), and takes the rest
+   of the row (a rule for every span made the Shape and Group boxes 64 px wide, showing
+   "Ro" for Rounded: seen 2026-11-25). */
+.row > .row-label { width: 64px; flex: none; color: var(--muted); }
 .select-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 .select-wrap select { flex: 1; min-width: 0; padding-right: 34px; appearance: none; background: var(--field); }
 .select-wrap svg { position: absolute; top: 50%; right: 11px; width: 16px; height: 16px; margin-top: -8px; pointer-events: none; color: var(--muted); }

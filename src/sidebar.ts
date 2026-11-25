@@ -377,7 +377,7 @@ export class Sidebar {
   private row(label: string, control: HTMLElement): HTMLElement {
     // A list shows its own arrow (T4.9), drawn over the end of the box.
     const box = control instanceof HTMLSelectElement ? h('span', { class: 'select-wrap' }, control, iconEl('chevron')) : control;
-    return h('label', { class: 'row' }, h('span', {}, label), box);
+    return h('label', { class: 'row' }, h('span', { class: 'row-label' }, label), box);
   }
 
   private build(view: View): HTMLElement[] {

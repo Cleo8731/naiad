@@ -171,3 +171,21 @@ describe('a long title wraps while it is edited (the user, 2026-11-17)', () => {
     expect(actions.setTitle).toHaveBeenCalledWith('collect', 'Collect every raw export');
   });
 });
+
+describe("the Shape and Group boxes take the row's width (seen 2026-11-25)", () => {
+  // The label's rule, 64 px wide, once matched every span in a row, and the box's own
+  // wrapper is a span: the boxes showed "Ro" for Rounded and "Nc" for None.
+  it('no rule that sets a width of 64 px matches a box or its wrapper', () => {
+    const { root, side } = sidebar();
+    side.show(VIEW);
+    const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const narrow = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, , body]) => /(^|;)\s*width:\s*64px/.test(body))
+      .flatMap(([, selectors]) => selectors.split(',').map((s) => s.trim()));
+    expect(narrow.length).toBeGreaterThan(0);
+    const boxes = [...root.querySelectorAll('.row .select-wrap, .row select')];
+    expect(boxes.length).toBe(4); // Shape and Group, each a wrapper and its list
+    for (const box of boxes) for (const s of narrow) expect(box.matches(s), s).toBe(false);
+    expect(root.querySelector('.row > .row-label')!.textContent).toBe('Shape');
+  });
+});
