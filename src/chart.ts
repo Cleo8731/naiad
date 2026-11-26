@@ -8,6 +8,7 @@ import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
 import { raiseGroupTitles } from './group-titles';
 import { markLabelsInGroups } from './label-pills';
+import type { Choice, WalkAction, WalkView } from './walk';
 
 export type Target =
   | { kind: 'node'; id: string }
@@ -27,7 +28,19 @@ export interface ChartEvents {
   onRename(target: Target): void;
   /** An edit tried on the chart in View mode (a double-click, a Shift-click that would connect). */
   onBlocked(): void;
+  /** During a walk (T6.4): a choice clicked on the chart, an edge chip or the walk bar. */
+  onWalk(action: WalkAction): void;
 }
+
+/**
+ * Walk's view (T6.4, Q232): it zooms out to fit the node and the nodes it leads to only
+ * while node text (14 px at full size) stays at least 11 px on screen; a next node still
+ * out of view gets an edge chip.
+ */
+const WALK_READABLE = 11 / 14;
+/** Room kept clear around what a walk's view fits, and between an edge chip and the chart's edge, in px. */
+const WALK_PAD = 48;
+const CHIP_INSET = 12;
 
 /** A rounded node's corners (the user, 2026-11-16, Q164: 16 px, far from a square node's 4 px)
  * and an arrow's bends (the user, 2026-11-13), in px. */
@@ -352,10 +365,36 @@ export class Chart {
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
   private manual = false;
   private moved = false;
+  /** The walk shown (T6.4), or null. */
+  private walk: WalkView | null = null;
+  /** The walk bar at the chart's foot, and the edge chips (`placeChips`). */
+  private walkBar: HTMLDivElement;
+  private walkChips: HTMLDivElement;
+  /** The view travelling to the walk's next place: its frame (`walkCamera`). */
+  private walkFrame: number | null = null;
+  /** The drawing's own frame's corner (its viewBox's x and y), to place a point of an arrow's line. */
+  private origin = { x: 0, y: 0 };
 
   constructor(private stage: HTMLElement, private events: ChartEvents) {
     this.canvas = document.createElement('div');
     this.canvas.className = 'canvas';
+    this.walkBar = document.createElement('div');
+    this.walkBar.className = 'walk-bar';
+    this.walkBar.setAttribute('role', 'toolbar');
+    this.walkBar.setAttribute('aria-label', 'Walk');
+    this.walkBar.hidden = true;
+    this.walkChips = document.createElement('div');
+    this.walkChips.className = 'walk-chips';
+    for (const holder of [this.walkBar, this.walkChips]) {
+      holder.addEventListener('click', (e) => {
+        const b = (e.target as Element).closest<HTMLButtonElement>('button[data-walk]');
+        if (!b || b.disabled) return;
+        const kind = b.dataset.walk!;
+        if (kind === 'choose') this.events.onWalk({ kind, edge: Number(b.dataset.value) });
+        else if (kind === 'start') this.events.onWalk({ kind, id: b.dataset.value! });
+        else if (kind === 'back' || kind === 'again' || kind === 'leave') this.events.onWalk({ kind });
+      });
+    }
     this.overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.overlay.setAttribute('class', 'overlay');
     const handles = (): Handles => {
@@ -375,7 +414,7 @@ export class Chart {
       return { connect, ends, owner: null };
     };
     this.sets = { sel: handles(), hover: handles() };
-    stage.append(this.canvas, this.overlay, ...this.buttons());
+    stage.append(this.canvas, this.overlay, ...this.buttons(), this.walkChips, this.walkBar);
     this.bind();
   }
 
@@ -423,6 +462,7 @@ export class Chart {
     if (!el) return;
     const box = el.viewBox.baseVal;
     this.size = { w: box.width, h: box.height };
+    this.origin = { x: box.x, y: box.y };
     el.setAttribute('width', String(box.width));
     el.setAttribute('height', String(box.height));
     el.style.maxWidth = 'none';
@@ -431,6 +471,285 @@ export class Chart {
     this.paintSelection();
     this.paintHighlights();
     this.paintTrace();
+    this.paintWalk();
+    this.placeChips();
+  }
+
+  /**
+   * Shows a walk (T6.4), or none: the places it can go lit and the rest faded, the path
+   * taken marked, the walk bar, and the edge chips. With `move`, the view travels to the
+   * walk's place, along the arrow just taken (`walkCamera`); without, it stays (a
+   * redraw after the file changed).
+   */
+  setWalk(view: WalkView | null, move = true): void {
+    const was = this.walk;
+    this.walk = view;
+    this.stage.classList.toggle('walking', !!view);
+    if (view) this.trace(null);
+    this.paintWalk();
+    this.renderWalkBar();
+    if (!view) { this.stopWalkGlide(); this.walkChips.replaceChildren(); return; }
+    if (move) this.walkCamera(was ? view.via : null);
+    else this.placeChips();
+  }
+
+  /** The drawn node or group with this id. */
+  private walkItem(id: string): Element | null {
+    return this.canvas.querySelector(`[data-node="${CSS.escape(id)}"]`) ?? this.canvas.querySelector(`[data-sub="${CSS.escape(id)}"]`);
+  }
+
+  /** The places the walk can go next: the arrows' ends, or, while picking, the places to start. */
+  private walkNext(): Choice[] {
+    const w = this.walk;
+    return !w ? [] : w.here ? w.choices : w.starts;
+  }
+
+  private paintWalk(): void {
+    for (const c of ['walk-on', 'walk-here', 'walk-path']) this.canvas.querySelectorAll(`.${c}`).forEach((e) => e.classList.remove(c));
+    const w = this.walk;
+    if (!w) return;
+    const edge = (i: number, c: string) => {
+      this.canvas.querySelector(`[data-edge-line="${i}"]`)?.classList.add(c);
+      this.canvas.querySelector(`g.edgeLabel[data-edge="${i}"]`)?.classList.add(c);
+    };
+    for (const id of w.path) this.walkItem(id)?.classList.add('walk-path');
+    for (const i of w.pathEdges) edge(i, 'walk-path');
+    if (w.here) this.walkItem(w.here)?.classList.add('walk-on', 'walk-here');
+    for (const c of this.walkNext()) {
+      this.walkItem(c.to)?.classList.add('walk-on');
+      if (c.edge >= 0) edge(c.edge, 'walk-on');
+    }
+  }
+
+  /** How far the chart's tools reach down from its top, and the walk bar up from its foot, in px. */
+  private walkBands(r: DOMRect): { top: number; foot: number } {
+    const top = this.toolBands(r).top;
+    const bar = this.walkBar.hidden ? null : this.walkBar.getBoundingClientRect();
+    return { top, foot: bar?.height ? r.bottom - bar.top : 0 };
+  }
+
+  /** An item's place in the chart's own units (as drawn, before the view's zoom), or null. */
+  private chartRect(id: string, r: DOMRect): { x: number; y: number; w: number; h: number } | null {
+    const b = this.walkItem(id)?.getBoundingClientRect();
+    if (!b) return null;
+    const { x, y, k } = this.view;
+    return { x: (b.left - r.left - x) / k, y: (b.top - r.top - y) / k, w: b.width / k, h: b.height / k };
+  }
+
+  /**
+   * Where the walk's view goes (Q230, Q232): the walk's place and as many of the places
+   * it leads to as fit, nearest first, while node text stays readable; at most a little
+   * over full size. Returns the zoom and the chart's point to put at `anchor`, the middle
+   * of the chart's area between its tools and the walk bar.
+   */
+  private walkGoal(): { k: number; cx: number; cy: number; ax: number; ay: number } | null {
+    const w = this.walk;
+    const r = this.stage.getBoundingClientRect();
+    if (!w || !r.width || !r.height) return null;
+    const next = this.walkNext();
+    const focusId = w.here ?? next[0]?.to;
+    let u = focusId ? this.chartRect(focusId, r) : null;
+    if (!u) return null;
+    const bands = this.walkBands(r);
+    const top = Math.max(WALK_PAD, bands.top ? bands.top + 12 : 0);
+    const foot = Math.max(WALK_PAD, bands.foot ? bands.foot + 12 : 0);
+    const aw = Math.max(1, r.width - 2 * WALK_PAD);
+    const ah = Math.max(1, r.height - top - foot);
+    const kOf = (b: { w: number; h: number }) => Math.min(1.15, aw / Math.max(1, b.w), ah / Math.max(1, b.h));
+    const join = (a: typeof u, b: NonNullable<typeof u>) => {
+      const x = Math.min(a!.x, b.x), y = Math.min(a!.y, b.y);
+      return { x, y, w: Math.max(a!.x + a!.w, b.x + b.w) - x, h: Math.max(a!.y + a!.h, b.y + b.h) - y };
+    };
+    const mid = (b: NonNullable<typeof u>) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+    const c0 = mid(u);
+    const others = next.filter((c) => c.to !== focusId)
+      .map((c) => this.chartRect(c.to, r))
+      .filter((b): b is NonNullable<typeof b> => !!b)
+      .sort((a, b) => Math.hypot(mid(a).x - c0.x, mid(a).y - c0.y) - Math.hypot(mid(b).x - c0.x, mid(b).y - c0.y));
+    for (const b of others) {
+      const joined = join(u, b);
+      if (kOf(joined) >= WALK_READABLE) u = joined;
+    }
+    const k = Math.max(MIN_ZOOM, kOf(u));
+    const c = mid(u);
+    return { k, cx: c.x, cy: c.y, ax: r.width / 2, ay: top + ah / 2 };
+  }
+
+  /**
+   * Moves the view to the walk's place (`walkGoal`). After an arrow was taken (`via`),
+   * the view travels along that arrow's line, zooming out on the way when the arrow is
+   * long (Q232); otherwise it glides straight there. Without motion when the person's
+   * system asks for less of it.
+   */
+  private walkCamera(via: number | null): void {
+    this.stopWalkGlide();
+    this.stopGlide();
+    const goal = this.walkGoal();
+    if (!goal) { this.placeChips(); return; }
+    this.manual = true;
+    this.fitted = true;
+    const { ax, ay } = goal;
+    const from = { ...this.view };
+    const c0 = { x: (ax - from.x) / from.k, y: (ay - from.y) / from.k };
+    const c1 = { x: goal.cx, y: goal.cy };
+    const line = via !== null ? this.canvas.querySelector<SVGPathElement>(`[data-edge-line="${via}"]`) : null;
+    let length = 0;
+    try { length = line?.getTotalLength() ?? 0; } catch { length = 0; }
+    const at = (s: number) => { const p = line!.getPointAtLength(s); return { x: p.x - this.origin.x, y: p.y - this.origin.y }; };
+    const p0 = length ? at(0) : null;
+    const p1 = length ? at(length) : null;
+    const distance = length || Math.hypot(c1.x - c0.x, c1.y - c0.y);
+    const end = () => {
+      this.walkFrame = null;
+      this.view = { x: ax - goal.k * c1.x, y: ay - goal.k * c1.y, k: goal.k };
+      this.apply();
+    };
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const onScreen = distance * Math.min(from.k, goal.k);
+    if (still || (onScreen < 2 && Math.abs(Math.log(goal.k / from.k)) < 0.01)) { end(); return; }
+    const r = this.stage.getBoundingClientRect();
+    const time = Math.min(1400, 420 + onScreen * 0.35);
+    // On a long way, the zoom dips so most of it is in view at the halfway point.
+    const kMid = Math.max(MIN_ZOOM, Math.min(from.k, goal.k, (0.8 * Math.min(r.width, r.height)) / Math.max(1, distance)));
+    const l0 = Math.log(from.k), l1 = Math.log(goal.k);
+    const dip = Math.min(0, Math.log(kMid) - (l0 + l1) / 2);
+    let started: number | null = null;
+    const tick = (now: number) => {
+      started ??= now;
+      const t = Math.min(1, (now - started) / time);
+      if (t >= 1) { end(); return; }
+      const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      const k = Math.exp(l0 + (l1 - l0) * e + 4 * e * (1 - e) * dip);
+      let c: { x: number; y: number };
+      if (p0 && p1) {
+        const p = at(length * e);
+        c = { x: p.x + (1 - e) * (c0.x - p0.x) + e * (c1.x - p1.x), y: p.y + (1 - e) * (c0.y - p0.y) + e * (c1.y - p1.y) };
+      } else c = { x: c0.x + (c1.x - c0.x) * e, y: c0.y + (c1.y - c0.y) * e };
+      this.view = { x: ax - k * c.x, y: ay - k * c.y, k };
+      this.apply();
+      this.walkFrame = requestAnimationFrame(tick);
+    };
+    this.walkChips.replaceChildren();
+    this.walkFrame = requestAnimationFrame(tick);
+  }
+
+  /**
+   * A click on the chart during a walk: a place to go next, or the arrow (or its label)
+   * that leads there, takes that choice; while picking, a place to start starts there.
+   * Anything else does nothing, so a stray click never ends or moves the walk.
+   */
+  private walkClick(t: Target | null): void {
+    const w = this.walk;
+    if (!w || !t) return;
+    if (!w.here) {
+      if (t.kind !== 'edge' && w.starts.some((s) => s.to === t.id)) this.events.onWalk({ kind: 'start', id: t.id });
+      return;
+    }
+    const c = t.kind === 'edge' ? w.choices.find((x) => x.edge === t.index) : w.choices.find((x) => x.to === t.id);
+    if (c) this.events.onWalk({ kind: 'choose', edge: c.edge });
+  }
+
+  /** Stops the walk's view where it is (the person panned or zoomed). */
+  private stopWalkGlide(): void {
+    if (this.walkFrame === null) return;
+    cancelAnimationFrame(this.walkFrame);
+    this.walkFrame = null;
+    this.placeChips();
+  }
+
+  /**
+   * The edge chips (Q232, the user, 2026-11-26): each place the walk can go next that is
+   * not wholly in view gets a chip on the chart's edge, on the side where it lies, naming
+   * the arrow's label and the place ("Yes → Build the index"). A click takes that choice.
+   */
+  private placeChips(): void {
+    const next = this.walkNext();
+    if (!this.walk || this.walkFrame !== null || !next.length) { this.walkChips.replaceChildren(); return; }
+    const r = this.stage.getBoundingClientRect();
+    if (!r.width) return;
+    const bands = this.walkBands(r);
+    const top = bands.top + CHIP_INSET;
+    const bottom = r.height - bands.foot - CHIP_INSET;
+    const left = CHIP_INSET;
+    const right = r.width - CHIP_INSET;
+    const cx = r.width / 2;
+    const cy = (top + bottom) / 2;
+    const placed: DOMRect[] = [];
+    this.walkChips.replaceChildren();
+    for (const c of next) {
+      const b = this.walkItem(c.to)?.getBoundingClientRect();
+      if (!b) continue;
+      const x0 = b.left - r.left, y0 = b.top - r.top;
+      if (x0 >= 0 && x0 + b.width <= r.width && y0 >= top - CHIP_INSET && y0 + b.height <= bottom + CHIP_INSET) continue;
+      const dx = x0 + b.width / 2 - cx;
+      const dy = y0 + b.height / 2 - cy;
+      const s = Math.min(dx > 0 ? (right - cx) / dx : dx < 0 ? (left - cx) / dx : Infinity, dy > 0 ? (bottom - cy) / dy : dy < 0 ? (top - cy) / dy : Infinity);
+      const chip = document.createElement('button');
+      chip.className = 'walk-chip';
+      chip.dataset.walk = this.walk.here ? 'choose' : 'start';
+      chip.dataset.value = this.walk.here ? String(c.edge) : c.to;
+      const dir = document.createElement('span');
+      dir.className = 'walk-chip-dir';
+      dir.setAttribute('aria-hidden', 'true');
+      dir.textContent = '➜';
+      dir.style.transform = `rotate(${String(Math.atan2(dy, dx))}rad)`;
+      const text = document.createElement('span');
+      text.textContent = c.label ? `${c.label} → ${c.title}` : c.title;
+      chip.append(dir, text);
+      chip.title = `${c.label ? `${c.label}: ` : ''}${c.title} (out of view)`;
+      this.walkChips.append(chip);
+      // Placed where the line from the middle meets the edge, kept inside, and moved
+      // along the edge clear of a chip placed before it.
+      const w = chip.offsetWidth, h = chip.offsetHeight;
+      let px = Math.min(Math.max(cx + dx * s - w / 2, left), right - w);
+      let py = Math.min(Math.max(cy + dy * s - h / 2, top), bottom - h);
+      const alongX = Math.abs(dy * s) >= (bottom - top) / 2 - 1; // on the top or foot edge: move sideways
+      for (let i = 0; i < placed.length * 2 + 1; i++) {
+        const hit = placed.find((p) => px < p.right + 6 && px + w > p.left - 6 && py < p.bottom + 6 && py + h > p.top - 6);
+        if (!hit) break;
+        if (alongX) px = Math.min(hit.right + 6, right - w);
+        else py = Math.min(hit.bottom + 6, bottom - h);
+      }
+      chip.style.left = `${String(px)}px`;
+      chip.style.top = `${String(py)}px`;
+      placed.push(new DOMRect(px, py, w, h));
+    }
+  }
+
+  /** The walk bar: Back, the choices (or Next, or the places to start), and Leave; at an end, Start again. */
+  private renderWalkBar(): void {
+    const w = this.walk;
+    this.walkBar.hidden = !w;
+    this.walkBar.replaceChildren();
+    if (!w) return;
+    const button = (walk: string, text: string, value?: string, tip?: string) => {
+      const b = document.createElement('button');
+      b.dataset.walk = walk;
+      if (value !== undefined) b.dataset.value = value;
+      b.textContent = text;
+      if (tip) b.title = tip;
+      return b;
+    };
+    const note = (text: string) => { const s = document.createElement('span'); s.className = 'walk-note'; s.textContent = text; return s; };
+    const back = button('back', 'Back', undefined, 'Back along the path taken');
+    back.classList.add('walk-back');
+    back.disabled = !w.canBack;
+    const choices = document.createElement('div');
+    choices.className = 'walk-choices';
+    if (!w.here) {
+      // Each name is also the button's tooltip: a long one is cut short to fit the bar.
+      choices.append(note('Start at'), ...w.starts.map((s) => button('start', s.title, s.to, s.title)));
+    } else if (!w.choices.length) {
+      choices.append(note('The end of this path'), button('again', 'Start again'));
+    } else if (w.choices.length === 1) {
+      const c = w.choices[0];
+      choices.append(button('choose', 'Next', String(c.edge), `${c.label ? `${c.label} → ` : ''}${c.title}`));
+    } else {
+      choices.append(...w.choices.map((c) => { const name = c.label ? `${c.label} → ${c.title}` : c.title; return button('choose', name, String(c.edge), name); }));
+    }
+    const leave = button('leave', 'Leave', undefined, 'Leave the walk');
+    leave.classList.add('walk-leave');
+    this.walkBar.append(back, choices, leave);
   }
 
   /**
@@ -505,6 +824,7 @@ export class Chart {
 
   /** Trace on hover follows the pointer after a short rest, so crossing the chart does not flicker. */
   private traceSoon(t: Target | null): void {
+    if (this.walk) t = null; // a walk lights its own way (T6.4)
     if (this.traceTimer !== null) clearTimeout(this.traceTimer);
     this.traceTimer = null;
     if (sameTarget(t, this.traced)) return;
@@ -731,6 +1051,7 @@ export class Chart {
     this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
     this.placeHandles();
     this.refreshDrag();
+    this.placeChips();
   }
 
   fit(): void {
@@ -784,6 +1105,7 @@ export class Chart {
    * mouse wheel) moves the view the way a page scrolls on the same computer; Shift with
    * an up-and-down wheel moves it sideways. Otherwise it zooms (`wheelZoom`). */
   private onWheel(e: WheelEvent): void {
+    this.stopWalkGlide();
     if (this.wheelMode === 'mouse' || e.ctrlKey) { this.wheelZoom(e); return; }
     e.preventDefault();
     // Pixels per unit: a line is about 16 px; a page is the chart's area.
@@ -840,8 +1162,10 @@ export class Chart {
     // Drag anywhere to pan; a press that does not move is a click.
     let pan: { x: number; y: number; vx: number; vy: number; id: number } | null = null;
     const isHandle = (t: EventTarget | null) => this.buttons().includes(t as HTMLButtonElement);
+    // The walk bar and the edge chips are buttons over the chart, not the chart (T6.4).
+    const onWalkTools = (t: EventTarget | null) => t instanceof Node && (this.walkBar.contains(t) || this.walkChips.contains(t));
     stage.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || isHandle(e.target)) return;
+      if (e.button !== 0 || isHandle(e.target) || onWalkTools(e.target)) return;
       pan = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y, id: e.pointerId };
       this.moved = false;
     });
@@ -850,7 +1174,7 @@ export class Chart {
       const dx = e.clientX - pan.x;
       const dy = e.clientY - pan.y;
       if (!this.moved && Math.hypot(dx, dy) < 4) return;
-      if (!this.moved) { this.moved = true; this.manual = true; stage.setPointerCapture(pan.id); stage.classList.add('panning'); this.trace(null); }
+      if (!this.moved) { this.stopWalkGlide(); this.moved = true; this.manual = true; stage.setPointerCapture(pan.id); stage.classList.add('panning'); this.trace(null); }
       this.view.x = pan.vx + dx;
       this.view.y = pan.vy + dy;
       this.apply();
@@ -863,7 +1187,9 @@ export class Chart {
       // A link written with Mermaid's `click` must not navigate the app away.
       if ((e.target as Element).closest('a')) e.preventDefault();
       if (this.moved || isHandle(e.target)) { this.moved = false; return; }
+      if (onWalkTools(e.target)) return;
       const t = this.targetAt(e.target as Element);
+      if (this.walk) { this.walkClick(t); return; }
       if (this.highlighting && t) { this.events.onHighlight(t); return; }
       if (e.shiftKey && t && t.kind !== 'edge' && this.allowed(t) && this.selected && this.selected.kind !== 'edge' && this.allowed(this.selected)) {
         if (this.viewing) this.events.onBlocked();
@@ -873,7 +1199,7 @@ export class Chart {
       this.events.onSelect(t);
     });
     stage.addEventListener('dblclick', (e) => {
-      if (this.highlighting) return; // two quick clicks there are two highlight clicks
+      if (this.highlighting || this.walk) return; // two quick clicks there are two highlight clicks, or two steps of a walk
       if (this.viewing) { this.events.onBlocked(); return; } // a new node or a rename
       const t = this.targetAt(e.target as Element);
       if (t) this.events.onRename(t);

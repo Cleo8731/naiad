@@ -52,7 +52,7 @@ describe('drag interactions', () => {
     Object.assign(HTMLElement.prototype, { setPointerCapture() {}, hasPointerCapture: () => false, releasePointerCapture() {} });
     stage = document.createElement('div'); document.body.append(stage);
     stage.getBoundingClientRect = () => ({ ...rect, width: 400, height: 300, x: 100, y: 200, toJSON() {} });
-    events = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    events = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     chart = new Chart(stage, events);
     const canvas = stage.querySelector('.canvas')!;
     canvas.innerHTML = '<svg><g data-node="A"></g><g data-node="B"></g><g data-sub="subGraph0"></g><path data-edge-line="0" d="M10,20C20,20,30,40,50,60"></path></svg>';

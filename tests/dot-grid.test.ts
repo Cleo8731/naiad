@@ -29,7 +29,7 @@ describe('the dot grid stays fixed to the window (Q187, changed back)', () => {
     document.body.append(stage);
     Object.defineProperty(stage, 'clientWidth', { configurable: true, get: () => 800 });
     stage.getBoundingClientRect = () => box(800, 600);
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     chart = new Chart(stage, events);
   });
   afterEach(() => { chart.destroy(); stage.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });

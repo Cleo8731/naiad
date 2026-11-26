@@ -15,6 +15,7 @@ import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
+import { choicesFrom, startNodes, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
 
 type Source = 'chart' | 'text' | 'disk' | 'history';
 interface Step { text: string; disk: boolean }
@@ -118,6 +119,8 @@ export interface TabWindow {
     status: HTMLElement; dir: HTMLButtonElement; undo: HTMLButtonElement; redo: HTMLButtonElement;
     add: HTMLButtonElement; fit: HTMLButtonElement; highlight: HTMLButtonElement; clear: HTMLButtonElement;
     pill: HTMLElement; island: HTMLElement;
+    /** The pill's Walk button (T6.4, Q229): shown in View mode only. */
+    walk: HTMLButtonElement;
   };
   /** The direction button shows the chart's direction: TD, LR, BT or RL. */
   showDirection(dir: string): void;
@@ -199,6 +202,7 @@ export class Tab {
       onAddNode: () => { void this.addNode(null); },
       onRename: (t) => { this.select(t); this.sidebar.focusTitle(); },
       onBlocked: () => win.viewBlocked(),
+      onWalk: (action) => this.onWalk(action),
     });
     this.sidebar = new Sidebar(el.sidebar, {
       close: () => this.select(null),
@@ -381,6 +385,7 @@ export class Tab {
     this.text = this.saved = plainText(raw);
     this.undoStack = [];
     this.redoStack = [];
+    this.leaveWalk();
     this.selection = null;
     this.snap = null;
     this.note = '';
@@ -548,6 +553,7 @@ export class Tab {
 
   /** View mode (D4.3, T1.11) in the tab's own views: the chart, the sidebar and the Syntax pane. */
   showViewing(on: boolean): void {
+    if (!on) this.leaveWalk(); // a walk is a way of reading: it belongs to View mode
     this.chart.setViewing(on);
     this.sidebar.setViewing(on);
     this.el.area.readOnly = on;
@@ -765,8 +771,84 @@ export class Tab {
     }
     this.keepSelection(before);
     this.paint();
+    this.keepWalk();
   }
   private chartText: string | null = null;
+
+  /**
+   * The walk in this tab (T6.4): its steps, the first where it started; empty while the
+   * reader picks where to start; null when there is no walk. Nothing of it is written.
+   */
+  private walkPath: WalkStep[] | null = null;
+
+  /** Whether this tab shows a walk. */
+  get walking(): boolean { return this.walkPath !== null; }
+
+  /**
+   * Starts a walk (the pill's Walk button, Q229): at the one node no arrow points to, or,
+   * with several, the reader picks one. The Highlight switch goes off: a click now walks.
+   */
+  startWalk(): void {
+    if (!this.snap || !this.win.viewing()) return;
+    if (this.win.highlighting()) this.win.setHighlighting(false);
+    const starts = startNodes(this.snap);
+    this.walkPath = starts.length === 1 ? [{ id: starts[0], via: null }] : [];
+    this.showWalk(true);
+  }
+
+  /** Ends the walk; the view stays where the walk left it, and the pill comes back. */
+  leaveWalk(): void {
+    if (this.walkPath === null) return;
+    this.walkPath = null;
+    this.chart.setWalk(null);
+    this.select(null);
+  }
+
+  private onWalk(action: WalkAction): void {
+    const path = this.walkPath;
+    if (!path || !this.snap) return;
+    if (action.kind === 'leave') { this.leaveWalk(); return; }
+    if (action.kind === 'again') { this.startWalk(); return; }
+    if (action.kind === 'start') this.walkPath = [{ id: action.id, via: null }];
+    if (action.kind === 'back') {
+      if (path.length < 2) return;
+      path.pop();
+      this.showWalk(true, true); // straight back, not along the arrow the wrong way
+      return;
+    }
+    if (action.kind === 'choose') {
+      const here = path[path.length - 1];
+      const choice = here ? choicesFrom(this.snap, here.id).find((c) => c.edge === action.edge) : undefined;
+      if (!choice) return;
+      path.push({ id: choice.to, via: choice.edge });
+    }
+    this.showWalk(true);
+  }
+
+  /**
+   * Shows the walk: its place selected, so the sidebar shows its title and description,
+   * and the chart's walk view. `straight`: the view goes straight there (Back).
+   */
+  private showWalk(move: boolean, straight = false): void {
+    if (!this.walkPath || !this.snap) return;
+    const view = walkView(this.snap, this.walkPath);
+    if (straight) view.via = null;
+    const here = view.here;
+    this.select(here === null ? null : here in this.snap.nodes ? { kind: 'node', id: here } : { kind: 'sub', id: here });
+    this.chart.setWalk(view, move);
+  }
+
+  /**
+   * After the file changed during a walk: the walk keeps its steps up to the last place
+   * still in the chart (`stillThere`), and the view moves only when it had to step back.
+   */
+  private keepWalk(): void {
+    if (this.walkPath === null || !this.snap) return;
+    const kept = stillThere(this.snap, this.walkPath);
+    const stepped = kept.length !== this.walkPath.length;
+    this.walkPath = kept;
+    this.showWalk(stepped, true);
+  }
 
   /** The arrow an edit of its label or style is putting in, and how it reads after (`edit`). */
   private edited: { index: number; after: string } | null = null;
@@ -1060,14 +1142,15 @@ export class Tab {
     bar.status.textContent = status;
     bar.status.dataset.state = state;
     const shown = [bar.pill.hidden, bar.island.hidden].join();
-    bar.pill.hidden = !open;
+    bar.pill.hidden = !open || this.walking; // during a walk, the walk bar is in its place
     bar.island.hidden = !open || this.win.viewing();
+    bar.walk.hidden = !this.win.viewing();
     // A file's first drawing comes before this shows the tools, so it was fitted without
     // them: fit it again around them (seen 2026-11-25).
     if ([bar.pill.hidden, bar.island.hidden].join() !== shown) this.chart.toolsChanged();
     bar.undo.disabled = !this.undoStack.length;
     bar.redo.disabled = !this.redoStack.length;
-    bar.add.disabled = bar.fit.disabled = bar.dir.disabled = bar.highlight.disabled = !open || !this.snap;
+    bar.add.disabled = bar.fit.disabled = bar.dir.disabled = bar.highlight.disabled = bar.walk.disabled = !open || !this.snap;
     if (bar.highlight.disabled && this.win.highlighting()) this.win.setHighlighting(false);
     if (this.snap) this.win.showDirection(this.snap.direction === 'TB' ? 'TD' : this.snap.direction);
   }

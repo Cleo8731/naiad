@@ -34,7 +34,7 @@ describe('a chart hidden and shown again (T1.16, tabs)', () => {
     document.body.append(stage);
     Object.defineProperty(stage, 'clientWidth', { configurable: true, get: () => width });
     stage.getBoundingClientRect = () => box(0, 0, width, width ? 600 : 0);
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     chart = new Chart(stage, events);
   });
   afterEach(() => { chart.destroy(); stage.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });

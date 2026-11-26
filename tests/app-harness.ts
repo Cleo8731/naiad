@@ -88,6 +88,10 @@ export const chartMock = () => ({
     destroyed = false;
     constructor(private stage: HTMLElement, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    /** Each walk the tab showed (T6.4), a copy, or null when it ended; and whether the view was to move. */
+    walks: (import('../src/walk').WalkView | null)[] = [];
+    walkMoves: boolean[] = [];
+    setWalk(view: import('../src/walk').WalkView | null, move = true) { this.walks.push(view ? JSON.parse(JSON.stringify(view)) : null); this.walkMoves.push(move); }
     /** The view as the person moved it (T6.2): null while fitted. */
     view: { x: number; y: number; k: number } | null = null;
     placement() { return this.view; }

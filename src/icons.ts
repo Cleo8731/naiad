@@ -6,7 +6,8 @@
  * button's name says what it does, so the drawing itself is hidden from screen readers.
  * Two more, Maximize 2 and Minimize 2, the Syntax pane's full-window button (2026-11-25),
  * were written out by hand from Lucide's drawings, in the same form as the others; so was
- * Share, the rail's Export button, and Printer, its Print button (T6.3, 2026-11-25).
+ * Share, the rail's Export button, and Printer, its Print button (T6.3, 2026-11-25),
+ * and Footprints, the pill's Walk button (T6.4, 2026-11-26).
  * Naiad's own mark is not an icon: `brand/naiad-mark.svg`, drawn through a mask.
  */
 import undo from './icons/undo-2.svg?raw';
@@ -38,6 +39,7 @@ import maximize2 from './icons/maximize-2.svg?raw';
 import minimize2 from './icons/minimize-2.svg?raw';
 import share from './icons/share.svg?raw';
 import printer from './icons/printer.svg?raw';
+import footprints from './icons/footprints.svg?raw';
 
 /**
  * The window's own buttons (T4.10, Q171): Naiad's drawings, not Lucide's, thin and
@@ -80,6 +82,7 @@ export const ICONS = {
   /** Export (T6.3): its menu saves the chart as a picture, or prints it; in the pill. */
   export: icon('export', share),
   print: icon('print', printer),
+  walk: icon('walk', footprints),
   /** The direction button and its menu (T4.9): the way the chart runs. */
   down: icon('down', arrowDown),
   right: icon('right', arrowRight),

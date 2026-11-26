@@ -251,7 +251,7 @@ export class App {
   private el!: {
     status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    highlight: HTMLButtonElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
+    highlight: HTMLButtonElement; walk: HTMLButtonElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
     /** The Undo island and Clear beside it, and the pill (T4.9), moved to the shown tab's chart. */
     islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
@@ -343,12 +343,13 @@ export class App {
         </div>
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
+        <button class="icon" data-act="walk" title="Walk: follow one run through the flowchart, node by node, choosing an arrow at each step" aria-label="Walk" hidden>${ICONS.walk}</button>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
       status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
-      fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
+      fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'), walk: q('[data-act="walk"]'),
       exportButton: q('[data-act="export"]'), exportMenu: q('.export-menu'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
@@ -1335,7 +1336,7 @@ export class App {
       backend: this.backend,
       bar: {
         status: el.status, dir: el.dir, undo: el.undo, redo: el.redo, add: el.add, fit: el.fit,
-        highlight: el.highlight, clear: el.clear, pill: el.pill, island: el.island,
+        highlight: el.highlight, clear: el.clear, pill: el.pill, island: el.island, walk: el.walk,
       },
       showDirection: (dir) => this.showDirection(dir),
       pane: el.pane,
@@ -1956,6 +1957,7 @@ export class App {
       if (act === 'recent') this.toggleRecent();
       if (act === 'customize' || act === 'settings') this.openWindow(act);
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
+      if (act === 'walk') this.tab.startWalk();
       if (act === 'clear') void this.tab.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
       if (act === 'about') this.setAbout(!this.about);

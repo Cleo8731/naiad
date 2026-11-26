@@ -37,7 +37,7 @@ describe('what a wheel event over the chart does', () => {
     vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
     stage = document.createElement('div');
     document.body.append(stage);
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     chart = new Chart(stage, events);
     start();
   });

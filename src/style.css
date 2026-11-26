@@ -701,6 +701,17 @@ body.dragging-tab #app { pointer-events: none; }
 .stage.tracing .canvas g.node:not(.lit), .stage.tracing .canvas path[data-edge-line]:not(.lit),
 .stage.tracing .canvas path[data-edge-line]:not(.lit) + path.dir-mark,
 .stage.tracing .canvas g.edgeLabel:not(.lit) { opacity: 0.22; }
+/* Walk (T6.4, Q230): the walk's place and where it can go next stay bright; the path
+   taken stays half lit, in the accent; the rest fades. Groups stay, as in a trace. */
+.stage.walking .canvas g.node:not(.walk-on):not(.walk-path),
+.stage.walking .canvas path[data-edge-line]:not(.walk-on):not(.walk-path),
+.stage.walking .canvas path[data-edge-line]:not(.walk-on):not(.walk-path) + path.dir-mark,
+.stage.walking .canvas g.edgeLabel:not(.walk-on):not(.walk-path) { opacity: 0.16; }
+.stage.walking .canvas g.node.walk-path:not(.walk-on), .stage.walking .canvas g.edgeLabel.walk-path:not(.walk-on) { opacity: 0.55; }
+.stage.walking .canvas path.walk-path:not(.walk-on) { stroke: var(--accent) !important; stroke-width: 2.5px !important; opacity: 0.7; }
+.stage.walking .canvas path.walk-path:not(.walk-on) + path.dir-mark { stroke: var(--accent) !important; opacity: 0.7; }
+.stage.walking .canvas path.walk-on { stroke-width: 2.5px !important; }
+.stage.walking .canvas .node.walk-here { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--select) 60%, transparent)); }
 .canvas .node.sel .label-container, .canvas .node.sel .label-container path,
 .canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--select) !important; stroke-width: 2.5px !important; }
 .canvas .cluster.sel > rect { stroke: var(--select) !important; stroke-width: 2px !important; }
@@ -966,3 +977,36 @@ input.switch:checked::before { transform: translateX(14px); }
   .print-map-parts rect { fill: none; stroke: #333; stroke-width: 1.2px; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
   .print-map-parts text { fill: #000; font-weight: 700; text-anchor: middle; dominant-baseline: central; stroke: #fff; stroke-width: 3px; paint-order: stroke; vector-effect: non-scaling-stroke; }
 }
+
+/* Walk's bar (T6.4): in the pill's place at the chart's foot while a walk is shown, with
+   Back, the choices and Leave. Its buttons wrap in a narrow chart. */
+.walk-bar {
+  position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 8; width: fit-content; max-width: calc(100% - 28px); margin: 0 auto;
+  display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 24px; user-select: none;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: 0 8px 24px -10px var(--shadow);
+}
+.walk-bar[hidden] { display: none; }
+.walk-choices { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.walk-bar button {
+  height: 34px; padding: 0 14px; border-radius: var(--radius-pill); border: 1px solid var(--line);
+  background: transparent; color: var(--text); font: inherit; font-size: 13px; white-space: nowrap;
+  max-width: 280px; overflow: hidden; text-overflow: ellipsis;
+}
+.walk-choices button { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
+.walk-bar button:hover:not(:disabled) { border-color: var(--accent); }
+.walk-bar button:disabled { opacity: 0.45; }
+.walk-back, .walk-leave { flex: none; }
+.walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; white-space: nowrap; }
+/* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named on the chart's
+   edge on its side; a click takes that choice. Placed by `placeChips` in `chart.ts`. */
+.walk-chips { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.walk-chip {
+  position: absolute; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
+  max-width: 260px; height: 30px; padding: 0 12px 0 8px; border-radius: var(--radius-pill);
+  border: 1px solid var(--accent); background: var(--panel); color: var(--text); font: inherit; font-size: 12.5px;
+  box-shadow: 0 6px 18px -8px var(--shadow); white-space: nowrap; cursor: pointer;
+}
+.walk-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.walk-chip:hover { background: var(--accent-soft); }
+.walk-chip-dir { flex: none; display: inline-block; color: var(--accent); font-size: 13px; line-height: 1; }
+@media print { .walk-bar, .walk-chips { display: none !important; } }

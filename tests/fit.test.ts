@@ -32,7 +32,7 @@ describe('Fit and the chart\'s tools', () => {
     stage.getBoundingClientRect = () => rect(0, 0, 1000, 800);
     area.append(stage);
     document.body.append(area);
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     chart = new Chart(stage, events);
   });
   afterEach(() => { chart.destroy(); area.remove(); vi.unstubAllGlobals(); });

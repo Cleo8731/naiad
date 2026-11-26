@@ -56,7 +56,7 @@ describe('when Naiad changes ELK', () => {
       changed = ELK.prototype.layout !== originalLayout;
       return Promise.reject(Error('stop here'));
     });
-    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn() };
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
     const chart = new Chart(document.createElement('div'), events);
     await expect(chart.draw('flowchart TD\n  A --> B\n', undefined as never)).rejects.toThrow('stop here');
     expect(changed).toBe(true);
