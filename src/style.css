@@ -725,6 +725,12 @@ body.dragging-tab #app { pointer-events: none; }
 .stage.walking .canvas path.walk-path:not(.walk-on) { stroke: var(--accent) !important; stroke-width: 2.5px !important; opacity: 0.7; }
 .stage.walking .canvas path.walk-path:not(.walk-on) + path.dir-mark { stroke: var(--accent) !important; opacity: 0.7; }
 .stage.walking .canvas path.walk-on { stroke-width: 2.5px !important; }
+/* Picking where a walk starts (Q243; the user, 2026-11-26): all but the nodes no arrow
+   points to fades, as hints. A faded node can still be clicked, and comes back under the
+   pointer. Groups stay, as in a trace. */
+.stage.walk-picking .canvas g.node:not(.walk-start):not(.hov),
+.stage.walk-picking .canvas path[data-edge-line], .stage.walk-picking .canvas path.dir-mark,
+.stage.walk-picking .canvas g.edgeLabel { opacity: 0.3; }
 /* The walk's place wears a highlight's halo while the walk is there; the highlights
    themselves are hidden for the walk (`Chart.paintHighlights`; the user, 2026-11-26). */
 .stage.walking .canvas .node.walk-here { filter: drop-shadow(0 0 2px var(--hl)) drop-shadow(0 0 4px var(--hl)) drop-shadow(0 0 6px var(--hl)); }

@@ -496,8 +496,11 @@ export class Chart {
    */
   setWalk(view: WalkView | null, move = true): void {
     this.walk = view;
-    // While the reader picks where to start, nothing fades: any node can be clicked (Q242).
+    // While the reader picks where to start (Q242), all but the nodes no arrow points to
+    // fades, as hints (Q243; the user, 2026-11-26); any node can still be clicked. A chart
+    // that is all loops has no such node, and then nothing fades.
     this.stage.classList.toggle('walking', !!view?.here);
+    this.stage.classList.toggle('walk-picking', !!view && !view.here && view.starts.length > 0);
     if (view) this.trace(null);
     this.paintWalk();
     this.paintHighlights(); // hidden for the walk, back when it ends (the user, 2026-11-26)
@@ -572,9 +575,10 @@ export class Chart {
   }
 
   private paintWalk(): void {
-    for (const c of ['walk-on', 'walk-here', 'walk-path']) this.canvas.querySelectorAll(`.${c}`).forEach((e) => e.classList.remove(c));
+    for (const c of ['walk-on', 'walk-here', 'walk-path', 'walk-start']) this.canvas.querySelectorAll(`.${c}`).forEach((e) => e.classList.remove(c));
     const w = this.walk;
     if (!w) return;
+    for (const s of w.starts) this.walkItem(s.to)?.classList.add('walk-start');
     const edge = (i: number, c: string) => {
       this.canvas.querySelector(`[data-edge-line="${i}"]`)?.classList.add(c);
       this.canvas.querySelector(`g.edgeLabel[data-edge="${i}"]`)?.classList.add(c);

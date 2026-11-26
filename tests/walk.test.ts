@@ -27,8 +27,8 @@ describe('where a walk starts and where it can go', () => {
     expect(startNodes({ ...SNAP, edges: SNAP.edges.slice(0, 2) })).toEqual(['A', 'D']);
   });
 
-  test('a chart that is all loops starts at its first node', () => {
-    expect(startNodes({ nodes: { X: node('x'), Y: node('y') }, edges: [edge('X', 'Y'), edge('Y', 'X')] })).toEqual(['X']);
+  test('a chart that is all loops has none, so nothing is hinted (Q243)', () => {
+    expect(startNodes({ nodes: { X: node('x'), Y: node('y') }, edges: [edge('X', 'Y'), edge('Y', 'X')] })).toEqual([]);
   });
 
   test('the choices from a node: each arrow leaving it, with its label and where it leads', () => {
@@ -209,7 +209,24 @@ describe('the chart during a walk', () => {
     expect(classes('hl')).toEqual(['C']);
   });
 
-  test('one way on: a note to click it; an end offers Start again; picking where to start, nothing fades, no chip, no key (Q242)', () => {
+  test('picking where to start: all but the nodes no arrow points to fades, as hints; a chart all loops fades nothing; leaving clears it (Q243)', () => {
+    chart.setWalk(walkView(SNAP, []), false);
+    expect(stage.classList.contains('walk-picking')).toBe(true);
+    expect(classes('walk-start')).toEqual(['D']);
+    chart.setWalk(walkView(SNAP, [{ id: 'A', via: null }]), false); // started: the walk's own fading takes over
+    expect(stage.classList.contains('walk-picking')).toBe(false);
+    expect(classes('walk-start')).toEqual([]);
+    chart.setWalk(walkView({ ...SNAP, edges: [edge('A', 'B'), edge('B', 'A'), edge('C', 'D'), edge('D', 'C')] }, []), false);
+    expect(stage.classList.contains('walk-picking')).toBe(false);
+    chart.setWalk(walkView(SNAP, []), false);
+    chart.setWalk(null);
+    expect(stage.classList.contains('walk-picking')).toBe(false);
+    expect(classes('walk-start')).toEqual([]);
+    const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(css).toMatch(/\.stage\.walk-picking \.canvas g\.node:not\(\.walk-start\):not\(\.hov\)/); // a faded node comes back under the pointer
+  });
+
+  test('one way on: a note to click it; an end offers Start again; picking where to start, nothing lit, no chip, no key (Q242)', () => {
     chart.setWalk(view('A'));
     expect(texts()).toEqual(['Back', 'Leave']);
     expect(note()).toBe('Click the next step on the chart');
@@ -220,7 +237,7 @@ describe('the chart during a walk', () => {
     chart.setWalk(walkView(SNAP, []), false); // D, the only node no arrow points to, lies off to the right
     expect(texts()).toEqual(['Back', 'Leave']);
     expect(note()).toBe('Click the node to start from');
-    expect(stage.classList.contains('walking')).toBe(false); // nothing fades: any node can be picked
+    expect(stage.classList.contains('walking')).toBe(false); // the walk's fading waits: any node can be picked
     expect(classes('walk-on')).toEqual([]);
     expect(chipTexts()).toEqual([]);
     expect(chart.walkChoice(0)).toBeNull();

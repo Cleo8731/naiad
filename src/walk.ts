@@ -14,7 +14,7 @@ export interface Choice { edge: number; to: string; label: string; title: string
 export interface WalkView {
   /** Where the walk is; null while the reader picks where to start. */
   here: string | null;
-  /** The places a walk can start, while the reader picks one. */
+  /** While the reader picks where to start, the nodes no arrow points to: the hints (Q243). Any node can still be picked. */
   starts: Choice[];
   /** The arrows out of `here`. None at an end. */
   choices: Choice[];
@@ -44,8 +44,8 @@ export function titleOf(snap: Pick<Snap, 'nodes' | 'subs'>, id: string): string 
 const walkable = (e: Snap['edges'][number]): boolean => e.stroke !== 'invisible';
 
 /**
- * The places a walk can start: the nodes no arrow points to, in the file's order. A chart
- * that is all loops has none; it starts at its first node.
+ * The nodes no arrow points to, in the file's order: the hints while the reader picks
+ * where to start (Q243). A chart that is all loops has none, and then nothing is hinted.
  */
 export function startNodes(snap: Pick<Snap, 'nodes' | 'edges'>): string[] {
   const reached = new Set<string>();
@@ -54,9 +54,7 @@ export function startNodes(snap: Pick<Snap, 'nodes' | 'edges'>): string[] {
     reached.add(e.end);
     if (e.type.startsWith('double_arrow')) reached.add(e.start); // `<-->` points both ways
   }
-  const ids = Object.keys(snap.nodes);
-  const starts = ids.filter((id) => !reached.has(id));
-  return starts.length ? starts : ids.slice(0, 1);
+  return Object.keys(snap.nodes).filter((id) => !reached.has(id));
 }
 
 /**
