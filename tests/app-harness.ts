@@ -60,6 +60,8 @@ function smallDrawing(fill: string, title = ''): SVGSVGElement {
 
 /** The texts drawn for paper (`drawForPaper`, T6.3), in order. */
 export const paperDrawn: string[] = [];
+/** The size of the drawing for paper, in px (D6.2): small, unless a test makes it large. */
+export const paperSize = { w: 120, h: 80 };
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
@@ -69,7 +71,14 @@ export const chartMock = () => ({
   drawForPaper: async (text: string, _snap: unknown, holder: HTMLElement) => {
     paperDrawn.push(text);
     const svg = smallDrawing('#ffffff');
+    svg.setAttribute('viewBox', `0 0 ${String(paperSize.w)} ${String(paperSize.h)}`);
+    svg.setAttribute('width', String(paperSize.w));
+    svg.setAttribute('height', String(paperSize.h));
     svg.classList.add('paper');
+    // An arrowhead by id, as Mermaid draws one, so a print's copies can be told apart (D6.2).
+    const marker = document.createElementNS(SVG_NS, 'marker');
+    marker.id = 'paper1_flowchart-v2-pointEnd';
+    svg.append(marker);
     holder.replaceChildren(svg);
     return svg;
   },
@@ -154,6 +163,8 @@ export class FakeDisk {
   handOver(paths: string[]): void { this.arrive(paths.map((file) => ({ file }))); }
   /** The window's name (`Backend.windowName`): "main" for the program's first window. */
   windowName = 'main';
+  /** The paper of the computer's region (`Backend.paper`, D6.2, Q228). */
+  regionPaper: 'A4' | 'Letter' = 'A4';
   /** The program's other windows, for a desktop test of T6.2 (`Backend.windows`); null: a browser's one page. */
   windows: Backend['windows'] = null;
   /** What Naiad's own title bar asked of the window, in order (`Backend.windowControls`, T4.10). */
@@ -168,6 +179,7 @@ export class FakeDisk {
       cliJob: async () => null,
       cliDone: async () => {},
       initialPath: async () => this.startFile,
+      paper: async () => this.regionPaper,
       otherWindow: async () => this.otherWindow,
       windowName: this.windowName,
       onArrivals: (take) => { this.arrive = take; },

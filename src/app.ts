@@ -20,7 +20,8 @@ import {
   customizeWindow, isDark, printWindow, readAppearance, readPalette, readSyntaxFont, settingsWindow,
   type Appearance, type Palette, type PrintChoice, type SyntaxFont,
 } from './overlays';
-import { printSheet } from './print-sheet';
+import { layParts, measureDrawing, pageSizeRule, printSheet } from './print-sheet';
+import { planFor, type Paper } from './print-pages';
 import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
 import { SyntaxBox } from './syntax-box';
@@ -1671,6 +1672,38 @@ export class App {
     }
     this.printPage.reset();
     this.printPage.showModal();
+    void this.measureForPrint();
+  }
+
+  /** Counts each print page's opening, so a measure that comes back late is not given to a later one. */
+  private printOpenings = 0;
+  /** The region's paper, asked once (Q228). */
+  private regionPaper: Promise<Paper> | null = null;
+
+  /**
+   * Draws the chart for paper out of sight, measures it and tells the print page, which
+   * then shows what each size gives (D6.2). The drawing is thrown away: Print preview
+   * draws again, so a change to the file meanwhile is printed.
+   */
+  private async measureForPrint(): Promise<void> {
+    const page = this.printPage;
+    if (!page) return;
+    const opening = ++this.printOpenings;
+    const stage = document.createElement('div');
+    stage.className = 'print-stage';
+    stage.setAttribute('aria-hidden', 'true');
+    document.body.append(stage);
+    try {
+      this.regionPaper ??= this.backend.paper().catch((): Paper => 'A4');
+      const svg = await this.tab.drawForPaper(stage);
+      if (!svg) throw new Error('nothing to draw');
+      const paper = await this.regionPaper;
+      if (opening === this.printOpenings) page.measured({ ...measureDrawing(svg), paper });
+    } catch {
+      if (opening === this.printOpenings) page.measured('failed');
+    } finally {
+      stage.remove();
+    }
   }
 
   /** Lays the sheet in the page with what is ticked, draws the chart for paper into it, then opens the print window. */
@@ -1678,7 +1711,7 @@ export class App {
     const tab = this.tab;
     const contents = tab.printContents();
     if (!contents) return;
-    for (const old of document.querySelectorAll('.print-sheet')) old.remove();
+    for (const old of document.querySelectorAll('.print-sheet, #print-page-size')) old.remove();
     const sheet = printSheet(contents, choice);
     document.body.append(sheet);
     const holder = sheet.querySelector<HTMLElement>('.print-chart');
@@ -1687,6 +1720,17 @@ export class App {
         const svg = await tab.drawForPaper(holder);
         if (!svg) throw new Error('the flowchart has nothing to draw yet');
         if (svg.id) svg.prepend(styleElement(drawingRules(`#${CSS.escape(svg.id)}`)));
+        if (choice.size === 'pages') {
+          // Over several pages (D6.2): the parts worked out again from this drawing, on
+          // the paper chosen, and the page's size set to that paper while printing.
+          const { chart, boxes } = measureDrawing(svg);
+          const plan = planFor(chart, boxes, choice.paper, choice.orientation);
+          layParts(sheet, svg, plan, contents.name);
+          const size = document.createElement('style');
+          size.id = 'print-page-size';
+          size.textContent = pageSizeRule(plan);
+          document.head.append(size);
+        }
       } catch (e) {
         sheet.remove();
         this.toast(`Could not draw the chart for printing: ${errorText(e)}`);
@@ -1938,7 +1982,7 @@ export class App {
     // A print started some other way than the print page (a browser's own menu) gets
     // the chart as drawn; after any print the sheet goes (T6.3).
     window.addEventListener('beforeprint', () => { if (!document.querySelector('.print-sheet')) this.quickSheet(); });
-    window.addEventListener('afterprint', () => { for (const sheet of document.querySelectorAll('.print-sheet')) sheet.remove(); });
+    window.addEventListener('afterprint', () => { for (const sheet of document.querySelectorAll('.print-sheet, #print-page-size')) sheet.remove(); });
 
     // A drag on a pane's grip resizes the pane (T4.9).
     this.root.addEventListener('pointerdown', (e) => {

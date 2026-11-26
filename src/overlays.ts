@@ -4,6 +4,10 @@
 // ×, by Escape (the browser's own), or by a click outside it.
 
 import { ICONS } from './icons';
+import {
+  bestPlan, defaultSize, fitScale, planFor, textPt,
+  type ChartSize, type Orientation, type Paper, type Rect,
+} from './print-pages';
 
 /** Appearance (T4.8): the window and the chart in light, in dark, or as the computer is set. */
 export type Appearance = 'light' | 'dark' | 'system';
@@ -200,8 +204,18 @@ export function settingsWindow(hooks: SettingsHooks): HTMLDialogElement {
   return overlay('Settings', [row, note('When Naiad starts, it opens again the files that were open when it last closed.')]);
 }
 
-/** What a print holds (T6.3, Q223): the chart, the flowchart's description, each node's description. */
-export interface PrintChoice { chart: boolean; about: boolean; nodes: boolean }
+/**
+ * What a print holds (T6.3, Q223): the chart, the flowchart's description, each node's
+ * description; and the chart's size, fitted on one page or over several, with the paper
+ * and the way up for several (D6.2, Q226 to Q228).
+ */
+export interface PrintChoice {
+  chart: boolean; about: boolean; nodes: boolean;
+  size: ChartSize; paper: Paper; orientation: Orientation;
+}
+
+/** What the print page knows of the chart once it is measured (D6.2): its frame, its boxes, the region's paper. */
+export interface PrintMeasure { chart: Rect; boxes: Rect[]; paper: Paper }
 
 /** The print page's heading: what is ticked, in a few words. */
 export function printSummary({ chart, about, nodes }: PrintChoice): string {
@@ -217,17 +231,26 @@ export function printSummary({ chart, about, nodes }: PrintChoice): string {
  * `print`, which opens the print window: its own preview, where the printing is done. The
  * button is not named Print, which read as printing at once (the user, 2026-11-25). Each
  * opening starts from the default.
+ *
+ * Under "The chart", its size (D6.2, Q226 to Q228): **Fit on one page** or **Readable
+ * size, over several pages**, each saying what it gives ("text 2.1 pt"; "7 pages, A4
+ * landscape"). The page is told the chart's measure once it is drawn (`measured`); until
+ * then the choice waits, and so does Print preview while the chart is ticked. It starts
+ * on one page while the fitted text is 8 pt or more (Q227). For several pages the paper
+ * is the region's and the way up the one that needs the fewest pages; **Change** shows
+ * both as menus (Q228).
  */
-export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogElement & { reset(): void } {
+export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogElement & { reset(): void; measured(m: PrintMeasure | null | 'failed'): void } {
   const summary = document.createElement('p');
   summary.className = 'print-summary';
   summary.setAttribute('aria-live', 'polite');
-  const BOXES: [keyof PrintChoice, string, string, boolean][] = [
-    ['chart', 'The chart', 'In black on white, fitted to the page', true],
+  type Box = 'chart' | 'about' | 'nodes';
+  const BOXES: [Box, string, string, boolean][] = [
+    ['chart', 'The chart', 'In black on white', true],
     ['about', "The flowchart's description", 'Above the chart', false],
     ['nodes', "Each node's description", 'After the chart, under each node\'s title', false],
   ];
-  const inputs = {} as Record<keyof PrintChoice, HTMLInputElement>;
+  const inputs = {} as Record<Box, HTMLInputElement>;
   const rows = BOXES.map(([key, text, where]) => {
     const label = document.createElement('label');
     label.className = 'print-box';
@@ -246,6 +269,54 @@ export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogEle
     row.append(label, hint);
     return row;
   });
+
+  // The chart's size: two choices, what each gives, and the paper for several pages.
+  const sizes = document.createElement('div');
+  sizes.className = 'print-size';
+  sizes.setAttribute('role', 'radiogroup');
+  sizes.setAttribute('aria-label', "The chart's size");
+  const waiting = document.createElement('small');
+  waiting.className = 'print-measuring';
+  waiting.textContent = 'Measuring the chart…';
+  const radio = (value: ChartSize, text: string) => {
+    const label = document.createElement('label');
+    label.className = 'print-choice';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'size';
+    input.value = value;
+    const name = document.createElement('span');
+    name.textContent = text;
+    const gives = document.createElement('small');
+    label.append(input, name);
+    const row = document.createElement('div');
+    row.className = 'print-choice-row';
+    row.append(label, gives);
+    return { row, input, gives };
+  };
+  const fit = radio('fit', 'Fit on one page');
+  const pages = radio('pages', 'Readable size, over several pages');
+  const change = document.createElement('button');
+  change.type = 'button';
+  change.className = 'print-change';
+  change.textContent = 'Change';
+  pages.row.append(change);
+  const menu = (name: 'paper' | 'orientation', text: string, options: [string, string][]) => {
+    const label = document.createElement('label');
+    const sel = document.createElement('select');
+    sel.name = name;
+    for (const [value, shown] of options) sel.add(new Option(shown, value));
+    label.append(text, sel);
+    return { label, sel };
+  };
+  const paperMenu = menu('paper', 'Paper', [['A4', 'A4'], ['Letter', 'Letter']]);
+  const wayMenu = menu('orientation', 'Way up', [['portrait', 'Portrait (upright)'], ['landscape', 'Landscape (sideways)']]);
+  const paperRow = document.createElement('div');
+  paperRow.className = 'print-paper';
+  paperRow.append(paperMenu.label, wayMenu.label);
+  sizes.append(waiting, fit.row, pages.row, paperRow);
+  rows[0].append(sizes);
+
   const cancel = document.createElement('button');
   cancel.textContent = 'Cancel';
   const go = document.createElement('button');
@@ -254,17 +325,65 @@ export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogEle
   const actions = document.createElement('div');
   actions.className = 'print-actions';
   actions.append(cancel, go);
-  const dialog = overlay('Print', [summary, ...rows, actions]) as HTMLDialogElement & { reset(): void };
-  const choice = (): PrintChoice => ({ chart: inputs.chart.checked, about: inputs.about.checked, nodes: inputs.nodes.checked });
+  const dialog = overlay('Print', [summary, ...rows, actions]) as ReturnType<typeof printWindow>;
+
+  let measure: PrintMeasure | null | 'failed' = null;
+  let paper: Paper = 'A4';
+  let orientation: Orientation = 'portrait';
+  let changing = false;
+  const choice = (): PrintChoice => ({
+    chart: inputs.chart.checked, about: inputs.about.checked, nodes: inputs.nodes.checked,
+    size: pages.input.checked ? 'pages' : 'fit', paper, orientation,
+  });
   const show = () => {
     const c = choice();
     summary.textContent = printSummary(c);
-    go.disabled = !(c.chart || c.about || c.nodes);
+    const known = measure && measure !== 'failed' ? measure : null;
+    // A chart that cannot be drawn shows no size: the print says why when it is tried.
+    sizes.hidden = !c.chart || measure === 'failed';
+    waiting.hidden = !!known;
+    fit.row.hidden = pages.row.hidden = !known;
+    if (known) {
+      fit.gives.textContent = `text ${String(textPt(fitScale(known.chart, paper)))} pt`;
+      const n = planFor(known.chart, known.boxes, paper, orientation).parts.length;
+      pages.gives.textContent = `${String(n)} ${n === 1 ? 'page' : 'pages'}, ${paper} ${orientation}`;
+    }
+    paperRow.hidden = !(known && c.size === 'pages' && changing);
+    change.hidden = !(known && c.size === 'pages' && !changing);
+    // The chart waits for its measure; a print of the descriptions alone does not.
+    go.disabled = !(c.chart || c.about || c.nodes) || (c.chart && measure === null);
+  };
+  /** The way up that needs the fewest pages on the paper now chosen. */
+  const bestWay = () => {
+    if (measure && measure !== 'failed') orientation = bestPlan(measure.chart, measure.boxes, paper).orientation;
+    wayMenu.sel.value = orientation;
   };
   dialog.reset = () => {
     for (const [key, , , on] of BOXES) inputs[key].checked = on;
+    measure = null;
+    changing = false;
+    fit.input.checked = pages.input.checked = false;
     show();
   };
+  dialog.measured = (m) => {
+    measure = m;
+    if (m && m !== 'failed') {
+      paper = m.paper;
+      paperMenu.sel.value = paper;
+      bestWay();
+      (defaultSize(m.chart, paper) === 'fit' ? fit : pages).input.checked = true;
+    } else {
+      fit.input.checked = true;
+    }
+    show();
+  };
+  paperMenu.sel.addEventListener('change', () => { paper = paperMenu.sel.value as Paper; bestWay(); });
+  wayMenu.sel.addEventListener('change', () => { orientation = wayMenu.sel.value as Orientation; });
+  change.addEventListener('click', () => {
+    changing = true;
+    show();
+    paperMenu.sel.focus();
+  });
   dialog.addEventListener('change', show);
   cancel.addEventListener('click', () => dialog.close());
   go.addEventListener('click', () => {

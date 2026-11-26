@@ -863,6 +863,32 @@ fn view_files(paths: Vec<String>, window: tauri::WebviewWindow, windows: State<W
     Ok(())
 }
 
+/// The paper of Windows' region setting (D6.2, Q228): "Letter" where the region uses US
+/// Letter or Legal, "A4" otherwise, and where it cannot be read.
+#[tauri::command]
+fn paper_size() -> &'static str {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Globalization::{GetLocaleInfoEx, LOCALE_IPAPERSIZE, LOCALE_RETURN_NUMBER};
+        let mut value: u32 = 0;
+        // The user's locale (a null name); asked for a number, which comes back in the
+        // buffer as one u32, two UTF-16 units long. Printer paper codes: 1 Letter, 5
+        // Legal, 9 A4.
+        let got = unsafe {
+            GetLocaleInfoEx(
+                std::ptr::null(),
+                LOCALE_IPAPERSIZE | LOCALE_RETURN_NUMBER,
+                &mut value as *mut u32 as *mut u16,
+                2,
+            )
+        };
+        if got > 0 && (value == 1 || value == 5) {
+            return "Letter";
+        }
+    }
+    "A4"
+}
+
 /// Opens a link from a description in the user's browser (web and mail links only).
 #[tauri::command]
 fn open_link(url: String, app: AppHandle) -> Result<(), String> {
@@ -976,7 +1002,8 @@ pub fn run() {
             read_highlights,
             write_highlights,
             view_files,
-            open_link
+            open_link,
+            paper_size
         ])
         .build(context)
         .expect("error while running Naiad")

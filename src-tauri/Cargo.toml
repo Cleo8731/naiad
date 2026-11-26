@@ -26,6 +26,11 @@ tauri-plugin-single-instance = "2"
 # JSON for what passes between windows (T6.2). Already part of the build: tauri uses it.
 serde_json = "1"
 
+# The paper of Windows' region setting, for a print over several pages (D6.2). Already
+# part of the build: tauri's own packages use this version.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Globalization"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

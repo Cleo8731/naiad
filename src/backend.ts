@@ -5,6 +5,7 @@
 // it beside the flowchart's file (src-tauri/src/highlights.rs).
 
 import type { Target } from './chart';
+import { paperOfRegion, type Paper } from './print-pages';
 import { fnv1a64 } from './core/hash';
 
 /** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
@@ -23,6 +24,12 @@ export interface Backend {
   cliDone(code: number, output: string): Promise<void>;
   /** The file the app was started with, if any. */
   initialPath(): Promise<string | null>;
+  /**
+   * The paper of the computer's region (D6.2, Q228): Windows' own setting in the desktop
+   * app; in a browser, the region of the browser's language ("en-US"), the nearest it
+   * can tell.
+   */
+  paper(): Promise<Paper>;
   /**
    * Whether another Naiad window was already running when this one started (T1.23,
    * Q157): its files are then not opened again here. Only the desktop app can tell; a
@@ -199,6 +206,7 @@ async function desktop(): Promise<Backend> {
     },
     cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
+    paper: () => invoke<Paper>('paper_size'),
     otherWindow: () => invoke<boolean>('other_window'),
     onArrivals(take) {
       // Events go to this window only (`emit_to`); listening on it alone keeps another
@@ -370,6 +378,7 @@ function browser(): Backend {
     pickSave: async () => null,
     saveExport: async (suggested, kind, bytes) => download(suggested, kind, bytes),
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
+    paper: async () => paperOfRegion(new Intl.Locale(navigator.language).maximize().region),
     setWindowTitle: (title) => { document.title = title; },
     setTheme: () => {},
     confirm: async (message) => window.confirm(message),
