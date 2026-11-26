@@ -12,7 +12,7 @@ sits in comments the drawn chart never shows, or lives in a second document. Wit
 the file stays the only copy, opens in any Mermaid tool, and you, an agent or Naiad can
 edit it.
 
-Windows 11 (x64) · `.mmd` and `.mermaid` flowcharts · Mermaid places the boxes · v0.3, an early version
+Windows 11 (x64) · `.mmd` and `.mermaid` flowcharts · Mermaid places the boxes
 
 [Install](#install) · [Using Naiad](#using-naiad) · [Working with an AI agent](#working-with-an-ai-agent) · [Commands](#commands) · [Limits](#limits)
 
@@ -68,13 +68,13 @@ and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
    with the SHA-256 shown beside the file on the release page:
 
    ```powershell
-   Get-FileHash .\Naiad_0.3.13_x64-setup.exe
+   Get-FileHash .\Naiad_1.0.0_x64-setup.exe
    ```
 
 3. Run the installer. It is not signed, so Windows may show "Windows protected your
    PC": click **More info**, then **Run anyway**.
 
-The installer puts Naiad in `%LOCALAPPDATA%\Naiad` for your Windows user (about 5.9 MB),
+The installer puts Naiad in `%LOCALAPPDATA%\Naiad` for your Windows user (about 5.7 MB),
 without administrator rights. It registers Naiad for `.mmd` and `.mermaid` files, so a
 double-click on one opens it, and adds the `naiad` command to your PATH. Then open a
 file with **Open a file**, or start one with **New flowchart**.
@@ -92,7 +92,8 @@ right.
 
 | To do this | Do this |
 |---|---|
-| Open a file | **Open a file** on a blank tab, Ctrl+O there, a double-click on the file, or `naiad flow.mmd` |
+| Open a file | **Open a file** on a blank tab, Ctrl+O there, a double-click on the file, or `naiad flow.mmd`. While Naiad is open, the file opens as a tab in its window |
+| Move a tab to a window of its own | Drag the tab out of the window and let go; drag it onto another Naiad window's tabs to move it there |
 | Read a description | Click a node; click empty space for the whole flowchart's description |
 | Write a description | Click the node, then **Edit** beside **Description** in the sidebar, then **Done** |
 | Add a node | **+** in the bar along the bottom of the chart, or double-click empty space |
@@ -105,10 +106,14 @@ right.
 | Show an agent which parts you mean | **Highlight** (key H), in the bar along the bottom of the chart, then click them: see [Pointing at parts of the chart](#pointing-at-parts-of-the-chart) |
 | Read or edit the Mermaid text | **Syntax** (`</>`), at the top of the rail |
 | Read without changing anything | Click the second switch in the middle of the rail to View mode |
+| Follow one run through the flowchart, node by node | In View mode, **Walkthrough** (footprints) in the bar along the bottom of the chart; click the node to start from, then the next step at each node |
+| Save the chart as a picture | **Export**, under the two switches on the rail: **Save as SVG…** or **Save as PNG…** |
+| Print the chart or its descriptions | **Print** (Ctrl+P), under **Export** on the rail |
 
 Naiad saves the file by itself whenever it is a valid flowchart; Ctrl+S saves it at
-once. Tabs and split view, the recent files, themes and fonts, settings, pane widths
-and every other control: [USING.md](USING.md).
+once. Tabs, windows and split view, the walkthrough's keys, printing over several
+pages, the recent files, themes and fonts, settings, pane widths and every other
+control: [USING.md](USING.md).
 
 ## Working with an AI agent
 
@@ -228,10 +233,7 @@ checks. Details:
 - Some Mermaid forms are drawn but can be changed only as text; the forms the chart can
   change are listed in
   [FILE-FORMAT.md](FILE-FORMAT.md#mermaid-syntax-naiad-can-edit-from-the-chart).
-- A double-click on a `.mmd` file while Naiad is open opens a second window, not a tab
-  in the open one. To open it as a tab, click **+** at the end of that window's tabs,
-  then **Open a file**.
-- Version 0.3 is an early version, tested on one Windows 11 computer.
+- Version 1.0 has been tested on one Windows 11 computer.
 
 ## What Naiad reads and keeps
 
@@ -241,9 +243,10 @@ checks. Details:
 - Highlights: `.naiad/<file name>/highlights.txt` in the flowchart's folder, with
   Windows' hidden mark on `.naiad`. The file, and the folders it leaves empty, are
   deleted when the last Naiad view of the flowchart closes.
-- Its settings, the tabs it reopens and the paths of the last 50 files you opened, in
-  the window's own storage in `%LOCALAPPDATA%\app.naiad.desktop`; while it runs, small
-  records in your temporary folder. The full list:
+- A picture you export: written only where you save it.
+- Its settings, the windows and tabs it reopens and the paths of the last 50 files you
+  opened, in the window's own storage in `%LOCALAPPDATA%\app.naiad.desktop`; while it
+  runs, small records in your temporary folder. The full list:
   [USING.md](USING.md#what-naiad-keeps-on-your-computer).
 - Naiad makes no network requests of its own. An image in a description that points to
   a web address is loaded from there when the description is shown, and a link in a

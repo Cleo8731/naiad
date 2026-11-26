@@ -9,11 +9,12 @@ The tabs run across the top of the window, with the window's own minimize, maxim
 and close buttons at their right end; drag the empty part of that row to move the
 window, or double-click it to maximize the window. Down the window's left edge, the
 rail holds **Recent files**, **Syntax** and **About** at the top, two switches in the
-middle (Mouse or Touchpad, and Edit or View), and **Customize** and **Settings** at
-the bottom; pointing at a button shows its name, and pointing at a switch shows both of
-its modes' names, the one in use under the knob. On the chart, Undo and Redo sit at the
-top left, and a bar along the bottom holds **+** (add a node), the direction button,
-**Fit** and **Highlight**.
+middle (Mouse or Touchpad, and Edit or View) with **Export** and **Print** under them,
+and **Customize** and **Settings** at the bottom; pointing at a button shows its name,
+and pointing at a switch shows both of its modes' names, the one in use under the knob.
+On the chart, Undo and Redo sit at the top left, and a bar along the bottom holds **+**
+(add a node), the direction button, **Fit** and **Highlight**; in View mode it holds
+**Fit**, **Highlight** and **Walkthrough**.
 
 A page from `naiad serve` (README, [Commands](README.md#commands)) shows
 one file in the same way, without tabs, split view, the recent files list or
@@ -23,11 +24,12 @@ one file in the same way, without tabs, split view, the recent files list or
 
 | To do this | Do this |
 |---|---|
-| Open several flowcharts | Each file opens in its own tab. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. With many tabs open, the tabs grow narrower; past that, the mouse wheel scrolls them, and a button after them, showing how many are out of sight, lists every tab. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab |
+| Open several flowcharts | Each file opens in its own tab. The **+** at the end of the tabs opens a blank tab, which shows **Open a file** and **New flowchart** (Ctrl+O opens a file there too). A tab that holds a file is never replaced by another file. With many tabs open, the tabs grow narrower; past that, the mouse wheel scrolls them, and a button after them, showing how many are out of sight, lists every tab. A tab's × closes it at once, and asks first only when text not yet saved would be lost. Each tab keeps its own Undo history, selection and zoom; View mode, **Highlight** and Touchpad or Mouse mode apply to every tab. A file opened while Naiad is open, with a double-click or `naiad flow.mmd`, opens as a new tab in the Naiad window used last and brings that window forward; a file that a window already shows has its tab shown there instead |
+| Use several windows | Drag a tab out past the window's edge and let go: a new window opens under the pointer, holding the tab with its Undo history, selection and view. Drag a tab onto another Naiad window's row of tabs to move it there; a line shows where it will land. A window's only tab can move only into another window, and the window it leaves then closes. Opening a file that another window shows brings that window forward with the file's tab shown |
 | See two flowcharts at once | Drag a tab onto the chart, toward the side where it should open: that half lights up and names the tab, and letting go splits the window, side by side or one above the other. Each half has its own row of tabs, with its own **+** and list of every tab; a click on a tab shows it in its own half. Drag a tab onto the other half, or into the other row of tabs, to move it there. The half you last clicked is the active one: it has an accent line along its top, and the sidebar, Undo and the keys work on it. Drag the line between the halves to resize them (each at least 240 pixels across); double-click it for half and half. The **×** at the end of a row of tabs closes the split and moves its tabs to the other row; closing a half's last tab closes it too |
 | Open a file you opened before | The **Recent files** button, at the top of the rail, shows the last 50 files you opened, newest first, in a pane beside the rail: 25 at first, and 25 more with each click on **View more**. Click one to open it: in the shown tab when that tab is blank, otherwise in a new tab after it; a file already open shows its tab. × takes it off the list and leaves the file where it is. A file that is no longer there stays on the list, greyed and marked "Not found", until you take it off. The list opens by itself on a blank tab and closes when a file opens; between two files' tabs it stays as you left it. The list and the Mermaid syntax are never shown together: opening the list closes the syntax, which stays closed until you open it again |
 | Choose light or dark, the colours and the Syntax pane's font | **Customize**, a brush at the bottom of the rail, opens a window with three choices. **Appearance**: **Light**, **Dark** or **System**; System, the choice until you pick another, follows the light or dark setting of your computer. **Theme**: one of six sets of colours, each with a light and a dark form: Naiad Default (the choice until you pick another), Moonpool, Kelp, Water Lily, Glacier and Coral; the chart takes its colours too. **Syntax font**: JetBrains Mono (the choice until you pick another), DM Mono or Recursive Casual, each shown on a line of a flowchart. The window closes with its ×, Escape, or a click outside it. Naiad remembers each choice |
-| Have your files open again when Naiad starts | **Settings**, a gear under **Customize**, opens a window with the switch **Remember opened files**, on until you turn it off. While it is on, Naiad opens again the files that were open when it last closed, each in its tab and in the same order, and shows the tab that was shown. A file that is no longer there is skipped, and a notice names it. A file you start Naiad on, with a double-click or `naiad flow.mmd`, opens after them and is shown. A second window, opened while another Naiad window is open, opens only its own file; of two windows, the one closed last is remembered. Turning the switch off forgets the list at once |
+| Have your files open again when Naiad starts | **Settings**, a gear under **Customize**, opens a window with the switch **Remember opened files**, on until you turn it off. While it is on, Naiad opens again the files that were open when it last closed, each in its tab and in the same order, and shows the tab that was shown. A file that is no longer there is skipped, and a notice names it. A file you start Naiad on, with a double-click or `naiad flow.mmd`, opens after them and is shown. With several windows open when Naiad closes, each opens again in its place with its tabs; a window you close while another stays open is forgotten. Turning the switch off forgets the list at once |
 | Read a description | Click a node |
 | Write or change a description | Click the node, then **Edit** beside **Description** in the sidebar. **Done** (Ctrl+Enter) keeps the text; **Cancel** (Escape) drops it |
 | Read or write what the whole flowchart is about | Click empty space, so that nothing is selected: the sidebar shows the flowchart's description. A selected node, arrow or group covers it in the sidebar; close that and the description shows again. **About**, on the rail, hides or shows it, and Naiad remembers your choice |
@@ -49,6 +51,9 @@ one file in the same way, without tabs, split view, the recent files list or
 | Point at nodes, arrows or groups with an agent | The **Highlight** button, a highlighter pen (key H), then click them; **Clear**, at the chart's top left with the number of highlights, takes every highlight off |
 | Show or hide the flowchart's Mermaid syntax | The **Syntax** button, `</>`, on the rail (the syntax is hidden when Naiad starts, unless you left it open). Opening it closes the **Recent files** list. The pane colours the parts of each line (ids, titles, arrows, labels, classes and descriptions) and numbers the lines; a long line wraps, and a bar beside the numbers marks its wrapped rows |
 | Read or edit the syntax with the whole window | The button at the Syntax pane's top right makes the pane fill the window, over the chart and the sidebar. Click it again, or hide the pane, to see the chart again |
+| Follow one run through the flowchart, node by node | In View mode, **Walkthrough** (footprints) in the bar at the bottom of the chart. The bar says **Click the node to start from**, and all but the nodes no arrow points to fades, as a hint; any node can be clicked. Then the node you are at glows, its next steps and their arrows stay as drawn, the path taken is half faded and the rest fades, and the sidebar shows the node. Click a next step, its arrow or its label to go on; the view glides there. A next step out of view gets a chip at the chart's edge, where its arrow leaves the view; click the chip to go there. Left arrow or **Back** goes back; Right arrow goes on when there is one way on; 1 to 9 take the next steps in the order they lie on the chart. At the end of a path, **Start again** goes back to the node you started from. Escape or **Leave** ends it, and so do switching to Edit mode and opening another file. Highlights are hidden while it lasts; their file is not changed |
+| Save the chart as a picture | **Export**, under the two switches on the rail: **Save as SVG…** or **Save as PNG…**. The picture is the whole chart in the colours on screen, without the selection or highlights; a PNG is twice the size the chart has at 100% zoom, at most 16,384 pixels a side and 120 million pixels in all. The save dialog offers the flowchart's name, in its folder |
+| Print the chart or its descriptions | **Print** (Ctrl+P), under **Export**, opens a page with three boxes: **The chart** (ticked at first, printed in black on white), **The flowchart's description** (above the chart) and **Each node's description** (after the chart, for each node that has one). For the chart, **Fit on one page** or **Readable size, over several pages**, each saying what it gives, such as the text's size or the number of pages; **Change** picks the paper and which way up, your region's paper at first. **Print preview…** opens Windows' print window, where you print |
 | Read without changing anything | The second switch in the middle of the rail shows a pencil (Edit mode) over an open book (View mode), with a knob on the mode Naiad is in. Click it to switch. View mode has no dots to drag, no dot grid, no **+**, direction button, Undo or Redo, and the sidebar and the Syntax pane show text only; an edit tried there shows a notice instead. Naiad opens in the mode you left it in |
 
 ## Dragging near the edge
@@ -77,6 +82,7 @@ reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
 - Highlights: `.naiad/<file name>/highlights.txt` in the flowchart's folder, with
   Windows' hidden mark on `.naiad`. The file, and the folders it leaves empty, are
   deleted when the last Naiad view of the flowchart closes.
+- A picture you export: written only where you save it.
 - In your temporary folder, while they run: a small record of each open window
   (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
   second `naiad serve` on the same file prints the same address.
@@ -85,10 +91,10 @@ reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
   each pane, whether View mode and **About** are on, Touchpad or Mouse mode once you
   choose one, the appearance, theme and Syntax font once you choose them, and whether
   **Remember opened files** is on once you turn it off or on.
-- While **Remember opened files** is on, the full paths of the files open in the tabs,
-  in their order, and which one is shown; while the window is split, also which tabs
-  are in the second half, the tab each half shows, and the split's direction and
-  divider. They are in the same storage, written each time a tab opens, closes or is
+- While **Remember opened files** is on, for each window: the full paths of the files
+  open in its tabs, in their order, and which one is shown; its place on the screen;
+  while it is split, also which tabs are in the second half, the tab each half shows,
+  and the split's direction and divider. They are in the same storage, written each time a tab opens, closes or is
   shown, and when the window closes.
 - The full paths of the last 50 files you opened, for the recent files, in the same
   storage. While the list is shown, Naiad checks that each listed file is still there;
