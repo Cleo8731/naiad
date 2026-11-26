@@ -1059,6 +1059,26 @@ export function drawForPaper(text: string, snap: Snap, holder: HTMLElement): Pro
     el.setAttribute('height', String(box.height));
     finish(el, id, snap, false);
     clean(el);
+    dropTitle(el);
     return el;
   });
+}
+
+/**
+ * Takes the chart's own front-matter title out of a drawing that is in the page, and
+ * fits the drawing's frame to what is left, with Mermaid's own 8 px of room around it.
+ * A print uses it: the sheet's heading already names the flowchart (Q225, the user,
+ * 2026-11-25). A saved SVG or PNG keeps its title.
+ */
+export function dropTitle(svg: SVGSVGElement): void {
+  const titles = svg.querySelectorAll('.flowchartTitleText');
+  if (!titles.length) return;
+  for (const t of titles) t.remove();
+  const b = svg.getBBox();
+  if (!b.width || !b.height) return;
+  const pad = 8;
+  const w = b.width + 2 * pad, h = b.height + 2 * pad;
+  svg.setAttribute('viewBox', `${b.x - pad} ${b.y - pad} ${w} ${h}`);
+  svg.setAttribute('width', String(w));
+  svg.setAttribute('height', String(h));
 }

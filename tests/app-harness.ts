@@ -31,9 +31,9 @@ export const charts: {
   list: { drawn: string[]; sidebarShown: boolean[]; steps: string[]; destroyed: boolean; view: { x: number; y: number; k: number } | null }[]; drawing: number; most: number;
 } = { list: [], drawing: 0, most: 0 };
 
-/** A small drawing, as a stand-in chart's picture and a print's (T6.3). */
+/** A small drawing, as a stand-in chart's picture and a print's (T6.3); `title` gives it a front-matter title, as Mermaid draws one. */
 const SVG_NS = 'http://www.w3.org/2000/svg';
-function smallDrawing(fill: string): SVGSVGElement {
+function smallDrawing(fill: string, title = ''): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 120 80');
   svg.setAttribute('width', '120');
@@ -43,6 +43,12 @@ function smallDrawing(fill: string): SVGSVGElement {
   rect.setAttribute('height', '30');
   rect.setAttribute('fill', fill);
   svg.append(rect);
+  if (title) {
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('class', 'flowchartTitleText');
+    text.textContent = title;
+    svg.append(text);
+  }
   return svg;
 }
 
@@ -52,6 +58,8 @@ export const paperDrawn: string[] = [];
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: (dark: boolean) => { chartTheme.dark = dark; chartTheme.calls++; },
+  /** Takes the title out, as the real one does (Q225); the frame's refit is the real one's own test. */
+  dropTitle: (svg: SVGSVGElement) => { for (const t of svg.querySelectorAll('.flowchartTitleText')) t.remove(); },
   drawForPaper: async (text: string, _snap: unknown, holder: HTMLElement) => {
     paperDrawn.push(text);
     const svg = smallDrawing('#ffffff');
@@ -69,7 +77,7 @@ export const chartMock = () => ({
     view: { x: number; y: number; k: number } | null = null;
     placement() { return this.view; }
     /** The chart as drawn (T6.3): none before its first drawing. */
-    picture() { return this.drawn.length ? { svg: smallDrawing('#12303a'), background: 'rgb(11, 28, 33)' } : null; }
+    picture() { return this.drawn.length ? { svg: smallDrawing('#12303a', 'Making tea'), background: 'rgb(11, 28, 33)' } : null; }
     setPlacement(view: { x: number; y: number; k: number }) { this.view = view; }
     /** In order, each drawing finished ("drawn") and each time the app said the chart's
      * tools were shown or hidden, with whether the pill showed then ("tools shown", "tools hidden"). */

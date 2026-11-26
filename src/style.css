@@ -909,11 +909,15 @@ input.switch:checked::before { transform: translateX(14px); }
    the flowchart's name, what was ticked, the chart fitted to the page. */
 .print-sheet { position: fixed; left: -300vw; top: 0; width: 180mm; visibility: hidden; pointer-events: none; }
 @media print {
-  @page { margin: 14mm; }
+  /* No page margin, so WebView2 adds no header or footer of its own (the date, "Naiad",
+     "tauri.localhost", the page number: Q224); the sheet carries the margin instead, on
+     every page (box-decoration-break: clone repeats its padding where a page breaks). */
+  @page { margin: 0; }
   html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
   body > :not(.print-sheet) { display: none !important; }
   .print-sheet {
-    position: static; width: auto; visibility: visible;
+    position: static; width: auto; visibility: visible; padding: 14mm;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
     color: #111; background: #fff; font: 10.5pt/1.5 Lexend, "Segoe UI", system-ui, sans-serif;
   }
   .print-sheet h1 { margin: 0 0 8pt; font-size: 17pt; font-weight: 600; }

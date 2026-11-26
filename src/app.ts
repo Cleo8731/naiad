@@ -12,7 +12,7 @@
 // everything as it was (T1.16).
 
 import type { Arrival, Backend, ExportKind, MovedTab, Place } from './backend';
-import { configureMermaid, type Target, type WheelMode } from './chart';
+import { configureMermaid, dropTitle, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
 import { drawingRules, pngFile, sizeOf, styleElement, svgFile } from './export';
 import { ICONS } from './icons';
@@ -1704,6 +1704,7 @@ export class App {
     if (picture.svg.id) picture.svg.prepend(styleElement(drawingRules(`#${CSS.escape(picture.svg.id)}`)));
     sheet.querySelector('.print-chart')!.append(picture.svg);
     document.body.append(sheet);
+    dropTitle(picture.svg); // the sheet's heading names the flowchart (Q225)
   }
 
   /** The panes' widths in px (T4.9), as the CSS variables `--recent-w`, `--syntax-w` and `--side-w` on the window. */

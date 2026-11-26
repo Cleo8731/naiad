@@ -96,6 +96,8 @@ describe('Save as SVG', () => {
     // The chart's background, a rect under everything (a dark chart stays dark, Q222).
     expect(saved.text).toMatch(/<svg[^>]*>(<style[\s\S]*?<\/style>)?<rect[^>]*fill="rgb\(11, 28, 33\)"/);
     expect(saved.text).toContain('fill="#12303a"');
+    // A saved picture keeps the chart's own title: it has no heading (Q225).
+    expect(saved.text).toContain('class="flowchartTitleText"');
     expect(menu().hidden).toBe(true);
     await vi.waitFor(() => expect(ui.toast()).toBe('Saved a.svg.'));
     expect(disk.writes).toEqual([]); // the flowchart itself is not written
@@ -212,6 +214,9 @@ describe('the print page (Q221, Q223)', () => {
   test('a print started some other way prints the chart as drawn', () => {
     window.dispatchEvent(new Event('beforeprint'));
     expect(sheet()!.querySelector('.print-chart svg')).not.toBeNull();
+    // The sheet's heading names the flowchart, so the chart's own title is left out (Q225).
+    expect(sheet()!.querySelector('h1')!.textContent).toBe('Making tea');
+    expect(sheet()!.querySelector('.flowchartTitleText')).toBeNull();
     window.dispatchEvent(new Event('afterprint'));
     expect(sheet()).toBeNull();
   });
