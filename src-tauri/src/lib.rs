@@ -141,12 +141,52 @@ fn check(path: &str) -> Result<PathBuf, String> {
 /// Windows passes a double-clicked file), if there is one.
 #[tauri::command]
 fn initial_file() -> Option<String> {
-    std::env::args()
-        .skip(1)
+    let here = std::env::current_dir().unwrap_or_default();
+    flowchart_files(std::env::args().skip(1), &here).into_iter().next()
+}
+
+/// The flowchart files among a start's arguments (the program's own name left out), in
+/// their order: options skipped, a relative path read against `cwd`, the folder that
+/// start was made from; only files that are there and that `check` lets through.
+fn flowchart_files(args: impl IntoIterator<Item = String>, cwd: &Path) -> Vec<String> {
+    args.into_iter()
         .filter(|a| !a.starts_with('-'))
-        .filter_map(|a| std::path::absolute(&a).ok())
-        .find(|p| p.is_file() && check(&p.to_string_lossy()).is_ok())
+        .map(|a| cwd.join(a))
+        .filter_map(|p| std::path::absolute(p).ok())
+        .filter(|p| p.is_file() && check(&p.to_string_lossy()).is_ok())
         .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Files handed over by a later start of Naiad while this one runs (T6.1): a
+/// double-clicked file, or `naiad <file>`. The later start ends at once, and its files
+/// wait here until the page takes them (`handed_over_files`), so none is lost when the
+/// page is still loading.
+#[derive(Default)]
+struct HandedOver(Mutex<Vec<String>>);
+
+/// A later start's arguments reach this program (T6.1): the window comes to the front,
+/// and its flowchart files wait for the page, which the event "files-handed-over" wakes.
+/// Only the window shown hands over: `naiad check`, `fix` and `serve` never take part
+/// (`run`). One window today, so it is the window used last (Q213).
+fn hand_over(app: &AppHandle, argv: Vec<String>, cwd: String) {
+    let files = flowchart_files(argv.into_iter().skip(1), Path::new(&cwd));
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    if files.is_empty() {
+        return;
+    }
+    app.state::<HandedOver>().0.lock().unwrap().extend(files);
+    let _ = app.emit_to("main", "files-handed-over", ());
+}
+
+/// The files handed over since the page last asked, in the order they came (T6.1).
+#[tauri::command]
+fn handed_over_files(waiting: State<HandedOver>) -> Vec<String> {
+    std::mem::take(&mut *waiting.0.lock().unwrap())
 }
 
 /// Whether another Naiad window was already running when this one started (T1.23,
@@ -507,10 +547,19 @@ pub fn run() {
         let code = serve::run(args, move |name| assets.get(&name.into()).map(|bytes| bytes.into_owned()));
         std::process::exit(code);
     }
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    if cli_args().is_none() {
+        // T6.1: a start while a Naiad window runs hands its files to that window and
+        // ends. Registered first, as the plugin asks, and only for a start that shows a
+        // window: `naiad check` and `fix` (here) and `naiad serve` (above) run on their
+        // own, beside a window or not.
+        builder = builder.plugin(tauri_plugin_single_instance::init(hand_over));
+    }
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Watching::default())
+        .manage(HandedOver::default())
         .on_window_event(|_window, event| {
             // The window is closing: it shows no flowchart any more (Q44).
             if let tauri::WindowEvent::Destroyed = event {
@@ -539,6 +588,7 @@ pub fn run() {
             cli_job,
             cli_done,
             initial_file,
+            handed_over_files,
             other_window,
             existing_files,
             read_file,
@@ -1009,5 +1059,30 @@ mod tests {
         unsafe {
             CloseHandle(third);
         }
+    }
+    /// T6.1: a later start's files are read against the folder that start was made
+    /// from, not this program's; options, missing files and other kinds are left out;
+    /// the order is kept.
+    #[test]
+    fn handed_over_arguments_keep_only_flowchart_files() {
+        let dir = folder("handover");
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub").join("a.mmd"), "flowchart TD
+").unwrap();
+        fs::write(dir.join("b.MERMAID"), "flowchart TD
+").unwrap();
+        fs::write(dir.join("notes.md"), "# notes
+").unwrap();
+        let args = ["--flag", "b.MERMAID", "notes.md", "gone.mmd", r"sub\a.mmd"].map(String::from);
+        let got = flowchart_files(args, &dir);
+        let want: Vec<String> = [dir.join("b.MERMAID"), dir.join("sub").join("a.mmd")]
+            .iter()
+            .map(|p| std::path::absolute(p).unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(got, want);
+        // A full path stays as it is, whatever the folder.
+        let full = want[1].clone();
+        assert_eq!(flowchart_files([full.clone()], Path::new(r"C:\")), vec![full]);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

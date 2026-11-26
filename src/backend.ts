@@ -28,6 +28,12 @@ export interface Backend {
    * page in a browser says no.
    */
   otherWindow(): Promise<boolean>;
+  /**
+   * Calls `take` with the files a later start of Naiad handed to this window (T6.1): a
+   * double-clicked file while Naiad runs, or `naiad <file>`. Files handed over before
+   * this was called come at once. Only the desktop app is handed files.
+   */
+  onHandedOver(take: (paths: string[]) => void): void;
   read(path: string): Promise<string>;
   /**
    * Writes the file whole. Given `expected` (the file's text as read), it writes only
@@ -112,6 +118,12 @@ async function desktop(): Promise<Backend> {
     cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
     otherWindow: () => invoke<boolean>('other_window'),
+    onHandedOver(take) {
+      const fetchWaiting = () => {
+        void invoke<string[]>('handed_over_files').then((paths) => { if (paths.length) take(paths); }).catch(() => {});
+      };
+      void listen('files-handed-over', fetchWaiting).then(fetchWaiting);
+    },
     read: (path) => invoke<string>('read_file', { path }),
     write: (path, text, expected) => invoke<boolean>('write_file', { path, contents: text, expected: expected ?? null }),
     async watch(path, onChange) {
@@ -213,6 +225,7 @@ function browser(): Backend {
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
     otherWindow: async () => false,
+    onHandedOver: () => {},
     read: async (path) => (await call('api/file', { headers: shows(path) })).text,
     write: (path, text, expected) => put('api/file', path, text, expected),
     async watch(path, onChange) {

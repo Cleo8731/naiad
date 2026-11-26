@@ -99,6 +99,8 @@ export class FakeDisk {
   startFile: string | null = null;
   /** Whether another Naiad window is running as this one starts (`Backend.otherWindow`). */
   otherWindow = false;
+  /** Hands files to the window as a later start of Naiad would (`Backend.onHandedOver`, T6.1). */
+  handOver: (paths: string[]) => void = () => { throw new Error('the window is not listening for handed-over files'); };
   /** What Naiad's own title bar asked of the window, in order (`Backend.windowControls`, T4.10). */
   windowActs: string[] = [];
   private maximized: ((max: boolean) => void) | null = null;
@@ -112,6 +114,7 @@ export class FakeDisk {
       cliDone: async () => {},
       initialPath: async () => this.startFile,
       otherWindow: async () => this.otherWindow,
+      onHandedOver: (take) => { this.handOver = take; },
       read: async (path) => {
         if (!this.files.has(path)) throw new Error('not found');
         const text = this.files.get(path)!;

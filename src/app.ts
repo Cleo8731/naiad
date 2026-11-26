@@ -414,6 +414,15 @@ export class App {
     this.recentFollows(this.tab);
     this.keeping = true;
     this.keep();
+    // T6.1: a file opened while Naiad runs comes here as a tab (Q213); one already open
+    // shows its tab (Q214). The window has already come to the front.
+    this.backend.onHandedOver((paths) => {
+      for (const p of paths) {
+        void this.open(p)
+          .catch((e) => this.toast(`Could not open ${basename(p)}: ${errorText(e)}`))
+          .then(() => this.recent?.update());
+      }
+    });
 
     // The shown tab's highlights file is looked at once a second (and at once when the
     // view comes back into sight), so an agent's highlights show without Naiad watching
