@@ -617,18 +617,26 @@ body.dragging-tab #app { pointer-events: none; }
   display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
 }
 .dir-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
-/* The Export button's menu (T6.3): opens above it, on a click, its right edge on the
-   button's, since the button ends the pill. */
+/* The rail's Export button's menu (T6.3; on the rail, the user, 2026-11-25): opens on a
+   click to the button's right, over the window, its top on the button's. It is placed
+   from the narrow button (34px), and while it is open the button stays narrow and looks
+   pressed: placed from the widened button, the menu moved under the pointer on its way
+   there (seen in a headless screenshot, 2026-11-25). Its items are not rail buttons:
+   they keep their width and do not widen on pointing. */
 .export-wrap { position: relative; display: flex; }
+.rail .export-wrap { margin-top: 10px; }
+.rail button[data-act="export"][aria-expanded="true"] {
+  max-width: 34px; padding: 0 8px; background: var(--accent-soft); color: var(--accent); box-shadow: none;
+}
 .export-menu {
-  position: absolute; right: -6px; bottom: calc(100% + 10px); z-index: 9;
+  position: absolute; left: 44px; top: 0; z-index: 13;
   display: flex; flex-direction: column; gap: 2px; min-width: 168px; padding: 5px; border-radius: 14px;
 }
-.export-menu button {
-  height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-control);
-  background: transparent; text-align: left; white-space: nowrap;
+.rail .export-menu button, .rail .export-menu button:hover {
+  max-width: none; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--text); box-shadow: none; text-align: left; white-space: nowrap;
 }
-.export-menu button:hover { background: var(--accent-soft); }
+.rail .export-menu button:hover { background: var(--accent-soft); }
 
 /* ---- notices: thin bars laid over the top of the chart, between the island and the
    chart's right edge; under the island in a narrow chart. */

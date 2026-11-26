@@ -35,7 +35,7 @@ const menu = () => q<HTMLElement>('.export-menu')!;
 const item = (name: string) => [...menu().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === name)!;
 const page = () => q<HTMLDialogElement>('dialog[data-window="print"]');
 const box = (name: string) => [...page()!.querySelectorAll('label')].find((l) => l.textContent!.trim() === name)!.querySelector('input')!;
-const printButton = () => [...page()!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Print')!;
+const printButton = () => [...page()!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Print preview…')!;
 const summary = () => page()!.querySelector('.print-summary')!.textContent;
 const sheet = () => q<HTMLElement>('.print-sheet');
 function tick(name: string, on: boolean) {
@@ -61,16 +61,26 @@ beforeEach(async () => {
 afterEach(() => stopApps());
 
 describe('the Export button and its menu', () => {
-  test('the menu holds Save as SVG, Save as PNG and Print, and opens on a click', () => {
+  test('Export and Print sit on the rail, under its two switches, in both modes (the user, 2026-11-25)', () => {
+    const mid = q<HTMLElement>('.rail .rail-mid')!;
+    const acts = [...mid.querySelectorAll<HTMLElement>(':scope > button, :scope > .export-wrap > button')].map((b) => b.dataset.act);
+    expect(acts).toEqual(['wheel', 'view', 'export', 'print']);
+    expect(button('export').textContent!.trim()).toBe('Export');
+    expect(button('print').textContent!.trim()).toBe('Print');
+    expect(button('print').querySelector('svg')?.getAttribute('data-icon')).toBe('print');
+    expect(q('.pill [data-act="export"], .pill [data-act="print"]')).toBeNull();
+  });
+
+  test('the menu holds Save as SVG and Save as PNG, and opens on a click', () => {
     const exp = button('export');
-    expect(exp.getAttribute('aria-label')).toBe('Export');
+    expect(exp.textContent!.trim()).toBe('Export');
     expect(exp.getAttribute('aria-haspopup')).toBe('menu');
     expect(exp.querySelector('svg')?.getAttribute('data-icon')).toBe('export');
     expect(menu().hidden).toBe(true);
     exp.click();
     expect(menu().hidden).toBe(false);
     expect(exp.getAttribute('aria-expanded')).toBe('true');
-    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Save as SVG…', 'Save as PNG…', 'Print…']);
+    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Save as SVG…', 'Save as PNG…']);
     expect([...menu().querySelectorAll('button')].every((b) => b.getAttribute('role') === 'menuitem')).toBe(true);
   });
 
@@ -114,23 +124,20 @@ describe('Save as SVG', () => {
 });
 
 describe('the print page (Q221, Q223)', () => {
-  test('Print… opens it: "The chart" ticked, the two descriptions not; the heading says "Chart only"', () => {
-    button('export').click();
-    item('Print…').click();
+  test('the Print button opens it: "The chart" ticked, the two descriptions not; the heading says "Chart only"', () => {
+    button('print').click();
     expect(page()?.hasAttribute('open')).toBe(true);
-    expect(menu().hidden).toBe(true);
     const labels = [...page()!.querySelectorAll('label')].map((l) => l.textContent!.trim());
     expect(labels).toEqual(['The chart', "The flowchart's description", "Each node's description"]);
     expect(labels.map((l) => box(l).checked)).toEqual([true, false, false]);
     expect(summary()).toBe('Chart only');
     expect(printButton().disabled).toBe(false);
-    expect([...page()!.querySelectorAll('.print-actions button')].map((b) => b.textContent)).toEqual(['Cancel', 'Print']);
+    expect([...page()!.querySelectorAll('.print-actions button')].map((b) => b.textContent)).toEqual(['Cancel', 'Print preview…']);
     expect(printed).not.toHaveBeenCalled();
   });
 
   test('the heading follows the boxes, and Print is not available with nothing ticked', () => {
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     tick("Each node's description", true);
     expect(summary()).toBe("Chart and each node's description");
     tick("The flowchart's description", true);
@@ -148,20 +155,17 @@ describe('the print page (Q221, Q223)', () => {
   });
 
   test('every time it opens, it starts from the chart alone', () => {
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     tick("Each node's description", true);
     [...page()!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Cancel')!.click();
     expect(page()!.hasAttribute('open')).toBe(false);
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     expect(box("Each node's description").checked).toBe(false);
     expect(summary()).toBe('Chart only');
   });
 
   test('Print with the chart alone: the sheet holds the name and the chart drawn for paper, nothing more', async () => {
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     printButton().click();
     await vi.waitFor(() => expect(printed).toHaveBeenCalledTimes(1));
     expect(page()!.hasAttribute('open')).toBe(false);
@@ -176,8 +180,7 @@ describe('the print page (Q221, Q223)', () => {
   });
 
   test('Print with everything: the flowchart\'s description above the chart, then each described node under its title, in the file\'s order', async () => {
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     tick("The flowchart's description", true);
     tick("Each node's description", true);
     printButton().click();
@@ -192,8 +195,7 @@ describe('the print page (Q221, Q223)', () => {
   });
 
   test('Print without the chart draws nothing for paper', async () => {
-    button('export').click();
-    item('Print…').click();
+    button('print').click();
     tick("Each node's description", true);
     tick('The chart', false);
     printButton().click();

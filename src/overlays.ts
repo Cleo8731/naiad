@@ -212,9 +212,11 @@ export function printSummary({ chart, about, nodes }: PrintChoice): string {
 /**
  * The print page (T6.3; the user, 2026-11-25, Q221 and Q223): three boxes for what the
  * print holds, the chart ticked and the two descriptions not, so the chart alone is the
- * default; a heading that says what is ticked; Cancel, and Print, which is not available
- * while nothing is ticked. Print closes the page and hands the choice to `print`, which
- * opens the print window (it shows its own preview). Each opening starts from the default.
+ * default; a heading that says what is ticked; Cancel, and Print preview, which is not
+ * available while nothing is ticked. Print preview closes the page and hands the choice to
+ * `print`, which opens the print window: its own preview, where the printing is done. The
+ * button is not named Print, which read as printing at once (the user, 2026-11-25). Each
+ * opening starts from the default.
  */
 export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogElement & { reset(): void } {
   const summary = document.createElement('p');
@@ -247,7 +249,7 @@ export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogEle
   const cancel = document.createElement('button');
   cancel.textContent = 'Cancel';
   const go = document.createElement('button');
-  go.textContent = 'Print';
+  go.textContent = 'Print preview…';
   go.className = 'primary';
   const actions = document.createElement('div');
   actions.className = 'print-actions';

@@ -23,6 +23,15 @@ describe('the print layout (Q224)', () => {
   });
 });
 
+describe("the rail's Export menu (the user, 2026-11-25: Export and Print on the rail)", () => {
+  test('is placed from the narrow button, and the button stays narrow while it is open, so the menu does not move under the pointer', () => {
+    const menu = css.match(/\n\.export-menu\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(menu).toMatch(/left:\s*44px/);
+    const open = css.match(/\.rail button\[data-act="export"\]\[aria-expanded="true"\]\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(open).toMatch(/max-width:\s*34px/);
+  });
+});
+
 describe('dropTitle (Q225)', () => {
   const realBBox = Object.getOwnPropertyDescriptor(SVGElement.prototype, 'getBBox');
   afterEach(() => {

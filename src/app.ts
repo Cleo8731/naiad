@@ -266,7 +266,8 @@ export class App {
     // The rail (the design handoff, T4.9), in three sections (the user, 2026-11-15,
     // answering Q158 and Q159): at its top the mark, then Recent files, Syntax and About;
     // at its middle the Touchpad and Mouse switch and the mode button, each named by the
-    // mode it is in; at its foot Customize and Settings. Beside it, the tabs row, the only
+    // mode it is in, then Export and Print (T6.3; the user, 2026-11-25, after trying
+    // 0.3.16); at its foot Customize and Settings. Beside it, the tabs row, the only
     // row above the chart, then the recent list's pane, the Syntax pane and the tabs' views.
     this.root.innerHTML = `
       <nav class="rail" aria-label="Naiad">
@@ -279,6 +280,13 @@ export class App {
         <div class="rail-mid">
           <button class="slide" data-act="wheel">${track(ICONS.mouse, WHEEL_LABEL.mouse, ICONS.touchpad, WHEEL_LABEL.touchpad)}<span class="rlabel"></span></button>
           <button class="slide" data-act="view">${track(ICONS.edit, VIEW_LABEL.editing, ICONS.read, VIEW_LABEL.viewing)}<span class="rlabel"></span></button>
+          <div class="export-wrap">
+            <button data-act="export" title="Export: save the chart as a picture, an SVG or a PNG" aria-haspopup="menu" aria-expanded="false">${ICONS.export}<span class="rlabel">Export</span></button>
+            <div class="export-menu" role="menu" aria-label="Export" hidden>
+              <button role="menuitem" data-export="svg">Save as SVG…</button><button role="menuitem" data-export="png">Save as PNG…</button>
+            </div>
+          </div>
+          <button data-act="print" title="Print the chart, its descriptions or both (Ctrl+P)">${ICONS.print}<span class="rlabel">Print</span></button>
         </div>
         <div class="rail-foot">
           <button data-act="customize" title="Customize: the appearance, the theme and the Syntax font">${ICONS.customize}<span class="rlabel">Customize</span></button>
@@ -334,12 +342,6 @@ export class App {
         </div>
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-        <div class="export-wrap">
-          <button class="icon" data-act="export" title="Export: save the chart as a picture, or print it" aria-label="Export" aria-haspopup="menu" aria-expanded="false">${ICONS.export}</button>
-          <div class="export-menu" role="menu" aria-label="Export" hidden>
-            <button role="menuitem" data-export="svg">Save as SVG…</button><button role="menuitem" data-export="png">Save as PNG…</button><button role="menuitem" data-export="print">Print…</button>
-          </div>
-        </div>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
@@ -1662,7 +1664,7 @@ export class App {
   private printPage: ReturnType<typeof printWindow> | null = null;
 
   private openPrint(): void {
-    if (!this.tab.file) return; // a blank tab has nothing to print
+    if (!this.tab.file) { this.toast('There is no flowchart to print yet.'); return; } // a blank tab
     if (!this.printPage) {
       this.printPage = printWindow((choice) => void this.print(choice));
       this.root.append(this.printPage);
@@ -1873,13 +1875,12 @@ export class App {
         return;
       }
       if (!target.closest('.dir-wrap')) this.showDirMenu(false);
-      // The Export menu (T6.3): an item picked saves or prints; a click anywhere else but
-      // its button closes it.
+      // The Export menu (T6.3): an item picked saves; a click anywhere else but its button
+      // closes it.
       const exported = target.closest<HTMLElement>('.export-menu [data-export]')?.dataset.export;
       if (exported) {
         this.showExportMenu(false);
-        if (exported === 'print') this.openPrint();
-        else void this.saveExport(exported as ExportKind);
+        void this.saveExport(exported as ExportKind);
         return;
       }
       if (!target.closest('.export-wrap')) this.showExportMenu(false);
@@ -1905,6 +1906,7 @@ export class App {
       if (act === 'redo') void this.tab.history(false);
       if (act === 'fit') this.tab.chart.fit();
       if (act === 'export') this.showExportMenu(!!this.el.exportMenu.hidden);
+      if (act === 'print') this.openPrint();
       if (act === 'syntax') this.toggleText();
       if (act === 'syntax-full') this.fillWithText(!this.el.pane.classList.contains('full'));
       if (act === 'recent') this.toggleRecent();

@@ -92,18 +92,18 @@ describe('the window\'s frame (T4.9)', () => {
     expect(q('.status')!.matches('.sr-only')).toBe(true);
   });
 
-  test('the rail in three sections: the mark, Recent files, Syntax and About; Touchpad or Mouse and the mode; Customize and Settings', async () => {
+  test('the rail in three sections: the mark, Recent files, Syntax and About; Touchpad or Mouse, the mode, Export and Print; Customize and Settings', async () => {
     await start();
     expect([...rail().children].map((c) => c.className)).toEqual(['rail-top', 'rail-mid', 'rail-foot']);
     const mark = q('.rail-top')!.firstElementChild!;
     expect(mark.matches('.mark')).toBe(true);
     expect(mark.getAttribute('aria-hidden')).toBe('true');
-    const section = (sel: string) => [...q(sel)!.querySelectorAll('button')]
+    const section = (sel: string) => [...q(sel)!.querySelectorAll<HTMLButtonElement>('button[data-act]')]
       .map((b) => [b.dataset.act, b.querySelector('.rlabel')!.textContent, (b.querySelector('.track svg.on') ?? b.querySelector('svg'))!.getAttribute('data-icon')]);
     expect(section('.rail-top')).toEqual([['recent', 'Recent files', 'recent'], ['syntax', 'Syntax', 'syntax'], ['about', 'About', 'about']]);
-    expect(section('.rail-mid')).toEqual([['wheel', 'Mouse mode', 'mouse'], ['view', 'Edit mode', 'edit']]);
+    expect(section('.rail-mid')).toEqual([['wheel', 'Mouse mode', 'mouse'], ['view', 'Edit mode', 'edit'], ['export', 'Export', 'export'], ['print', 'Print', 'print']]);
     expect(section('.rail-foot')).toEqual([['customize', 'Customize', 'customize'], ['settings', 'Settings', 'settings']]);
-    for (const b of rail().querySelectorAll('button')) expect(b.getAttribute('aria-label'), b.dataset.act).toBeNull(); // its name says it
+    for (const b of rail().querySelectorAll<HTMLButtonElement>('button[data-act]')) expect(b.getAttribute('aria-label'), b.dataset.act).toBeNull(); // its name says it
     // Neither the switch nor the mode button is left in the pill.
     for (const act of ['wheel', 'view']) expect(q(`.pill [data-act="${act}"]`), act).toBeNull();
   });
@@ -275,7 +275,7 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const items = [...pill.querySelectorAll<HTMLElement>(':scope > *, .pill-edit > *')].filter((e) => !e.matches('.pill-edit, .dir-menu'));
-    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'highlight', 'export']);
+    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'highlight']);
     // The add-node button is a plus alone (the user, 2026-11-15, Q158's answer).
     expect(button('add').textContent!.trim()).toBe('');
     expect(button('add').getAttribute('aria-label')).toBe('Add a node');
@@ -346,7 +346,7 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const left = [...pill.querySelectorAll<HTMLElement>('button[data-act]')].filter(visible).map((b) => b.dataset.act);
-    expect(left).toEqual(['fit', 'highlight', 'export']);
+    expect(left).toEqual(['fit', 'highlight']);
     expect(visible(shownArea().querySelector('.island'))).toBe(false);
     expect([visible(button('wheel')), visible(button('view'))]).toEqual([true, true]);
   });
@@ -413,7 +413,7 @@ describe('the blank tab (T4.9)', () => {
 test('naiad serve\'s page, which shows one file: the rail without Recent files and Settings, and no tabs row', async () => {
   await start('served');
   expect(visible(rail())).toBe(true);
-  expect([...rail().querySelectorAll('button')].map((b) => b.dataset.act)).toEqual(['syntax', 'about', 'wheel', 'view', 'customize']);
+  expect([...rail().querySelectorAll<HTMLButtonElement>('button[data-act]')].map((b) => b.dataset.act)).toEqual(['syntax', 'about', 'wheel', 'view', 'export', 'print', 'customize']);
   for (const sel of ['header.top', 'nav.recent']) expect(q(sel), sel).toBeNull();
 });
 
