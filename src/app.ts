@@ -119,6 +119,8 @@ interface Kept {
 
 /** The start of the keys that keep the later windows' tabs (Q216). */
 const WINDOW_KEY = 'openwindow:';
+/** Where window `name`'s tabs are kept (Q216): the first window's under "opentabs", a later one's under its own name. */
+function keptKeyOf(name: string): string { return name === 'main' ? 'opentabs' : `${WINDOW_KEY}${name}`; }
 
 /** The kept files, as written by `keep`; anything else is none. */
 function readKept(stored: string | null): Kept {
@@ -448,6 +450,13 @@ export class App {
       (x, y, name) => this.paintLanding(this.arrivalLanding(x, y).show, name),
       () => this.paintLanding(null, ''),
     );
+    // A window closed on its own while this one stayed open: its tabs are forgotten
+    // (Q216). Windows closed together, as the taskbar's "Close all windows" does, are
+    // all remembered: the shell says this only once no other window closed meanwhile.
+    // A window that is itself closing (asking about a change, say) was closed with it.
+    this.backend.windows?.onForget((name) => {
+      if (name !== this.backend.windowName && !this.windowClosing) forget(keptKeyOf(name));
+    });
     // The other windows open at the last close come back, each with its tabs (Q216).
     void this.reopenWindows(others);
 
@@ -604,13 +613,11 @@ export class App {
   }
 
   /** Where this window's tabs are kept (Q216): the first window's under "opentabs", a later one's under its own name. */
-  private get keptKey(): string {
-    return this.backend.windowName === 'main' ? 'opentabs' : `${WINDOW_KEY}${this.backend.windowName}`;
-  }
+  private get keptKey(): string { return keptKeyOf(this.backend.windowName); }
 
   /**
-   * This window closes while others stay open (T6.2): its tabs are not kept, since the
-   * person closed them. Keeping stops, so no later write brings them back.
+   * This window closes because its last tab moved to another window (T6.2): its tabs are
+   * not kept, since they live on there. Keeping stops, so no later write brings them back.
    */
   private forgetMine(): void {
     this.keeping = false;
@@ -1357,6 +1364,19 @@ export class App {
    * a tab still changing after five rounds keeps the window open.
    */
   private async canClose(): Promise<boolean> {
+    this.windowClosing = true;
+    try {
+      return await this.closeTabs();
+    } finally {
+      this.windowClosing = false;
+    }
+  }
+
+  /** While the window closes (`canClose`): another window closed meanwhile was closed with it (Q216). */
+  private windowClosing = false;
+
+  /** `canClose`'s work: each tab let go, saved or asked about. */
+  private async closeTabs(): Promise<boolean> {
     const lettingGo = new Set<Tab>();
     for (let round = 0; round < 5; round++) {
       for (const tab of [...this.tabs]) {
@@ -1366,9 +1386,10 @@ export class App {
         if (asked) lettingGo.add(tab);
       }
       if (!this.tabs.some((t) => !lettingGo.has(t) && t.waiting())) {
-        // The windows open as the last one closes are the ones remembered (T1.23, Q216).
-        if (await this.backend.windows?.othersOpen()) this.forgetMine();
-        else await this.keep();
+        // Every window keeps its tabs as it closes; one closed while others stay open is
+        // forgotten by the shell's word a moment later (`onForget`), so windows closed
+        // together are all remembered (T1.23, Q216).
+        await this.keep();
         return true;
       }
     }

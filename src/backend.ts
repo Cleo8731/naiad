@@ -140,8 +140,12 @@ export interface Windows {
   place(): Promise<Place | null>;
   /** Puts this window at `place`. */
   putAt(place: Place): void;
-  /** Whether another of the program's windows is open. */
-  othersOpen(): Promise<boolean>;
+  /**
+   * Calls back with the name of a window closed while another stayed open, 1.5 s after
+   * it closed (Q216): its kept tabs are to be forgotten. Windows closed together are not
+   * named, since none stays open.
+   */
+  onForget(take: (name: string) => void): void;
   /** When another window shows `path`, it shows its tab and comes to the front, and this says true (Q214). */
   showElsewhere(path: string): Promise<boolean>;
   /** Closes this window without asking: its last tab went to another window. */
@@ -190,7 +194,7 @@ async function desktop(): Promise<Backend> {
       openWindow: (kept, place) => invoke<string>('open_window', { kept: JSON.stringify(kept), place }),
       place: () => invoke<Place | null>('window_place').catch(() => null),
       putAt: (place) => { void invoke('place_window', { place }).catch(() => {}); },
-      othersOpen: () => invoke<boolean>('others_open').catch(() => false),
+      onForget(take) { void me.listen<string>('forget-window', (e) => take(e.payload)); },
       showElsewhere: (path) => invoke<boolean>('show_elsewhere', { path }).catch(() => false),
       closeNow: () => { void me.destroy(); },
     },

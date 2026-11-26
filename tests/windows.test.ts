@@ -25,7 +25,7 @@ class FakeWindows implements Windows {
   dropped: { path: string | null; tab: MovedTab }[] = [];
   opened: { kept: unknown; place: Place | null }[] = [];
   put: Place[] = [];
-  others = false;
+  forgetting: ((name: string) => void) | null = null;
   elsewhere = new Set<string>();
   closed = 0;
   at: ((x: number, y: number, name: string) => void) | null = null;
@@ -38,7 +38,7 @@ class FakeWindows implements Windows {
   async openWindow(kept: unknown, place: Place | null) { this.opened.push({ kept, place }); return `w${String(this.opened.length)}`; }
   async place() { return PLACE; }
   putAt(place: Place) { this.put.push(place); }
-  async othersOpen() { return this.others; }
+  onForget(take: (name: string) => void) { this.forgetting = take; }
   async showElsewhere(path: string) { return this.elsewhere.has(path); }
   closeNow() { this.closed++; }
 }
@@ -242,17 +242,38 @@ describe('every window remembered (Q216)', () => {
     expect(wins.opened.map((o) => (o.kept as { files: string[] }).files)).toEqual([[C]]);
   });
 
-  test('a window closed while others stay open forgets its tabs; the last one closed keeps them', async () => {
-    await start([A]);
+  test('every window keeps its tabs as it closes; one the shell names as closed alone is forgotten by a window still open', async () => {
+    await start([A], 'w2');
     await settle();
-    wins.others = true;
     expect(await disk.closeGuard!()).toBe(true);
-    expect(localStorage.getItem('opentabs')).toBeNull();
+    // Closed together with the others (the taskbar's "Close all windows"): kept.
+    expect(JSON.parse(localStorage.getItem('openwindow:w2')!)).toEqual({ files: [A], shown: A, place: PLACE });
     stopApps();
-    await start([A]);
+    // Closed alone: a window still open hears its name and forgets it; never its own.
+    localStorage.setItem('opentabs', JSON.stringify({ files: [B], shown: B }));
+    await start([C], 'w3');
     await settle();
+    wins.forgetting!('w2');
+    wins.forgetting!('w3');
+    expect(localStorage.getItem('openwindow:w2')).toBeNull();
+    expect(localStorage.getItem('openwindow:w3')).not.toBeNull();
+    wins.forgetting!('main');
+    expect(localStorage.getItem('opentabs')).toBeNull();
+  });
+
+  test('a window asking about a change as it closes does not forget a window closed meanwhile: they closed together', async () => {
+    const ui = await start([A], 'w3');
+    await settle();
+    ui.type('flowchart TD\n    a[A] -->\n'); // Mermaid cannot read it: closing asks
+    localStorage.setItem('openwindow:w2', JSON.stringify({ files: [B], shown: B }));
+    disk.onAsk = () => wins.forgetting!('w2'); // the shell's word comes while it asks
+    disk.answer = true;
     expect(await disk.closeGuard!()).toBe(true);
-    expect(JSON.parse(localStorage.getItem('opentabs')!)).toEqual({ files: [A], shown: A, place: PLACE });
+    expect(disk.asked).toHaveLength(1);
+    expect(localStorage.getItem('openwindow:w2')).not.toBeNull();
+    // Once the close is over (or turned down), the word is heard again.
+    wins.forgetting!('w2');
+    expect(localStorage.getItem('openwindow:w2')).toBeNull();
   });
 
   test("turning Remember opened files off forgets every window's tabs", async () => {

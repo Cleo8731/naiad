@@ -465,6 +465,10 @@ fn put(window: &tauri::WebviewWindow, (x, y, width, height, maximized): Place) {
     }
 }
 
+/// How long after a window closes alone its kept tabs are forgotten (Q216): long enough
+/// for the other windows of a "Close all windows" to close too.
+const FORGET_AFTER_MS: u64 = 1500;
+
 /// Puts this window where it was at the last close (Q216).
 #[tauri::command]
 fn place_window(place: Place, window: tauri::WebviewWindow) {
@@ -477,13 +481,6 @@ fn window_place(window: tauri::WebviewWindow) -> Option<Place> {
     let p = window.outer_position().ok()?;
     let s = window.inner_size().ok()?;
     Some((p.x, p.y, s.width, s.height, window.is_maximized().unwrap_or(false)))
-}
-
-/// Whether another of the program's windows is open (a window closing then forgets its
-/// kept tabs, Q216).
-#[tauri::command]
-fn others_open(window: tauri::WebviewWindow, app: AppHandle) -> bool {
-    app.webview_windows().keys().any(|l| l != window.label())
 }
 
 /// Opening `path` from this window when another window shows it (Q214): that window
@@ -902,6 +899,18 @@ pub fn run() {
                     if let Ok(mut watches) = app.state::<Watching>().0.lock() {
                         watches.forget_window(window.label());
                     }
+                    // Every window keeps its tabs as it closes (Q216). One closed alone is
+                    // forgotten: if a window is still open 1.5 s later, it is told to
+                    // forget this one's tabs. Windows closed together, as the taskbar's
+                    // "Close all windows" does, leave none open, so all are remembered.
+                    let gone = window.label().to_string();
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(FORGET_AFTER_MS));
+                        if let Some(label) = app.webview_windows().into_keys().next() {
+                            let _ = app.emit_to(label.as_str(), "forget-window", gone);
+                        }
+                    });
                 }
                 _ => {}
             }
@@ -937,7 +946,6 @@ pub fn run() {
             open_window,
             place_window,
             window_place,
-            others_open,
             show_elsewhere,
             other_window,
             existing_files,
