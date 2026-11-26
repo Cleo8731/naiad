@@ -1,8 +1,11 @@
 // Where a walkthrough's edge chips sit (Q232; the overlap the user found, 2026-11-26).
 // Each chip wants to be centred where its arrow leaves the view, on one edge of it. Chips on
 // the same edge go side by side in the order of where they want to be, each as near its
-// spot as the others let it; those that don't fit start a new row (on the top and foot
-// edges) or column (on the sides), further in. No two chips overlap.
+// spot as the others let it; those that don't fit start a new row, further in (on the top
+// and foot edges). A chip on a side goes, in the order of the spots, to the free place
+// nearest its spot in the outermost column with room, clear of every chip placed before
+// it, the other side's too: in a narrow view the two sides' columns cross (bug hunt T6.5,
+// oW1). No two chips overlap while there is room for them.
 
 export type Edge = 'top' | 'bottom' | 'left' | 'right';
 /** A chip: its edge, the point it wants to be centred on, and its measured size. */
@@ -30,30 +33,28 @@ export function packLine(want: number[], size: number[], lo: number, hi: number,
   return at;
 }
 
+type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * The top of a box `h` tall in the column `x` to `x + w`, nearest `want`, within lo to hi
+ * and at least `gap` from every box in `boxes` that shares any of the column; null if none.
+ */
+function freeY(x: number, w: number, h: number, want: number, boxes: Box[], lo: number, hi: number, gap: number): number | null {
+  const near = boxes.filter((b) => b.x < x + w && x < b.x + b.w);
+  const clear = (y: number) => y >= lo && y + h <= hi && near.every((b) => y + h + gap <= b.y || b.y + b.h + gap <= y);
+  const tries = [Math.max(lo, Math.min(want, hi - h)), ...near.flatMap((b) => [b.y - gap - h, b.y + b.h + gap])];
+  const fits = tries.filter(clear).sort((a, b) => Math.abs(a - want) - Math.abs(b - want));
+  return fits.length ? fits[0] : null;
+}
+
 /** Each chip's top left, in the order given. */
 export function layChips(chips: ChipWish[], area: ChipArea, gap = CHIP_GAP): { x: number; y: number }[] {
   const out = chips.map(() => ({ x: 0, y: 0 }));
-  const placed: { edge: Edge; x: number; y: number; w: number; h: number }[] = [];
-  // The top and foot first, so a column on a side can keep clear of their corners.
-  for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
-    const along = edge === 'top' || edge === 'bottom';
-    const ids = chips.map((_, i) => i).filter((i) => chips[i].edge === edge)
-      .sort((a, b) => (along ? chips[a].x - chips[b].x : chips[a].y - chips[b].y));
-    if (!ids.length) continue;
-    let lo = along ? area.left : area.top;
-    let hi = along ? area.right : area.bottom;
-    if (!along) {
-      const wide = Math.max(...ids.map((i) => chips[i].w));
-      const x0 = edge === 'left' ? area.left : area.right - wide;
-      for (const p of placed) {
-        if (p.x >= x0 + wide || p.x + p.w <= x0) continue;
-        if (p.edge === 'top') lo = Math.max(lo, p.y + p.h + gap);
-        else hi = Math.min(hi, p.y - gap);
-      }
-    }
-    const want = (i: number) => (along ? chips[i].x - chips[i].w / 2 : chips[i].y - chips[i].h / 2);
-    const size = (i: number) => (along ? chips[i].w : chips[i].h);
-    const pack = (row: number[]) => packLine(row.map(want), row.map(size), lo, hi, gap);
+  const placed: (Box & { edge: Edge })[] = [];
+  // The top and foot first, so the chips on the sides can keep clear of their corners.
+  for (const edge of ['top', 'bottom'] as const) {
+    const ids = chips.map((_, i) => i).filter((i) => chips[i].edge === edge).sort((a, b) => chips[a].x - chips[b].x);
+    const pack = (row: number[]) => packLine(row.map((i) => chips[i].x - chips[i].w / 2), row.map((i) => chips[i].w), area.left, area.right, gap);
     const rows: number[][] = [];
     for (const i of ids) {
       const row = rows.find((r) => pack([...r, i]) !== null);
@@ -65,12 +66,28 @@ export function layChips(chips: ChipWish[], area: ChipArea, gap = CHIP_GAP): { x
       const at = pack(row)!;
       row.forEach((i, k) => {
         const { w, h } = chips[i];
-        const x = along ? at[k] : edge === 'left' ? area.left + depth : area.right - w - depth;
-        const y = !along ? at[k] : edge === 'top' ? area.top + depth : area.bottom - h - depth;
-        out[i] = { x, y };
-        placed.push({ edge, x, y, w, h });
+        const y = edge === 'top' ? area.top + depth : area.bottom - h - depth;
+        out[i] = { x: at[k], y };
+        placed.push({ edge, x: at[k], y, w, h });
       });
-      depth += Math.max(...row.map((i) => (along ? chips[i].h : chips[i].w))) + gap;
+      depth += Math.max(...row.map((i) => chips[i].h)) + gap;
+    }
+  }
+  for (const edge of ['left', 'right'] as const) {
+    const ids = chips.map((_, i) => i).filter((i) => chips[i].edge === edge).sort((a, b) => chips[a].y - chips[b].y);
+    for (const i of ids) {
+      const { w, h } = chips[i];
+      const xAt = (inset: number) => (edge === 'left' ? area.left + inset : area.right - w - inset);
+      // The columns: at the edge, or just past a chip already on this side.
+      const insets = [0, ...placed.filter((p) => p.edge === edge).map((p) => (edge === 'left' ? p.x + p.w - area.left : area.right - p.x) + gap)]
+        .sort((a, b) => a - b).filter((d) => xAt(d) >= area.left && xAt(d) + w <= area.right);
+      let spot = { x: xAt(0), y: Math.max(area.top, Math.min(chips[i].y - h / 2, area.bottom - h)) };
+      for (const inset of insets) {
+        const y = freeY(xAt(inset), w, h, chips[i].y - h / 2, placed, area.top, area.bottom, gap);
+        if (y !== null) { spot = { x: xAt(inset), y }; break; }
+      }
+      out[i] = spot;
+      placed.push({ edge, ...spot, w, h });
     }
   }
   return out;

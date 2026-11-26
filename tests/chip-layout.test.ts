@@ -82,3 +82,65 @@ test('many random sets of chips: none overlap, and all stay inside', () => {
     expect(bs.every(inside), `run ${run}`).toBe(true);
   }
 });
+
+// oW1 (bug hunt T6.5): in a view narrower than a left chip and a right chip side by side,
+// the two sides' columns cross; a side chip was dodging the other side's chips as if they
+// sat on the foot edge, and was laid over them.
+const narrowBoxes = (chips: ChipWish[], a: ChipArea, at = layChips(chips, a)): Box[] => chips.map((c, i) => ({ ...at[i], w: c.w, h: c.h }));
+const insideOf = (a: ChipArea) => (b: Box) => b.x >= a.left && b.x + b.w <= a.right && b.y >= a.top && b.y + b.h <= a.bottom;
+
+describe('oW1: edge chips in a narrow view', () => {
+  test('one chip on each side of a 240 px split view does not overlap the other', () => {
+    // Each chip fits on its own side; only the two columns cross. A view 600 px tall has
+    // room to stack them apart.
+    const area: ChipArea = { left: 0, top: 0, right: 240, bottom: 600 };
+    const chips: ChipWish[] = [
+      { edge: 'left', x: 0, y: 0, w: 130, h: 40 },
+      { edge: 'right', x: 240, y: 0, w: 130, h: 40 },
+    ];
+    const bs = narrowBoxes(chips, area);
+    expect(clashes(bs), JSON.stringify(bs)).toEqual([]);
+    expect(bs.every(insideOf(area)), JSON.stringify(bs)).toBe(true);
+  });
+
+  test('many chips on both sides of a narrow view still keep apart and inside', () => {
+    const area: ChipArea = { left: 6, top: 6, right: 246, bottom: 606 };
+    const chips: ChipWish[] = [
+      ...Array.from({ length: 4 }, (_, i) => ({ edge: 'left' as const, x: 6, y: 40 + i * 60, w: 130, h: 40 })),
+      ...Array.from({ length: 4 }, (_, i) => ({ edge: 'right' as const, x: 246, y: 40 + i * 60, w: 130, h: 40 })),
+    ];
+    const bs = narrowBoxes(chips, area);
+    expect(clashes(bs), JSON.stringify(bs)).toEqual([]);
+    expect(bs.every(insideOf(area)), JSON.stringify(bs)).toBe(true);
+  });
+
+  test('fuzz: narrow areas and long chips — never an overlap between chips that fit', () => {
+    let seed = 42;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const edges = ['top', 'bottom', 'left', 'right'] as const;
+    const out: string[] = [];
+    for (let run = 0; run < 500; run++) {
+      // A split view (240 to 700 px across, at least 400 tall) with chips that each fit
+      // across it, and few enough that stacking them apart is always possible.
+      const width = 240 + Math.floor(rand() * 460);
+      const height = 400 + Math.floor(rand() * 600);
+      const area: ChipArea = { left: 6, top: 6, right: 6 + width, bottom: 6 + height };
+      const chips: ChipWish[] = [];
+      for (const edge of edges) {
+        const n = Math.floor(rand() * 4); // at most 3 on any one edge
+        for (let k = 0; k < n; k++) {
+          const w = 40 + rand() * (Math.min(400, width) - 40), h = 26 + rand() * 24;
+          const x = edge === 'left' ? area.left : edge === 'right' ? area.right : area.left + rand() * width;
+          const y = edge === 'top' ? area.top : edge === 'bottom' ? area.bottom : area.top + rand() * height;
+          chips.push({ edge, x, y, w, h });
+        }
+      }
+      const bs = narrowBoxes(chips, area);
+      const cl = clashes(bs);
+      // Chips that each fit inside the area must never overlap each other, whatever
+      // the arrangement: the area is tall or wide enough to stack any of these sets.
+      if (cl.length) out.push(`run ${run}: ${cl.length} overlapping, e.g. ${JSON.stringify(bs.filter((_, i) => cl.includes(i)).slice(0, 2))} in ${JSON.stringify(area)}`);
+    }
+    expect(out.slice(0, 3), `${out.length} runs`).toEqual([]);
+  });
+});
