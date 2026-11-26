@@ -68,3 +68,29 @@ describe('dropTitle (Q225)', () => {
     expect(svg.getAttribute('height')).toBe('697.4');
   });
 });
+
+describe('renameIds (a print started without the print page)', () => {
+  test('gives the copy\'s inner ids a prefix and points every reference at the new ones', async () => {
+    const { renameIds } = await import('../src/export');
+    const holder = document.createElement('div');
+    holder.innerHTML = `<svg xmlns="${SVG_NS}" xmlns:xlink="http://www.w3.org/1999/xlink" id="chart1">
+      <style>#chart1 .node path{stroke:url(#chart1-gradient);} #chart1 .x{fill:url(#elsewhere);}</style>
+      <linearGradient id="chart1-gradient"/><marker id="m1"/>
+      <path marker-end="url(#m1)" marker-start="url('#m1')"/><use xlink:href="#m1"/><use href="#other"/>
+    </svg>`;
+    const svg = holder.querySelector('svg')!;
+    renameIds(svg, 'print-');
+    expect(svg.id).toBe('chart1'); // the copy keeps its own id: Mermaid's style names it
+    expect([...svg.querySelectorAll('[id]')].map((e) => e.id)).toEqual(['print-chart1-gradient', 'print-m1']);
+    const path = svg.querySelector('path')!;
+    expect(path.getAttribute('marker-end')).toBe('url(#print-m1)');
+    expect(path.getAttribute('marker-start')).toBe("url('#print-m1')");
+    const [use1, use2] = svg.querySelectorAll('use');
+    expect(use1.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe('#print-m1');
+    expect(use2.getAttribute('href')).toBe('#other'); // not an id in the copy: left alone
+    const css = svg.querySelector('style')!.textContent!;
+    expect(css).toContain('url(#print-chart1-gradient)');
+    expect(css).toContain('url(#elsewhere)');
+    expect(css).toContain('#chart1 .node');
+  });
+});

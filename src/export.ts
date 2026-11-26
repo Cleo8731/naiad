@@ -56,6 +56,32 @@ export function styleElement(css: string): SVGStyleElement {
   return style;
 }
 
+/**
+ * Gives every element inside a copy of the chart a new id (`prefix` + its id) and points
+ * the copy's references at them: `url(#…)` in attributes and in its own style, and `#…`
+ * links. A copy laid in the same page as the chart needs it: `url(#id)` finds the first
+ * element of that id in the page, the chart's own, which a print hides, so the copy's
+ * arrowheads were not drawn (seen in T6.3's trial, 2026-11-25). The copy itself keeps its
+ * id, which Mermaid's style and Naiad's rules name.
+ */
+export function renameIds(svg: SVGSVGElement, prefix: string): void {
+  const names = new Map<string, string>();
+  for (const el of svg.querySelectorAll('[id]')) {
+    names.set(el.id, prefix + el.id);
+    el.id = prefix + el.id;
+  }
+  if (!names.size) return;
+  const swap = (text: string) =>
+    text.replace(/url\((['"]?)#([^'")]+)\1\)/g, (all, q: string, id: string) => (names.has(id) ? `url(${q}#${names.get(id)}${q})` : all));
+  for (const el of svg.querySelectorAll('*')) {
+    if (el.localName === 'style') { el.textContent = swap(el.textContent ?? ''); continue; }
+    for (const a of el.attributes) {
+      if (a.value.includes('url(')) a.value = swap(a.value);
+      else if (a.localName === 'href' && a.value.startsWith('#') && names.has(a.value.slice(1))) a.value = `#${names.get(a.value.slice(1))}`;
+    }
+  }
+}
+
 function base64(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

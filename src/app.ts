@@ -14,7 +14,7 @@
 import type { Arrival, Backend, ExportKind, MovedTab, Place } from './backend';
 import { configureMermaid, dropTitle, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
-import { drawingRules, pngFile, sizeOf, styleElement, svgFile } from './export';
+import { drawingRules, pngFile, renameIds, sizeOf, styleElement, svgFile } from './export';
 import { ICONS } from './icons';
 import {
   customizeWindow, isDark, printWindow, readAppearance, readPalette, readSyntaxFont, settingsWindow,
@@ -1702,6 +1702,8 @@ export class App {
     const sheet = printSheet(contents, { chart: true, about: false, nodes: false });
     // The copy keeps the chart's id, which its own style names; Naiad's rules come with it.
     if (picture.svg.id) picture.svg.prepend(styleElement(drawingRules(`#${CSS.escape(picture.svg.id)}`)));
+    // Its arrowheads and the like get ids of their own, or they point at the hidden chart's.
+    renameIds(picture.svg, 'print-');
     sheet.querySelector('.print-chart')!.append(picture.svg);
     document.body.append(sheet);
     dropTitle(picture.svg); // the sheet's heading names the flowchart (Q225)

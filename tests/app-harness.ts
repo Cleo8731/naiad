@@ -44,6 +44,12 @@ function smallDrawing(fill: string, title = ''): SVGSVGElement {
   rect.setAttribute('fill', fill);
   svg.append(rect);
   if (title) {
+    // An arrowhead, as Mermaid draws one: a marker by id, and a line that names it.
+    const marker = document.createElementNS(SVG_NS, 'marker');
+    marker.id = 'chart1_flowchart-v2-pointEnd';
+    const line = document.createElementNS(SVG_NS, 'path');
+    line.setAttribute('marker-end', 'url(#chart1_flowchart-v2-pointEnd)');
+    svg.append(marker, line);
     const text = document.createElementNS(SVG_NS, 'text');
     text.setAttribute('class', 'flowchartTitleText');
     text.textContent = title;

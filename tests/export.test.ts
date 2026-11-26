@@ -217,6 +217,11 @@ describe('the print page (Q221, Q223)', () => {
     // The sheet's heading names the flowchart, so the chart's own title is left out (Q225).
     expect(sheet()!.querySelector('h1')!.textContent).toBe('Making tea');
     expect(sheet()!.querySelector('.flowchartTitleText')).toBeNull();
+    // The copy's arrowhead has an id of its own, and its line names that one, not the
+    // hidden chart's (a print hides the chart, and its arrowheads with it).
+    const copy = sheet()!.querySelector('.print-chart svg')!;
+    expect(copy.querySelector('marker')!.id).toBe('print-chart1_flowchart-v2-pointEnd');
+    expect(copy.querySelector('path[marker-end]')!.getAttribute('marker-end')).toBe('url(#print-chart1_flowchart-v2-pointEnd)');
     window.dispatchEvent(new Event('afterprint'));
     expect(sheet()).toBeNull();
   });
