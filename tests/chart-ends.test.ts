@@ -169,7 +169,7 @@ describe('drag interactions', () => {
     a.dispatchEvent(pointer('pointerover', 120, 220));
     expect(connects[0].hidden).toBe(true); // nothing is selected
     expect(connects[1].hidden).toBe(false);
-    expect(connects[1].style.left).toBe('36px');
+    expect(connects[1].style.left).toBe('36.5px'); // beside the node once it has grown 5% (Q240): 0.5 px further for this 20 px node
     expect(a.classList.contains('hov')).toBe(true);
     stage.dispatchEvent(pointer('pointerover', 300, 400)); // empty space: the light goes at once
     expect(a.classList.contains('hov')).toBe(false);
@@ -202,7 +202,7 @@ describe('drag interactions', () => {
     group.dispatchEvent(pointer('pointerover', 133, 220)); // the gap is the group's ground
     expect(a.classList.contains('hov')).toBe(false);
     expect(group.classList.contains('hov')).toBe(false);
-    expect(connects[1].style.left).toBe('36px'); // still the node's handle
+    expect(connects[1].style.left).toBe('36.5px'); // still the node's handle, beside it grown (Q240)
     connects[1].dispatchEvent(pointer('pointerover', 140, 220)); // reached in time
     vi.advanceTimersByTime(1000);
     expect(connects[1].hidden).toBe(false);

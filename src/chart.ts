@@ -8,6 +8,7 @@ import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
 import { raiseGroupTitles } from './group-titles';
 import { markLabelsInGroups } from './label-pills';
+import { readyToLift, relockColours, unlockColours, unready } from './class-colours';
 import type { Choice, WalkAction, WalkView } from './walk';
 
 export type Target =
@@ -291,6 +292,8 @@ const stageWidth = (el: HTMLElement): number => el.clientWidth;
 
 /** Trace on hover (the user, 2026-11-13): how long the pointer rests before the rest fades, in ms. */
 const TRACE_REST = 150;
+/** How much a node under the pointer grows (Q240): `.canvas g.node.hov { scale }` in `style.css`. */
+const GROW = 1.05;
 
 /**
  * Trace on hover: what stays lit while the pointer rests on an item, the rest fading. A
@@ -477,6 +480,7 @@ export class Chart {
     el.setAttribute('height', String(box.height));
     el.style.maxWidth = 'none';
     finish(el, id, snap, true);
+    unlockColours(el);
     if (!this.fitted || !this.manual) { this.fit(); this.fitted = true; }
     this.paintSelection();
     this.paintHighlights();
@@ -857,6 +861,8 @@ export class Chart {
     if (!el) return null;
     const svg = el.cloneNode(true) as SVGSVGElement;
     clean(svg);
+    relockColours(svg);
+    unready(svg);
     return { svg, background: getComputedStyle(this.stage).backgroundColor || CHART_COLOURS.bg[0] };
   }
 
@@ -909,11 +915,17 @@ export class Chart {
     this.placeHandles();
   }
 
-  /** Lights the item under the pointer softly, as a lighter kind of selection. */
+  /**
+   * Lights the item under the pointer: a node grows and lifts (Q240); a group or an arrow
+   * gets a softer kind of the selection's outline (`style.css`).
+   */
   private light(t: Target | null): void {
     this.lit = t;
     this.canvas.querySelectorAll('.hov').forEach((e) => e.classList.remove('hov'));
-    if (t) this.elementOf(t)?.classList.add('hov');
+    const el = t ? this.elementOf(t) : null;
+    if (!el) return;
+    if (t?.kind === 'node') readyToLift(el as SVGGElement);
+    el.classList.add('hov');
   }
 
   /** Trace on hover follows the pointer after a short rest, so crossing the chart does not flicker. */
@@ -1044,7 +1056,11 @@ export class Chart {
       set.connect.hidden = !el;
       if (el) {
         const r = el.getBoundingClientRect();
-        set.connect.style.left = `${r.right - s.left + 6}px`;
+        // Beside the node's size once its grow under the pointer (Q240) ends, not as it is
+        // now, part way: the grow is about the node's centre.
+        const now = Number.parseFloat(getComputedStyle(el).scale) || 1;
+        const end = el.classList.contains('hov') && owner?.kind === 'node' ? GROW : 1;
+        set.connect.style.left = `${r.left + (r.width / 2) * (1 + end / now) - s.left + 6}px`;
         set.connect.style.top = `${r.top - s.top + r.height / 2 - 11}px`;
       }
       const points = this.pathPoints(owner);
