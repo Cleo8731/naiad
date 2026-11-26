@@ -5,7 +5,7 @@
 // window's choices; it shows one of its tabs at a time, and the others keep theirs.
 
 import type { Backend, MovedTab } from './backend';
-import { Chart, type Target } from './chart';
+import { Chart, drawForPaper, type Target } from './chart';
 import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
@@ -936,6 +936,36 @@ export class Tab {
   /** What the sidebar shows: the item selected, or else the flowchart's description while About is on. */
   private view(): View | null {
     return this.itemView() ?? this.aboutView();
+  }
+
+  /**
+   * What a print can hold (T6.3, Q223): the flowchart's name and description, and each
+   * node that has a description, with its title, in the order the file first names the
+   * nodes. Descriptions are Markdown. Null on a blank tab.
+   */
+  printContents(): { name: string; about: string; nodes: { title: string; description: string }[] } | null {
+    if (this.path === null) return null;
+    const descriptions = getDescriptions(this.text);
+    const snap = this.snap;
+    const seen = new Set<string>();
+    const nodes: { title: string; description: string }[] = [];
+    const refs = allRefs(this.doc).sort((a, b) => a.line - b.line || a.ref.start - b.ref.start);
+    for (const { ref } of refs) {
+      const id = ref.id;
+      if (seen.has(id) || (snap && !(id in snap.nodes))) continue;
+      seen.add(id);
+      const description = descriptions.get(id)?.trim();
+      if (description) nodes.push({ title: nodeLabel(this.doc, id)?.title ?? snap?.nodes[id]?.text ?? id, description });
+    }
+    return {
+      name: frontMatterTitle(this.text) || basename(this.path),
+      about: descriptions.get(FLOWCHART_ID)?.trim() ?? '', nodes,
+    };
+  }
+
+  /** The chart drawn for paper (T6.3) into `holder`; null when nothing can be drawn. */
+  async drawForPaper(holder: HTMLElement): Promise<SVGSVGElement | null> {
+    return this.snap ? drawForPaper(this.text, this.snap, holder) : null;
   }
 
   private aboutView(): View | null {

@@ -199,3 +199,78 @@ export function settingsWindow(hooks: SettingsHooks): HTMLDialogElement {
   row.append(label, input);
   return overlay('Settings', [row, note('When Naiad starts, it opens again the files that were open when it last closed.')]);
 }
+
+/** What a print holds (T6.3, Q223): the chart, the flowchart's description, each node's description. */
+export interface PrintChoice { chart: boolean; about: boolean; nodes: boolean }
+
+/** The print page's heading: what is ticked, in a few words. */
+export function printSummary({ chart, about, nodes }: PrintChoice): string {
+  if (chart) return about && nodes ? 'Chart and all descriptions' : about ? "Chart and the flowchart's description" : nodes ? "Chart and each node's description" : 'Chart only';
+  return about && nodes ? 'Descriptions only' : about ? "The flowchart's description only" : nodes ? "Each node's description only" : 'Nothing to print';
+}
+
+/**
+ * The print page (T6.3; the user, 2026-11-25, Q221 and Q223): three boxes for what the
+ * print holds, the chart ticked and the two descriptions not, so the chart alone is the
+ * default; a heading that says what is ticked; Cancel, and Print, which is not available
+ * while nothing is ticked. Print closes the page and hands the choice to `print`, which
+ * opens the print window (it shows its own preview). Each opening starts from the default.
+ */
+export function printWindow(print: (choice: PrintChoice) => void): HTMLDialogElement & { reset(): void } {
+  const summary = document.createElement('p');
+  summary.className = 'print-summary';
+  summary.setAttribute('aria-live', 'polite');
+  const BOXES: [keyof PrintChoice, string, string, boolean][] = [
+    ['chart', 'The chart', 'In black on white, fitted to the page', true],
+    ['about', "The flowchart's description", 'Above the chart', false],
+    ['nodes', "Each node's description", 'After the chart, under each node\'s title', false],
+  ];
+  const inputs = {} as Record<keyof PrintChoice, HTMLInputElement>;
+  const rows = BOXES.map(([key, text, where]) => {
+    const label = document.createElement('label');
+    label.className = 'print-box';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.name = key;
+    inputs[key] = input;
+    const name = document.createElement('span');
+    name.textContent = text;
+    const hint = document.createElement('small');
+    hint.textContent = where;
+    hint.setAttribute('aria-hidden', 'true');
+    label.append(input, name);
+    const row = document.createElement('div');
+    row.className = 'print-row';
+    row.append(label, hint);
+    return row;
+  });
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  const go = document.createElement('button');
+  go.textContent = 'Print';
+  go.className = 'primary';
+  const actions = document.createElement('div');
+  actions.className = 'print-actions';
+  actions.append(cancel, go);
+  const dialog = overlay('Print', [summary, ...rows, actions]) as HTMLDialogElement & { reset(): void };
+  const choice = (): PrintChoice => ({ chart: inputs.chart.checked, about: inputs.about.checked, nodes: inputs.nodes.checked });
+  const show = () => {
+    const c = choice();
+    summary.textContent = printSummary(c);
+    go.disabled = !(c.chart || c.about || c.nodes);
+  };
+  dialog.reset = () => {
+    for (const [key, , , on] of BOXES) inputs[key].checked = on;
+    show();
+  };
+  dialog.addEventListener('change', show);
+  cancel.addEventListener('click', () => dialog.close());
+  go.addEventListener('click', () => {
+    if (go.disabled) return;
+    const c = choice();
+    dialog.close();
+    print(c);
+  });
+  dialog.reset();
+  return dialog;
+}

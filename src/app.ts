@@ -11,14 +11,16 @@
 // Syntax pane's text, and saves it. One tab is shown at a time; the others keep
 // everything as it was (T1.16).
 
-import type { Arrival, Backend, MovedTab, Place } from './backend';
+import type { Arrival, Backend, ExportKind, MovedTab, Place } from './backend';
 import { configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
+import { drawingRules, pngFile, sizeOf, styleElement, svgFile } from './export';
 import { ICONS } from './icons';
 import {
-  customizeWindow, isDark, readAppearance, readPalette, readSyntaxFont, settingsWindow,
-  type Appearance, type Palette, type SyntaxFont,
+  customizeWindow, isDark, printWindow, readAppearance, readPalette, readSyntaxFont, settingsWindow,
+  type Appearance, type Palette, type PrintChoice, type SyntaxFont,
 } from './overlays';
+import { printSheet } from './print-sheet';
 import { RecentPane, samePath } from './recent';
 import type { Sidebar } from './sidebar';
 import { SyntaxBox } from './syntax-box';
@@ -248,7 +250,7 @@ export class App {
   private el!: {
     status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    highlight: HTMLButtonElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
+    highlight: HTMLButtonElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
     /** The Undo island and Clear beside it, and the pill (T4.9), moved to the shown tab's chart. */
     islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
@@ -332,12 +334,19 @@ export class App {
         </div>
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
+        <div class="export-wrap">
+          <button class="icon" data-act="export" title="Export: save the chart as a picture, or print it" aria-label="Export" aria-haspopup="menu" aria-expanded="false">${ICONS.export}</button>
+          <div class="export-menu" role="menu" aria-label="Export" hidden>
+            <button role="menuitem" data-export="svg">Save as SVG…</button><button role="menuitem" data-export="png">Save as PNG…</button><button role="menuitem" data-export="print">Print…</button>
+          </div>
+        </div>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
       status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'),
+      exportButton: q('[data-act="export"]'), exportMenu: q('.export-menu'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
       islandRow: q('.island-row'), island: q('.island'), pill: q('.pill'), pillEdit: q('.pill-edit'),
@@ -1624,6 +1633,79 @@ export class App {
     this.el.dir.setAttribute('aria-expanded', String(open));
   }
 
+  private showExportMenu(open: boolean): void {
+    this.el.exportMenu.hidden = !open;
+    this.el.exportButton.setAttribute('aria-expanded', String(open));
+  }
+
+  /**
+   * Save as SVG and Save as PNG (T6.3; Q220, Q222): the whole chart, alone, in the theme
+   * on screen, offered under the flowchart's own name, next to it. Nothing is written to
+   * the flowchart.
+   */
+  private async saveExport(kind: ExportKind): Promise<void> {
+    const tab = this.tab;
+    const picture = tab.chart.picture();
+    if (!tab.file || !picture) { this.toast('There is no chart to save yet.'); return; }
+    try {
+      const text = await svgFile(picture.svg, picture.background);
+      const { w, h } = sizeOf(picture.svg);
+      const bytes = kind === 'svg' ? new TextEncoder().encode(text) : await pngFile(text, w, h);
+      const name = await this.backend.saveExport(tab.file.replace(/\.(mmd|mermaid)$/i, '') + `.${kind}`, kind, bytes);
+      if (name) this.toast(`Saved ${name}.`);
+    } catch (e) {
+      this.toast(`Could not save the picture: ${errorText(e)}`);
+    }
+  }
+
+  /** The print page (T6.3, Q221, Q223), made the first time it opens; it starts from the chart alone each time. */
+  private printPage: ReturnType<typeof printWindow> | null = null;
+
+  private openPrint(): void {
+    if (!this.tab.file) return; // a blank tab has nothing to print
+    if (!this.printPage) {
+      this.printPage = printWindow((choice) => void this.print(choice));
+      this.root.append(this.printPage);
+    }
+    this.printPage.reset();
+    this.printPage.showModal();
+  }
+
+  /** Lays the sheet in the page with what is ticked, draws the chart for paper into it, then opens the print window. */
+  private async print(choice: PrintChoice): Promise<void> {
+    const tab = this.tab;
+    const contents = tab.printContents();
+    if (!contents) return;
+    for (const old of document.querySelectorAll('.print-sheet')) old.remove();
+    const sheet = printSheet(contents, choice);
+    document.body.append(sheet);
+    const holder = sheet.querySelector<HTMLElement>('.print-chart');
+    if (holder) {
+      try {
+        const svg = await tab.drawForPaper(holder);
+        if (!svg) throw new Error('the flowchart has nothing to draw yet');
+        if (svg.id) svg.prepend(styleElement(drawingRules(`#${CSS.escape(svg.id)}`)));
+      } catch (e) {
+        sheet.remove();
+        this.toast(`Could not draw the chart for printing: ${errorText(e)}`);
+        return;
+      }
+    }
+    window.print();
+  }
+
+  /** A print started without the print page: the chart as drawn now, alone. */
+  private quickSheet(): void {
+    const contents = this.tab.printContents();
+    const picture = this.tab.chart.picture();
+    if (!contents || !picture) return;
+    const sheet = printSheet(contents, { chart: true, about: false, nodes: false });
+    // The copy keeps the chart's id, which its own style names; Naiad's rules come with it.
+    if (picture.svg.id) picture.svg.prepend(styleElement(drawingRules(`#${CSS.escape(picture.svg.id)}`)));
+    sheet.querySelector('.print-chart')!.append(picture.svg);
+    document.body.append(sheet);
+  }
+
   /** The panes' widths in px (T4.9), as the CSS variables `--recent-w`, `--syntax-w` and `--side-w` on the window. */
   private widths = {} as Record<PaneName, number>;
 
@@ -1788,6 +1870,16 @@ export class App {
         return;
       }
       if (!target.closest('.dir-wrap')) this.showDirMenu(false);
+      // The Export menu (T6.3): an item picked saves or prints; a click anywhere else but
+      // its button closes it.
+      const exported = target.closest<HTMLElement>('.export-menu [data-export]')?.dataset.export;
+      if (exported) {
+        this.showExportMenu(false);
+        if (exported === 'print') this.openPrint();
+        else void this.saveExport(exported as ExportKind);
+        return;
+      }
+      if (!target.closest('.export-wrap')) this.showExportMenu(false);
       const listed = target.closest<HTMLElement>('.tabs-menu [data-tab]')?.dataset.tab;
       const group = this.groupAt(target);
       if (listed !== undefined) {
@@ -1809,6 +1901,7 @@ export class App {
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
       if (act === 'fit') this.tab.chart.fit();
+      if (act === 'export') this.showExportMenu(!!this.el.exportMenu.hidden);
       if (act === 'syntax') this.toggleText();
       if (act === 'syntax-full') this.fillWithText(!this.el.pane.classList.contains('full'));
       if (act === 'recent') this.toggleRecent();
@@ -1837,6 +1930,11 @@ export class App {
       this.dirTimer = window.setTimeout(() => this.showDirMenu(false), 200);
     });
 
+    // A print started some other way than the print page (a browser's own menu) gets
+    // the chart as drawn; after any print the sheet goes (T6.3).
+    window.addEventListener('beforeprint', () => { if (!document.querySelector('.print-sheet')) this.quickSheet(); });
+    window.addEventListener('afterprint', () => { for (const sheet of document.querySelectorAll('.print-sheet')) sheet.remove(); });
+
     // A drag on a pane's grip resizes the pane (T4.9).
     this.root.addEventListener('pointerdown', (e) => {
       const g = (e.target as Element).closest<HTMLElement>('.grip[data-pane]');
@@ -1855,9 +1953,16 @@ export class App {
 
     // The keys act on the shown tab only, and not while a window lies over Naiad's (T1.21).
     window.addEventListener('keydown', (e) => {
-      if (this.root.querySelector('dialog[open]')) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      // Ctrl+P, WebView2's and a browser's own key for printing, opens Naiad's print page
+      // first (T6.3), so a print holds the chart on paper and not the window as it is.
+      if (mod && key === 'p' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (!this.root.querySelector('dialog[open]')) this.openPrint();
+        return;
+      }
+      if (this.root.querySelector('dialog[open]')) return;
       if (mod && key === 's') { e.preventDefault(); void this.tab.save(true); return; }
       if (mod && key === 'o') {
         // Open fills a blank tab only; a file's tab is never replaced (Q140).
@@ -1873,6 +1978,7 @@ export class App {
       else if (key === 'escape') {
         if (this.tabsMenuOpen) this.closeTabsMenus();
         else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
+        else if (!this.el.exportMenu.hidden) this.showExportMenu(false);
         else if (this.hlOn) this.setHighlighting(false);
         else this.select(null);
       }

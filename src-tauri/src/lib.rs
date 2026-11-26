@@ -135,6 +135,17 @@ impl WatchList {
 /// a ':' inside a name names a hidden part (a stream) of another file
 /// (`notes.txt:flow.mmd`), so such a path is refused whatever its extension.
 fn check(path: &str) -> Result<PathBuf, String> {
+    check_kind(path, &["mmd", "mermaid"], "Only .mmd and .mermaid files can be opened.")
+}
+
+/// A picture of the chart (T6.3, Export) is written only to an .svg or .png file, so
+/// the page can never use this way to write over a flowchart or any other file.
+fn check_export(path: &str) -> Result<PathBuf, String> {
+    check_kind(path, &["svg", "png"], "A picture of the chart is saved only as an .svg or .png file.")
+}
+
+/// `check` and `check_export`: no stream, and one of `allowed` as the extension.
+fn check_kind(path: &str, allowed: &[&str], refusal: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
     let stream = |c: std::path::Component| matches!(c, std::path::Component::Normal(n) if n.to_string_lossy().contains(':'));
     if cfg!(windows) && p.components().any(stream) {
@@ -145,10 +156,10 @@ fn check(path: &str) -> Result<PathBuf, String> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
-    if matches!(ext.as_str(), "mmd" | "mermaid") {
+    if allowed.contains(&ext.as_str()) {
         Ok(p)
     } else {
-        Err("Only .mmd and .mermaid files can be opened.".into())
+        Err(refusal.into())
     }
 }
 
@@ -577,6 +588,14 @@ fn write_file(path: String, contents: String, expected: Option<String>) -> Resul
     }
 }
 
+/// Writes a picture of the chart that Export made (T6.3) to the file the person picked
+/// in the save dialog, whole, as `replace_file` does.
+#[tauri::command]
+fn write_export(path: String, contents: Vec<u8>) -> Result<(), String> {
+    let p = check_export(&path)?;
+    replace_file(&p, &contents)
+}
+
 /// `write_file` for `naiad serve`, whose page names the text it read by its hash
 /// (`fnv1a64` of its bytes; src/core/hash.ts computes the same).
 pub(crate) fn write_file_hashed(path: String, contents: String, expected: Option<u64>) -> Result<bool, String> {
@@ -951,6 +970,7 @@ pub fn run() {
             existing_files,
             read_file,
             write_file,
+            write_export,
             watch_file,
             unwatch_file,
             read_highlights,
@@ -996,6 +1016,28 @@ mod tests {
         write_file(flow.to_string_lossy().into_owned(), "new".into(), None).unwrap();
         assert_eq!(fs::read_to_string(&flow).unwrap(), "new");
         assert_eq!(names(&dir), ["flow.mmd"]);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// T6.3: Export writes only an .svg or a .png, never a flowchart or another file.
+    #[test]
+    fn a_picture_is_written_only_to_an_svg_or_a_png() {
+        let dir = folder("export");
+        let flow = dir.join("flow.mmd");
+        fs::write(&flow, "flowchart TD").unwrap();
+        let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+        write_export(path("flow.svg"), b"<svg/>".to_vec()).unwrap();
+        write_export(path("flow.PNG"), vec![137, 80, 78, 71]).unwrap();
+        assert_eq!(fs::read(dir.join("flow.svg")).unwrap(), b"<svg/>");
+        assert_eq!(fs::read(dir.join("flow.PNG")).unwrap(), [137, 80, 78, 71]);
+        for refused in ["flow.mmd", "notes.txt", "flow", "flow.svg.exe"] {
+            assert!(write_export(path(refused), b"x".to_vec()).is_err(), "{refused}");
+        }
+        assert_eq!(fs::read_to_string(&flow).unwrap(), "flowchart TD");
+        if cfg!(windows) {
+            assert!(write_export(path("notes.txt:x.svg"), b"x".to_vec()).is_err());
+        }
+        assert_eq!(names(&dir), ["flow.PNG", "flow.mmd", "flow.svg"]);
         fs::remove_dir_all(&dir).unwrap();
     }
 

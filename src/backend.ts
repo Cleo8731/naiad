@@ -77,6 +77,14 @@ export interface Backend {
   /** Which of these paths name a flowchart file that is there (the recent list, T1.15). */
   existing(paths: string[]): Promise<boolean[]>;
   pickSave(suggestedName: string): Promise<string | null>;
+  /**
+   * Saves a picture of the chart (T6.3, Q220): asks where, offering `suggested` (the
+   * flowchart's own path with the picture's extension), then writes `bytes` there. In a
+   * browser the page downloads it under that name instead. Returns the saved file's name,
+   * or null when the person cancels. It never writes a flowchart: the desktop app's
+   * command takes only .svg and .png.
+   */
+  saveExport(suggested: string, kind: ExportKind, bytes: Uint8Array): Promise<string | null>;
   openLink(url: string): void;
   setWindowTitle(title: string): void;
   /**
@@ -150,6 +158,27 @@ export interface Windows {
   showElsewhere(path: string): Promise<boolean>;
   /** Closes this window without asking: its last tab went to another window. */
   closeNow(): void;
+}
+
+/** The two kinds of picture Export saves (T6.3). */
+export type ExportKind = 'svg' | 'png';
+const EXPORT_FILTERS: Record<ExportKind, { name: string; extensions: string[] }[]> = {
+  svg: [{ name: 'SVG picture', extensions: ['svg'] }],
+  png: [{ name: 'PNG picture', extensions: ['png'] }],
+};
+const EXPORT_TYPES: Record<ExportKind, string> = { svg: 'image/svg+xml', png: 'image/png' };
+
+/** A browser's save: a download of `bytes` named `suggested`'s last part. A `data:` address, which the page's rules allow (a `blob:` one they don't). */
+function download(suggested: string, kind: ExportKind, bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const a = document.createElement('a');
+  a.href = `data:${EXPORT_TYPES[kind]};base64,${btoa(bin)}`;
+  a.download = suggested.split(/[\\/]/).pop() || `flowchart.${kind}`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  return a.download;
 }
 
 const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
@@ -226,6 +255,12 @@ async function desktop(): Promise<Backend> {
     choose: async (path) => path,
     existing: (paths) => invoke<boolean[]>('existing_files', { paths }),
     pickSave: (suggestedName) => dialog.save({ defaultPath: suggestedName, filters: NEW_FILTERS }),
+    async saveExport(suggested, kind, bytes) {
+      const path = await dialog.save({ defaultPath: suggested, filters: EXPORT_FILTERS[kind] });
+      if (!path) return null;
+      await invoke('write_export', { path, contents: Array.from(bytes) });
+      return path.split(/[\\/]/).pop() ?? path;
+    },
     openLink: (url) => { void invoke('open_link', { url }); },
     setWindowTitle: (title) => { void getCurrentWindow().setTitle(title); },
     setTheme: (theme) => { void getCurrentWindow().setTheme(theme).catch(() => {}); },
@@ -333,6 +368,7 @@ function browser(): Backend {
     choose: async (path) => (await call('api/open', { method: 'POST', body: path })).path,
     existing: async (paths) => (await call('api/exists', { method: 'POST', body: JSON.stringify(paths) })).exists,
     pickSave: async () => null,
+    saveExport: async (suggested, kind, bytes) => download(suggested, kind, bytes),
     openLink: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
     setWindowTitle: (title) => { document.title = title; },
     setTheme: () => {},

@@ -58,11 +58,22 @@ const CHART_COLOURS = {
   group: ['#e3efee', '#0e262c'], 'group-border': ['#bad6d8', '#22474f'],
 } as const;
 
-function pageColours(dark: boolean): Record<keyof typeof CHART_COLOURS, string> {
+type Colours = Record<keyof typeof CHART_COLOURS, string>;
+
+/**
+ * A print's colours (T6.3, Q222): dark lines and text on white, the groups a light grey,
+ * whatever the theme on screen, so a print reads on paper and spends little ink.
+ */
+const PAPER: Colours = {
+  bg: '#ffffff', node: '#ffffff', 'node-border': '#4a4a4a', edge: '#333333', text: '#111111',
+  muted: '#555555', group: '#f2f2f2', 'group-border': '#9a9a9a',
+};
+
+function pageColours(dark: boolean): Colours {
   const probe = document.createElement('span');
   probe.hidden = true;
   document.body.append(probe);
-  const out = {} as Record<keyof typeof CHART_COLOURS, string>;
+  const out = {} as Colours;
   for (const [name, both] of Object.entries(CHART_COLOURS) as [keyof typeof CHART_COLOURS, readonly [string, string]][]) {
     probe.style.color = '';
     probe.style.color = `var(--${name}, rgb(1, 2, 3))`;
@@ -81,8 +92,28 @@ const softText = (c: Record<'muted' | 'text', string>) => `color-mix(in srgb, ${
  * palette, T4.9). Called again when either changes, before every tab is drawn again.
  */
 export function configureMermaid(dark: boolean): void {
-  const c = pageColours(dark);
-  mermaid.initialize({
+  lastConfig = mermaidConfig(pageColours(dark), dark);
+  mermaid.initialize(lastConfig);
+}
+
+/** The set-up `configureMermaid` last gave, which a print's drawing puts back when done. */
+let lastConfig: Parameters<typeof mermaid.initialize>[0] | null = null;
+
+/**
+ * Mermaid's drawings, one at a time: `mermaid.render` waits its turn, but a new set-up
+ * (`initialize`) takes effect at once, so a print's colours would reach a tab's drawing
+ * waiting meanwhile. Each drawing runs inside this, and a print's sets and restores its
+ * colours inside its own turn (T6.3).
+ */
+let drawing: Promise<unknown> = Promise.resolve();
+function exclusive<T>(job: () => Promise<T>): Promise<T> {
+  const run = drawing.then(job, job);
+  drawing = run.catch(() => {});
+  return run;
+}
+
+function mermaidConfig(c: Colours, dark: boolean): Parameters<typeof mermaid.initialize>[0] {
+  return {
     startOnLoad: false,
     securityLevel: 'strict',
     suppressErrorRendering: true,
@@ -116,7 +147,7 @@ export function configureMermaid(dark: boolean): void {
     // (ELK, its default) cuts a short gap in one, as on road maps, instead of its own
     // default, a small hop. Drawing only; a file's own `elk` settings still win.
     elk: { lineHops: 'gap' },
-  });
+  };
 }
 
 const MIN_ZOOM = 0.15;
@@ -383,7 +414,7 @@ export class Chart {
     this.cancelDrag();
     const id = `chart${++drawCount}`;
     await Promise.all([fontLoaded(), placeLabelsNearSource()]);
-    const { svg } = await mermaid.render(id, forMermaid(text));
+    const { svg } = await exclusive(() => mermaid.render(id, forMermaid(text)));
     this.cancelDrag();
     this.canvas.innerHTML = svg;
     this.snap = snap;
@@ -395,11 +426,25 @@ export class Chart {
     el.setAttribute('width', String(box.width));
     el.setAttribute('height', String(box.height));
     el.style.maxWidth = 'none';
-    this.index(el, id, snap);
+    finish(el, id, snap, true);
     if (!this.fitted || !this.manual) { this.fit(); this.fitted = true; }
     this.paintSelection();
     this.paintHighlights();
     this.paintTrace();
+  }
+
+  /**
+   * A copy of the whole chart as drawn now, for Export (T6.3): in the theme on screen,
+   * without what only the window shows (the selection, highlights, the item under the
+   * pointer, a trace, the arrows' clickable copies); and the chart's background colour.
+   * Null while nothing is drawn.
+   */
+  picture(): { svg: SVGSVGElement; background: string } | null {
+    const el = this.canvas.querySelector('svg');
+    if (!el) return null;
+    const svg = el.cloneNode(true) as SVGSVGElement;
+    clean(svg);
+    return { svg, background: getComputedStyle(this.stage).backgroundColor || CHART_COLOURS.bg[0] };
   }
 
   clear(): void {
@@ -419,39 +464,6 @@ export class Chart {
     this.observer?.disconnect();
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('wheel', this.onOutsideWheel);
-  }
-
-  private index(svg: SVGSVGElement, id: string, snap: Snap): void {
-    const nodePrefix = `${id}-flowchart-`;
-    svg.querySelectorAll<SVGGElement>('g.node').forEach((g) => {
-      if (!g.id.startsWith(nodePrefix)) return;
-      const nodeId = g.id.slice(nodePrefix.length).replace(/-\d+$/, '');
-      if (nodeId in snap.nodes) g.dataset.node = nodeId;
-    });
-    svg.querySelectorAll<SVGGElement>('g.cluster').forEach((g) => {
-      const subId = g.id.startsWith(`${id}-`) ? g.id.slice(id.length + 1) : g.id;
-      if (subId in snap.subs) g.dataset.sub = subId;
-    });
-    svg.querySelectorAll<SVGPathElement>('path[data-edge="true"]').forEach((p) => {
-      const d = p.getAttribute('d');
-      if (d) p.setAttribute('d', roundBends(d, BEND_RADIUS));
-      const i = snap.edgeIds.indexOf(p.dataset.id ?? '');
-      if (i < 0) return;
-      p.dataset.edgeLine = String(i);
-      // Arrows are thin; a wide invisible copy on top makes them easy to click.
-      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      hit.setAttribute('d', p.getAttribute('d') ?? '');
-      hit.setAttribute('class', 'edge-hit');
-      hit.dataset.edge = String(i);
-      p.after(hit);
-    });
-    svg.querySelectorAll<SVGGElement>('g.edgeLabel').forEach((g) => {
-      const i = snap.edgeIds.indexOf(g.querySelector<SVGGElement>('[data-id]')?.dataset.id ?? '');
-      if (i >= 0) g.dataset.edge = String(i);
-    });
-    addDirectionMarks(svg);
-    raiseGroupTitles(svg);
-    markLabelsInGroups(svg);
   }
 
   private targetAt(el: Element | null): Target | null {
@@ -966,4 +978,87 @@ export class Chart {
     }
     return null;
   }
+}
+
+/**
+ * Maps Mermaid's drawing to the file's nodes, groups and arrows, rounds the arrows'
+ * bends, and adds Naiad's own finishing: direction marks, group titles above the arrows
+ * and the label pills' colours. `hits` adds each arrow's wide clickable copy, which a
+ * printed or saved picture leaves out. The order matters: a direction mark directly
+ * follows its arrow (`path.sel + path.dir-mark` in `style.css`).
+ */
+function finish(svg: SVGSVGElement, id: string, snap: Snap, hits: boolean): void {
+  const nodePrefix = `${id}-flowchart-`;
+  svg.querySelectorAll<SVGGElement>('g.node').forEach((g) => {
+    if (!g.id.startsWith(nodePrefix)) return;
+    const nodeId = g.id.slice(nodePrefix.length).replace(/-\d+$/, '');
+    if (nodeId in snap.nodes) g.dataset.node = nodeId;
+  });
+  svg.querySelectorAll<SVGGElement>('g.cluster').forEach((g) => {
+    const subId = g.id.startsWith(`${id}-`) ? g.id.slice(id.length + 1) : g.id;
+    if (subId in snap.subs) g.dataset.sub = subId;
+  });
+  svg.querySelectorAll<SVGPathElement>('path[data-edge="true"]').forEach((p) => {
+    const d = p.getAttribute('d');
+    if (d) p.setAttribute('d', roundBends(d, BEND_RADIUS));
+    const i = snap.edgeIds.indexOf(p.dataset.id ?? '');
+    if (i < 0) return;
+    p.dataset.edgeLine = String(i);
+    if (!hits) return;
+    // Arrows are thin; a wide invisible copy on top makes them easy to click.
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('d', p.getAttribute('d') ?? '');
+    hit.setAttribute('class', 'edge-hit');
+    hit.dataset.edge = String(i);
+    p.after(hit);
+  });
+  svg.querySelectorAll<SVGGElement>('g.edgeLabel').forEach((g) => {
+    const i = snap.edgeIds.indexOf(g.querySelector<SVGGElement>('[data-id]')?.dataset.id ?? '');
+    if (i >= 0) g.dataset.edge = String(i);
+  });
+  addDirectionMarks(svg);
+  raiseGroupTitles(svg);
+  markLabelsInGroups(svg);
+}
+
+/** The classes that show only in the window (`style.css`): under the pointer, selected, highlighted, lit by a trace, a drop. */
+const WINDOW_ONLY = ['hov', 'sel', 'hl', 'lit', 'drop'];
+
+/** Takes off a drawing what only the window shows, and Naiad's own marks on it (`finish`). */
+function clean(svg: SVGSVGElement): void {
+  for (const hit of svg.querySelectorAll('.edge-hit')) hit.remove();
+  for (const el of svg.querySelectorAll('[class]')) el.classList.remove(...WINDOW_ONLY);
+  for (const el of svg.querySelectorAll('[data-node], [data-sub], [data-edge-line], g[data-edge]')) {
+    for (const name of ['data-node', 'data-sub', 'data-edge-line']) el.removeAttribute(name);
+    if (el.tagName.toLowerCase() === 'g') el.removeAttribute('data-edge');
+  }
+  svg.style.removeProperty('max-width');
+}
+
+/**
+ * The chart drawn for paper (T6.3, Q222): dark lines on white, finished as on screen,
+ * into `holder`, which must be in the page so the finishing can measure. Mermaid gets
+ * the print's colours for this one drawing and the screen's back after it. Null when
+ * Mermaid cannot draw the text.
+ */
+export function drawForPaper(text: string, snap: Snap, holder: HTMLElement): Promise<SVGSVGElement | null> {
+  return exclusive(async () => {
+    const id = `paper${++drawCount}`;
+    await Promise.all([fontLoaded(), placeLabelsNearSource()]);
+    mermaid.initialize(mermaidConfig(PAPER, false));
+    try {
+      const { svg } = await mermaid.render(id, forMermaid(text));
+      holder.innerHTML = svg;
+    } finally {
+      if (lastConfig) mermaid.initialize(lastConfig);
+    }
+    const el = holder.querySelector('svg');
+    if (!el) return null;
+    const box = el.viewBox.baseVal;
+    el.setAttribute('width', String(box.width));
+    el.setAttribute('height', String(box.height));
+    finish(el, id, snap, false);
+    clean(el);
+    return el;
+  });
 }

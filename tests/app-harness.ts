@@ -31,9 +31,34 @@ export const charts: {
   list: { drawn: string[]; sidebarShown: boolean[]; steps: string[]; destroyed: boolean; view: { x: number; y: number; k: number } | null }[]; drawing: number; most: number;
 } = { list: [], drawing: 0, most: 0 };
 
+/** A small drawing, as a stand-in chart's picture and a print's (T6.3). */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function smallDrawing(fill: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 120 80');
+  svg.setAttribute('width', '120');
+  svg.setAttribute('height', '80');
+  const rect = document.createElementNS(SVG_NS, 'rect');
+  rect.setAttribute('width', '50');
+  rect.setAttribute('height', '30');
+  rect.setAttribute('fill', fill);
+  svg.append(rect);
+  return svg;
+}
+
+/** The texts drawn for paper (`drawForPaper`, T6.3), in order. */
+export const paperDrawn: string[] = [];
+
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
 export const chartMock = () => ({
   configureMermaid: (dark: boolean) => { chartTheme.dark = dark; chartTheme.calls++; },
+  drawForPaper: async (text: string, _snap: unknown, holder: HTMLElement) => {
+    paperDrawn.push(text);
+    const svg = smallDrawing('#ffffff');
+    svg.classList.add('paper');
+    holder.replaceChildren(svg);
+    return svg;
+  },
   Chart: class {
     drawn: string[] = [];
     sidebarShown: boolean[] = [];
@@ -43,6 +68,8 @@ export const chartMock = () => ({
     /** The view as the person moved it (T6.2): null while fitted. */
     view: { x: number; y: number; k: number } | null = null;
     placement() { return this.view; }
+    /** The chart as drawn (T6.3): none before its first drawing. */
+    picture() { return this.drawn.length ? { svg: smallDrawing('#12303a'), background: 'rgb(11, 28, 33)' } : null; }
     setPlacement(view: { x: number; y: number; k: number }) { this.view = view; }
     /** In order, each drawing finished ("drawn") and each time the app said the chart's
      * tools were shown or hidden, with whether the pill showed then ("tools shown", "tools hidden"). */
@@ -76,6 +103,10 @@ export class FakeDisk {
   /** How long the watcher waits, like the 60 and 80 ms of the bridge and the desktop. */
   watchDelay = 70;
   writes: { path: string; text: string }[] = [];
+  /** Each picture Export saved (T6.3): the name offered, its kind and its bytes as text. */
+  exports: { suggested: string; kind: 'svg' | 'png'; text: string }[] = [];
+  /** Whether the person cancels Export's save dialog. */
+  cancelExport = false;
   /** Each write of a flowchart fails with this message (a full disk, say); none: writes succeed. */
   failWrites: string | null = null;
   /** What the person answers when Naiad asks (`Backend.confirm`); every question asked. */
@@ -164,6 +195,11 @@ export class FakeDisk {
       choose: async (path) => path,
       existing: async (paths) => paths.map((p) => this.files.has(p)),
       pickSave: async () => null,
+      saveExport: async (suggested, kind, bytes) => {
+        if (this.cancelExport) return null;
+        this.exports.push({ suggested, kind, text: new TextDecoder().decode(bytes) });
+        return suggested.split('/').pop()!;
+      },
       openLink: () => {},
       setWindowTitle: (title) => { this.title = title; },
       setTheme: (theme) => { this.theme = theme; },

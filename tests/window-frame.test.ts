@@ -271,11 +271,11 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     expect(button('clear').parentElement).toBe(island.parentElement); // Clear sits beside the island
   });
 
-  test('the pill: the add-node button, the direction, Fit and Highlight', async () => {
+  test('the pill: the add-node button, the direction, Fit, Highlight and Export (T6.3)', async () => {
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const items = [...pill.querySelectorAll<HTMLElement>(':scope > *, .pill-edit > *')].filter((e) => !e.matches('.pill-edit, .dir-menu'));
-    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'highlight']);
+    expect(items.map((e) => (e.matches('.divider') ? '|' : (e.dataset.act ?? e.querySelector<HTMLElement>('[data-act]')?.dataset.act)))).toEqual(['add', '|', 'dir', '|', 'fit', 'highlight', 'export']);
     // The add-node button is a plus alone (the user, 2026-11-15, Q158's answer).
     expect(button('add').textContent!.trim()).toBe('');
     expect(button('add').getAttribute('aria-label')).toBe('Add a node');
@@ -341,12 +341,12 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     expect(view.title).toBe('View mode: the chart cannot be changed. Click for Edit mode');
   });
 
-  test('View mode: the pill keeps Fit and Highlight; the island goes; the rail\'s middle stays', async () => {
+  test('View mode: the pill keeps Fit, Highlight and Export; the island goes; the rail\'s middle stays', async () => {
     localStorage.setItem('mode', 'view');
     await start();
     const pill = shownArea().querySelector<HTMLElement>('.pill')!;
     const left = [...pill.querySelectorAll<HTMLElement>('button[data-act]')].filter(visible).map((b) => b.dataset.act);
-    expect(left).toEqual(['fit', 'highlight']);
+    expect(left).toEqual(['fit', 'highlight', 'export']);
     expect(visible(shownArea().querySelector('.island'))).toBe(false);
     expect([visible(button('wheel')), visible(button('view'))]).toEqual([true, true]);
   });

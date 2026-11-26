@@ -571,7 +571,7 @@ body.dragging-tab #app { pointer-events: none; }
    top left, Clear beside it; the pill at its foot. Icon buttons have no border; a soft
    square shows behind the icon under the pointer, and behind a switch that is on. */
 .island-row { position: absolute; top: 14px; left: 14px; z-index: 7; display: flex; align-items: center; gap: 8px; user-select: none; }
-.island, .pill, .dir-menu, .clear {
+.island, .pill, .dir-menu, .export-menu, .clear {
   border: 1px solid var(--line); background: var(--panel); box-shadow: 0 8px 24px -10px var(--shadow);
 }
 .island { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-control); }
@@ -617,6 +617,18 @@ body.dragging-tab #app { pointer-events: none; }
   display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
 }
 .dir-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+/* The Export button's menu (T6.3): opens above it, on a click, its right edge on the
+   button's, since the button ends the pill. */
+.export-wrap { position: relative; display: flex; }
+.export-menu {
+  position: absolute; right: -6px; bottom: calc(100% + 10px); z-index: 9;
+  display: flex; flex-direction: column; gap: 2px; min-width: 168px; padding: 5px; border-radius: 14px;
+}
+.export-menu button {
+  height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-control);
+  background: transparent; text-align: left; white-space: nowrap;
+}
+.export-menu button:hover { background: var(--accent-soft); }
 
 /* ---- notices: thin bars laid over the top of the chart, between the island and the
    chart's right edge; under the island in a narrow chart. */
@@ -796,6 +808,14 @@ dialog.overlay-window {
   box-shadow: 0 24px 60px -16px var(--shadow);
 }
 dialog.overlay-window::backdrop { background: var(--scrim); }
+/* The print page (T6.3, Q223): what is ticked as its heading, three boxes, Cancel and Print. */
+dialog.overlay-window[data-window="print"] { width: min(420px, calc(100vw - 32px)); }
+.print-summary { margin: -10px 0 0; color: var(--muted); font-weight: 600; }
+.print-row { display: flex; flex-direction: column; gap: 2px; }
+.print-box { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
+.print-box input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.print-row small { padding-left: 26px; color: var(--muted); font-size: 12px; }
+.print-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .ow-box { display: flex; flex-direction: column; gap: 18px; padding: 18px 24px 24px; }
 .ow-head { display: flex; align-items: center; gap: 8px; }
 .ow-head h2 { flex: 1; margin: 0; font: italic 450 29px/1.1 var(--font-display); }
@@ -881,4 +901,29 @@ input.switch:checked::before { transform: translateX(14px); }
   .textpane { width: 220px; }
   .recent { position: absolute; left: 0; top: 0; bottom: 0; z-index: 9; box-shadow: 8px 0 24px var(--shadow); }
   .grip { display: none; }
+}
+
+/* ---- printing (T6.3; the user, 2026-11-25, Q221 to Q223). The sheet (`print-sheet.ts`)
+   is in the page only while printing; on screen it lies out of sight, still laid out so
+   the chart drawn into it can be measured. A print shows it alone, in black on white:
+   the flowchart's name, what was ticked, the chart fitted to the page. */
+.print-sheet { position: fixed; left: -300vw; top: 0; width: 180mm; visibility: hidden; pointer-events: none; }
+@media print {
+  @page { margin: 14mm; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body > :not(.print-sheet) { display: none !important; }
+  .print-sheet {
+    position: static; width: auto; visibility: visible;
+    color: #111; background: #fff; font: 10.5pt/1.5 Lexend, "Segoe UI", system-ui, sans-serif;
+  }
+  .print-sheet h1 { margin: 0 0 8pt; font-size: 17pt; font-weight: 600; }
+  .print-about { margin-bottom: 12pt; }
+  .print-chart svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 245mm; margin: 0 auto; }
+  .print-chart { break-after: auto; margin-bottom: 14pt; }
+  .print-nodes section { break-inside: avoid; padding: 6pt 0; border-top: 0.5pt solid #bbb; }
+  .print-nodes h3 { margin: 0 0 3pt; font-size: 11.5pt; font-weight: 600; }
+  .print-sheet :is(p, ul, ol) { margin: 0 0 4pt; }
+  .print-sheet a { color: inherit; }
+  .print-sheet code { font: 9.5pt/1.4 "JetBrains Mono", monospace; }
+  .print-none { color: #555; font-style: italic; }
 }
