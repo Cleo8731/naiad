@@ -8,6 +8,7 @@ import { placeLabelsNearSource } from './elk-options';
 import { addDirectionMarks } from './direction-marks';
 import { raiseGroupTitles } from './group-titles';
 import { markLabelsInGroups } from './label-pills';
+import { lightArrow, unlightArrows, unreadyArrows } from './arrow-hover';
 import { readyToLift, relockColours, unlockColours, unready } from './class-colours';
 import type { Choice, WalkAction, WalkView } from './walk';
 
@@ -871,6 +872,7 @@ export class Chart {
     clean(svg);
     relockColours(svg);
     unready(svg);
+    unreadyArrows(svg);
     return { svg, background: getComputedStyle(this.stage).backgroundColor || CHART_COLOURS.bg[0] };
   }
 
@@ -924,16 +926,24 @@ export class Chart {
   }
 
   /**
-   * Lights the item under the pointer: a node grows and lifts (Q240); a group or an arrow
+   * Lights the item under the pointer: a node grows and lifts (Q240); an arrow takes the
+   * accent with a faint glow, arrowheads too, and its label grows and lifts (Q244); a group
    * gets a softer kind of the selection's outline (`style.css`).
    */
   private light(t: Target | null): void {
     this.lit = t;
     this.canvas.querySelectorAll('.hov').forEach((e) => e.classList.remove('hov'));
+    const svg = this.canvas.querySelector('svg');
+    if (svg) unlightArrows(svg);
     const el = t ? this.elementOf(t) : null;
     if (!el) return;
     if (t?.kind === 'node') readyToLift(el as SVGGElement);
     el.classList.add('hov');
+    if (t?.kind === 'edge' && svg) {
+      const label = this.canvas.querySelector<SVGGElement>(`g.edgeLabel[data-edge="${t.index}"]`);
+      lightArrow(svg, el, label);
+      label?.classList.add('hov');
+    }
   }
 
   /** Trace on hover follows the pointer after a short rest, so crossing the chart does not flicker. */

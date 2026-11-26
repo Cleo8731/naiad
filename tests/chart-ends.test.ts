@@ -249,6 +249,22 @@ describe('drag interactions', () => {
     const order = (f: unknown) => (f as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     expect(order(events.onSelect)).toBeLessThan(order(events.onMoveEnd)); // selected first (Q100)
   });
+  // Q244 (the user, 2026-11-26: "Yes, softer glow").
+  test('an arrow under the pointer: its label is lit too, its arrowhead swapped for the accent copy, and both put back after', () => {
+    const svg = stage.querySelector('svg')!;
+    const line = svg.querySelector('[data-edge-line="0"]')!;
+    svg.insertAdjacentHTML('afterbegin', '<marker id="m-end"><path></path></marker>');
+    svg.insertAdjacentHTML('beforeend', '<g class="edgeLabel" data-edge="0" transform="translate(30, 40)"></g><path data-edge="0"></path>');
+    line.setAttribute('marker-end', 'url(#m-end)');
+    const label = svg.querySelector('g.edgeLabel')!;
+    svg.querySelector('path[data-edge]')!.dispatchEvent(pointer('pointerover', 150, 260));
+    expect(line.classList.contains('hov')).toBe(true);
+    expect(label.classList.contains('hov')).toBe(true);
+    expect(line.getAttribute('marker-end')).toBe('url(#m-end-hov)');
+    stage.querySelector('[data-node="A"]')!.dispatchEvent(pointer('pointerover', 120, 220)); // on to a node
+    expect(label.classList.contains('hov')).toBe(false);
+    expect(line.getAttribute('marker-end')).toBe('url(#m-end)');
+  });
   // View mode (D4.3, T1.11): reading only.
   test('View mode: no handles, no dot grid, a drag ended, and the chart\'s edits blocked', () => {
     const connects = stage.querySelectorAll<HTMLButtonElement>('.connect-handle');

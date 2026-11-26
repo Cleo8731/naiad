@@ -702,16 +702,27 @@ body.dragging-tab #app { pointer-events: none; }
   filter: drop-shadow(0 2px 2px light-dark(rgb(0 0 0 / .18), rgb(0 0 0 / .6))) drop-shadow(0 6px 10px light-dark(rgb(0 0 0 / .16), rgb(0 0 0 / .55)));
 }
 .canvas:not(#_) .node.hov:not(.sel) [style*="--own-fill"] { fill: color-mix(in srgb, var(--own-fill) 86%, white) !important; }
-/* A group or an arrow under the pointer: a softer kind of the selection's outline (the
-   user, 2026-11-13). Before the selection's rules, so a selected item keeps its own. */
+/* A group under the pointer: a softer kind of the selection's outline (the user,
+   2026-11-13). Before the selection's rules, so a selected item keeps its own. */
 .canvas:not(#_) .cluster.hov > rect { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 1.5px !important; }
-.canvas path.hov { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 2.5px !important; }
-.canvas path.hov + path.dir-mark { stroke: color-mix(in srgb, var(--select) 55%, transparent) !important; stroke-width: 2px !important; }
+/* An arrow under the pointer (Q244; the user, 2026-11-26: "Yes, softer glow"): the line,
+   its direction mark and its arrowheads (accent copies of the markers, `arrow-hover.ts`)
+   in the full accent with one faint glow; its label grows 5% and lifts, as a node does.
+   Before the selection's rules, so a selected arrow keeps its own look; a highlighted one
+   keeps its halo. */
+.canvas path.hov { stroke: var(--select) !important; stroke-width: 2.5px !important; }
+.canvas path.hov:not(.hl) { filter: drop-shadow(0 0 1.5px color-mix(in srgb, var(--select) 55%, transparent)); }
+.canvas path.hov + path.dir-mark { stroke: var(--select) !important; stroke-width: 2.5px !important; }
+.canvas:not(#_) .hov-marker * { fill: var(--select) !important; stroke: var(--select) !important; }
+.canvas g.edgeLabel { transform-box: view-box; }
+.canvas g.edgeLabel.hov { scale: 1.05; filter: drop-shadow(0 2px 2px light-dark(rgb(0 0 0 / .18), rgb(0 0 0 / .6))) drop-shadow(0 6px 10px light-dark(rgb(0 0 0 / .16), rgb(0 0 0 / .55))); }
+.canvas:not(#_) g.edgeLabel.hov .labelBkg[style*="--own-fill"] { background-color: color-mix(in srgb, var(--select) 22%, var(--own-fill)) !important; }
+.canvas .labelBkg { transition: background-color 120ms ease; }
 /* Trace on hover (the user, 2026-11-13): with the pointer resting on an item, the nodes and
    arrows not joined to it fade (`traceOf` in `chart.ts`). Groups stay: they hold the
    nodes. Drawing only. */
 .canvas g.node, .canvas path[data-edge-line], .canvas path.dir-mark, .canvas g.edgeLabel { transition: opacity 120ms ease, scale 120ms ease; }
-@media (prefers-reduced-motion: reduce) { .canvas g.node { transition: opacity 120ms ease; } }
+@media (prefers-reduced-motion: reduce) { .canvas :is(g.node, g.edgeLabel) { transition: opacity 120ms ease; } }
 .stage.tracing .canvas g.node:not(.lit), .stage.tracing .canvas path[data-edge-line]:not(.lit),
 .stage.tracing .canvas path[data-edge-line]:not(.lit) + path.dir-mark,
 .stage.tracing .canvas g.edgeLabel:not(.lit) { opacity: 0.22; }

@@ -101,6 +101,6 @@ describe('the stylesheet', () => {
   });
 
   test('the grow is not animated when the computer asks for less motion', () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.canvas g\.node \{ transition: opacity 120ms ease; \} \}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.canvas :is\(g\.node, g\.edgeLabel\) \{ transition: opacity 120ms ease; \} \}/);
   });
 });

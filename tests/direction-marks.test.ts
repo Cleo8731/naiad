@@ -169,10 +169,10 @@ describe('on a drawn chart', () => {
       line.classList.add('lit');
       expect(styled(mark, 'opacity: 0.22')).toBe(false);
     });
-    test('they take the selection\'s colour, the softer colour under the pointer, and a highlight\'s halo', () => {
+    test('they take the selection\'s colour, the full accent, a little thicker, under the pointer (Q244), and a highlight\'s halo', () => {
       const { line, mark } = setup();
       // The selection's colour is `--select`: the accent, except in Glacier (T4.9).
-      for (const [cls, wanted] of [['sel', 'stroke: var(--select) !important'], ['hov', 'var(--select) 55%'], ['hl', 'drop-shadow']]) {
+      for (const [cls, wanted] of [['sel', 'stroke: var(--select) !important'], ['hov', 'stroke-width: 2.5px !important'], ['hl', 'drop-shadow']]) {
         expect(styled(mark, wanted), cls).toBe(false);
         line.classList.add(cls);
         expect(styled(mark, wanted), cls).toBe(true);
