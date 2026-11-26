@@ -79,8 +79,11 @@ without administrator rights. It registers Naiad for `.mmd` and `.mermaid` files
 double-click on one opens it, and adds the `naiad` command to your PATH. Then open a
 file with **Open a file**, or start one with **New flowchart**.
 
-To update, run a newer release's installer: it installs over the old version. To make
-the installer yourself, see [Building from source](#building-from-source).
+To update, run a newer release's installer: it installs over the old version. To
+uninstall, open Windows **Settings**, then **Apps**, **Installed apps**, and uninstall
+Naiad there. Your settings and recent files stay in `%LOCALAPPDATA%\app.naiad.desktop`
+unless you tick **Delete the application data** in the uninstaller. To make the
+installer yourself, see [Building from source](#building-from-source).
 
 ## Using Naiad
 
