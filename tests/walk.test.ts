@@ -120,7 +120,7 @@ describe('the chart during a walk', () => {
     expect(bar.hidden).toBe(false);
     expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
     // A long name is cut short to fit: the tooltip holds it whole.
-    expect(bar.querySelectorAll('button')[1].title).toBe('Yes → Done');
+    expect([...bar.querySelectorAll('button')].map((b) => b.title)).toEqual(['Back along the path taken (Left arrow)', 'Yes → Done (1)', 'No → Start (2)', 'Leave the walk (Esc)']);
     click(bar.querySelectorAll('button')[1]);
     expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'choose', edge: 1 });
     click(bar.querySelector('.walk-back')!);

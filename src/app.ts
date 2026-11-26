@@ -2030,10 +2030,13 @@ export class App {
         if (this.tabsMenuOpen) this.closeTabsMenus();
         else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
         else if (!this.el.exportMenu.hidden) this.showExportMenu(false);
+        else if (this.tab.walking) this.tab.leaveWalk(); // Q233
         else if (this.hlOn) this.setHighlighting(false);
         else this.select(null);
       }
-      else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled) this.setHighlighting(!this.hlOn);
+      // The walk's keys (Q233): the arrow keys and 1 to 9; Highlight waits until the walk ends, as its button does.
+      else if (this.tab.walking && !mod && !e.altKey && this.tab.walkKey(key)) e.preventDefault();
+      else if (key === 'h' && !mod && !e.altKey && !this.el.highlight.disabled && !this.tab.walking) this.setHighlighting(!this.hlOn);
       else if ((key === 'enter' || key === 'f2') && this.selection) {
         e.preventDefault();
         if (this.viewing) this.viewBlocked(); // it puts the cursor in the title, to type a new one

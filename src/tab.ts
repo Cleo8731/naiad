@@ -804,6 +804,30 @@ export class Tab {
     this.select(null);
   }
 
+  /**
+   * A key pressed during a walk (Q233, the user, 2026-11-26): Left arrow goes Back; Right
+   * arrow takes Next when there is one way on; 1 to 9 take the choice (or, while picking,
+   * the place to start) at that place in the walk bar. Escape, which leaves, is the
+   * window's (it closes an open menu first). Returns whether the key was the walk's.
+   */
+  walkKey(key: string): boolean {
+    const path = this.walkPath;
+    if (!path || !this.snap) return false;
+    if (key === 'arrowleft') { this.onWalk({ kind: 'back' }); return true; }
+    const view = walkView(this.snap, path);
+    if (key === 'arrowright') {
+      if (view.choices.length === 1) this.onWalk({ kind: 'choose', edge: view.choices[0].edge });
+      return true;
+    }
+    if (/^[1-9]$/.test(key)) {
+      const n = Number(key) - 1;
+      if (view.here === null) { const s = view.starts[n]; if (s) this.onWalk({ kind: 'start', id: s.to }); }
+      else { const c = view.choices[n]; if (c) this.onWalk({ kind: 'choose', edge: c.edge }); }
+      return true;
+    }
+    return false;
+  }
+
   private onWalk(action: WalkAction): void {
     const path = this.walkPath;
     if (!path || !this.snap) return;

@@ -730,24 +730,26 @@ export class Chart {
       if (tip) b.title = tip;
       return b;
     };
+    /** The keys 1 to 9 take the first nine buttons (Q233). */
+    const withKey = (name: string, i: number) => (i < 9 ? `${name} (${String(i + 1)})` : name);
     const note = (text: string) => { const s = document.createElement('span'); s.className = 'walk-note'; s.textContent = text; return s; };
-    const back = button('back', 'Back', undefined, 'Back along the path taken');
+    const back = button('back', 'Back', undefined, 'Back along the path taken (Left arrow)');
     back.classList.add('walk-back');
     back.disabled = !w.canBack;
     const choices = document.createElement('div');
     choices.className = 'walk-choices';
     if (!w.here) {
-      // Each name is also the button's tooltip: a long one is cut short to fit the bar.
-      choices.append(note('Start at'), ...w.starts.map((s) => button('start', s.title, s.to, s.title)));
+      // Each name is also the button's tooltip, with its key (Q233): a long one is cut short to fit the bar.
+      choices.append(note('Start at'), ...w.starts.map((s, i) => button('start', s.title, s.to, withKey(s.title, i))));
     } else if (!w.choices.length) {
       choices.append(note('The end of this path'), button('again', 'Start again'));
     } else if (w.choices.length === 1) {
       const c = w.choices[0];
-      choices.append(button('choose', 'Next', String(c.edge), `${c.label ? `${c.label} → ` : ''}${c.title}`));
+      choices.append(button('choose', 'Next', String(c.edge), `${c.label ? `${c.label} → ` : ''}${c.title} (Right arrow)`));
     } else {
-      choices.append(...w.choices.map((c) => { const name = c.label ? `${c.label} → ${c.title}` : c.title; return button('choose', name, String(c.edge), name); }));
+      choices.append(...w.choices.map((c, i) => { const name = c.label ? `${c.label} → ${c.title}` : c.title; return button('choose', name, String(c.edge), withKey(name, i)); }));
     }
-    const leave = button('leave', 'Leave', undefined, 'Leave the walk');
+    const leave = button('leave', 'Leave', undefined, 'Leave the walk (Esc)');
     leave.classList.add('walk-leave');
     this.walkBar.append(back, choices, leave);
   }

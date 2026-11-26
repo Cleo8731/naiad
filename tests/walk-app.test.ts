@@ -32,6 +32,12 @@ const chart = () => charts.list[charts.list.length - 1] as unknown as { walks: (
 const lastWalk = () => chart().walks[chart().walks.length - 1];
 const walk = (action: unknown) => chartEvents.last!.onWalk(action as never);
 const readTitle = () => q('.sidebar .read-title')?.textContent ?? null;
+/** A key pressed on the page, outside any field. */
+const press = (key: string) => {
+  const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  document.body.dispatchEvent(e);
+  return e;
+};
 
 async function toView() {
   viewButton().click();
@@ -98,6 +104,38 @@ describe('a walk', () => {
     expect(lastWalk()).toBeNull();
     expect(q<HTMLElement>('.pill')!.hidden).toBe(false);
     expect(disk.writes).toEqual([]);
+  });
+
+  it('keys (Q233): 1 to 9 take a choice, Right arrow takes the one way on, Left arrow goes back, Escape leaves', async () => {
+    await start();
+    await toView();
+    walkButton().click();
+    expect(press('ArrowRight').defaultPrevented).toBe(true); // one way on: Next
+    expect(lastWalk()!.here).toBe('ready');
+    press('ArrowRight'); // two ways on: Right arrow does nothing
+    expect(lastWalk()!.here).toBe('ready');
+    press('3'); // no third choice
+    expect(lastWalk()!.here).toBe('ready');
+    press('2');
+    expect(lastWalk()!.here).toBe('bag');
+    press('ArrowLeft');
+    expect(lastWalk()!.here).toBe('ready');
+    press('h'); // Highlight waits until the walk ends
+    expect(q('[data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('false');
+    press('Escape');
+    expect(lastWalk()).toBeNull();
+    expect(press('1').defaultPrevented).toBe(false); // no walk: the keys are not taken
+  });
+
+  it('keys while picking where to start: 1 to 9 pick the place; in a text field they type', async () => {
+    const { ui } = await start(BASE.replace('bag --> pour', 'bag --> pour\n    note[Spare cups]'));
+    await toView();
+    walkButton().click();
+    const field = ui.area();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true, cancelable: true }));
+    expect(lastWalk()!.here).toBeNull();
+    press('2');
+    expect(lastWalk()!.here).toBe('note');
   });
 
   it('ends when View mode is switched off', async () => {
