@@ -314,7 +314,7 @@ add the flowchart to its list. Paths are written from the project's top folder:
 
 ```
 ## Naiad flowcharts
-Keep these flowcharts true: when a change alters what one shows, update it in
+Keep these flowcharts up to date: when a change alters what one shows, update it in
 the same change, following the naiad skill, and say so in your report.
 - `docs/architecture.mmd`: the import pipeline
 ```

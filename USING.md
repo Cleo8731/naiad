@@ -1,7 +1,7 @@
 # Using Naiad
 
-Everything Naiad's window does, for reference. The [README](README.md) has the
-everyday steps.
+Everything Naiad's window does, and what Naiad keeps on your computer, for reference.
+The [README](README.md) has the everyday steps.
 
 ## The window
 
@@ -15,7 +15,7 @@ its modes' names, the one in use under the knob. On the chart, Undo and Redo sit
 top left, and a bar along the bottom holds **+** (add a node), the direction button,
 **Fit** and **Highlight**.
 
-A page from `naiad serve` (README, [From a terminal](README.md#from-a-terminal)) shows
+A page from `naiad serve` (README, [Commands](README.md#commands)) shows
 one file in the same way, without tabs, split view, the recent files list or
 **Settings**.
 
@@ -68,3 +68,31 @@ disk while Naiad holds an edit not yet saved, the version on disk wins and the e
 stays in Undo ([FILE-FORMAT.md](FILE-FORMAT.md#what-naiad-changes-in-a-file-and-what-it-never-does)).
 Highlights are kept in a small file of their own beside the flowchart, which an agent
 reads and writes too ([FILE-FORMAT.md](FILE-FORMAT.md#highlights)).
+
+## What Naiad keeps on your computer
+
+- Each file you open: read again whenever it changes on disk, and written only as
+  [FILE-FORMAT.md](FILE-FORMAT.md#what-naiad-changes-in-a-file-and-what-it-never-does)
+  describes.
+- Highlights: `.naiad/<file name>/highlights.txt` in the flowchart's folder, with
+  Windows' hidden mark on `.naiad`. The file, and the folders it leaves empty, are
+  deleted when the last Naiad view of the flowchart closes.
+- In your temporary folder, while they run: a small record of each open window
+  (`naiad-views`), and the address of each `naiad serve` server (`naiad-serve`), so a
+  second `naiad serve` on the same file prints the same address.
+- In the window's own storage, kept by Windows' WebView2 in
+  `%LOCALAPPDATA%\app.naiad.desktop`: whether the Syntax pane is shown, the width of
+  each pane, whether View mode and **About** are on, Touchpad or Mouse mode once you
+  choose one, the appearance, theme and Syntax font once you choose them, and whether
+  **Remember opened files** is on once you turn it off or on.
+- While **Remember opened files** is on, the full paths of the files open in the tabs,
+  in their order, and which one is shown; while the window is split, also which tabs
+  are in the second half, the tab each half shows, and the split's direction and
+  divider. They are in the same storage, written each time a tab opens, closes or is
+  shown, and when the window closes.
+- The full paths of the last 50 files you opened, for the recent files, in the same
+  storage. While the list is shown, Naiad checks that each listed file is still there;
+  it reads none of them until you click one.
+- Naiad makes no network requests of its own. An image in a description that points to
+  a web address is loaded from there when the description is shown, and a link in a
+  description opens in your browser.
