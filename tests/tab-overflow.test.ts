@@ -64,6 +64,14 @@ describe('the strip\'s parts (Q177)', () => {
     expect(rule('.tabs .tablist')).toMatch(/scrollbar-width:\s*none/);
   });
 
+  // Q219: tabs that all start from 200 px shrink by the same amount into a list as wide
+  // as their names, so they come out equally wide and a name longer than the average is
+  // cut ("b.m…", "sample.…") with the window half empty. Each starts from its own name.
+  test('a tab starts from its own name\'s width, at most 200 px, and shrinks from there', () => {
+    expect(rule('.tab')).toMatch(/flex:\s*0 1 auto/);
+    expect(rule('.tab')).toMatch(/max-width:\s*200px/);
+  });
+
   test('past the +, at least 40 px of the row is always left to move the window', () => {
     expect(rule('.tabs')).toMatch(/padding:\s*0 40px 0 2px/);
   });

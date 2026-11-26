@@ -340,8 +340,11 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 .tabs-menu button:hover { background: var(--bg); }
 .tabs-menu button[aria-current="true"] { background: var(--accent-soft); font-weight: 600; }
+/* A tab starts from its own name's width, at most 200 px, and shrinks from there to 72 px
+   before the list scrolls. A shared 200 px start made tabs shrink by the same amount, so
+   they came out equally wide and a longer name was cut (Q219). */
 .tab {
-  position: relative; display: flex; align-items: center; flex: 0 1 200px; min-width: 72px; height: 30px;
+  position: relative; display: flex; align-items: center; flex: 0 1 auto; min-width: 72px; max-width: 200px; height: 30px;
   border-radius: var(--radius-tab); color: var(--muted);
 }
 .tab:hover { background: var(--bg); color: var(--text); }
