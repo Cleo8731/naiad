@@ -87,7 +87,8 @@ describe('A tall chart opens readable (Q253, T1.6)', () => {
   let stage: HTMLElement, chart: Chart;
   const place = (w: number, h: number, whole = false) => {
     (chart as any).size = { w, h };
-    chart.fit(whole);
+    if (whole) return (chart as any).fitGoal('whole');
+    chart.fit();
     return { ...(chart as any).view };
   };
   beforeEach(() => {
@@ -108,7 +109,7 @@ describe('A tall chart opens readable (Q253, T1.6)', () => {
     expect(v.x).toBeCloseTo(24, 6);
   });
 
-  test('the Fit button still shows the whole chart (as far as the smallest zoom allows)', () => {
+  test("the Fit button's Whole chart shows the whole chart (as far as the smallest zoom allows)", () => {
     expect(place(1218, 4863, true).k).toBe(0.15);
     const v = place(600, 2000, true);
     expect(v.k).toBeCloseTo(708 / 2000, 6);
@@ -130,5 +131,88 @@ describe('A tall chart opens readable (Q253, T1.6)', () => {
   test('a wide chart too small to read stays fitted whole: its width is what limits it', () => {
     const v = place(4000, 300);
     expect(v.k).toBeCloseTo(844 / 4000, 6);
+  });
+});
+
+describe('The Fit button: two views in turn, glided to (Q255)', () => {
+  let stage: HTMLElement, chart: Chart;
+  let frames: FrameRequestCallback[];
+  const view = () => ({ ...(chart as any).view }) as { x: number; y: number; k: number };
+  /** Runs the queued animation frames at `ms` after the first, until none is left. */
+  const run = (ms = 2000) => { for (let n = 0; frames.length && n < 500; n++) frames.shift()!(n === 0 ? 0 : ms); };
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => { frames.push(f); return frames.length; });
+    vi.stubGlobal('cancelAnimationFrame', () => { frames = []; });
+    stage = document.createElement('section');
+    stage.getBoundingClientRect = () => rect(0, 0, 892, 756);
+    document.body.append(stage);
+    const events: ChartEvents = { onSelect: vi.fn(), onHighlight: vi.fn(), onConnect: vi.fn(), onMoveEnd: vi.fn(), onRename: vi.fn(), onAddNode: vi.fn(), onBlocked: vi.fn(), onWalk: vi.fn() };
+    chart = new Chart(stage, events);
+    (chart as any).size = { w: 1218, h: 4863 }; // the user's chart
+    chart.fit(); // opens fitted to its width
+  });
+  afterEach(() => { chart.destroy(); stage.remove(); vi.unstubAllGlobals(); });
+
+  test('clicks go: whole chart, width, whole chart', () => {
+    const width = view();
+    chart.fitNext();
+    run();
+    expect(view().k).toBe(0.15);
+    chart.fitNext();
+    run();
+    expect(view()).toEqual(width);
+    chart.fitNext();
+    run();
+    expect(view().k).toBe(0.15);
+  });
+
+  test('a second click during the glide goes on to the other view', () => {
+    chart.fitNext(); // to the whole chart
+    frames.shift()!(0);
+    frames.shift()!(100); // part of the way
+    chart.fitNext(); // its goal was the whole chart: now the width
+    run();
+    expect(view().k).toBeCloseTo(844 / 1218, 6);
+  });
+
+  test('after the view was moved, a click shows the whole chart', () => {
+    (chart as any).view = { x: -300, y: -900, k: 1 };
+    chart.fitNext();
+    run();
+    expect(view().k).toBe(0.15);
+  });
+
+  test('the view glides: the first frames are part of the way, the last is exact', () => {
+    const from = view();
+    chart.fitTo('whole');
+    expect(view()).toEqual(from); // nothing moves before the first frame
+    frames.shift()!(0);
+    frames.shift()!(150);
+    const mid = view().k;
+    expect(mid).toBeLessThan(from.k);
+    expect(mid).toBeGreaterThan(0.15);
+    run();
+    expect(view().k).toBe(0.15);
+    expect(frames.length).toBe(0);
+  });
+
+  test('without motion when the system asks for less of it', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    chart.fitTo('whole');
+    expect(view().k).toBe(0.15);
+    expect(frames.length).toBe(0);
+  });
+
+  test('a pan or a wheel zoom during the glide stops it where it is', () => {
+    chart.fitTo('whole');
+    frames.shift()!(0);
+    frames.shift()!(150);
+    const at = view();
+    (chart as any).stopWalkGlide(); // what a pan and a wheel zoom call
+    expect(frames.length).toBe(0);
+    expect(view()).toEqual(at);
+    expect((chart as any).viewGoal).toBeNull();
   });
 });

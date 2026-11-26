@@ -249,7 +249,7 @@ export class App {
   /** Files are opened one at a time, so two never race for one blank tab. */
   private opens: Promise<void> = Promise.resolve();
   private el!: {
-    status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; undo: HTMLButtonElement;
+    status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; fitMenu: HTMLElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
     highlight: HTMLButtonElement; walk: HTMLButtonElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
@@ -318,7 +318,7 @@ export class App {
     // The chart's tools (T4.9), laid over the shown tab's chart (`show`): Undo and Redo in
     // an island at its top left, with Clear beside it while anything is highlighted; and
     // the floating pill at its foot: the add-node button, a plus alone (Q158's answer),
-    // the direction button, Fit and Highlight. In View mode the island and the pill's
+    // the direction button, Fit (with its menu, Q255) and Highlight. In View mode the island and the pill's
     // first part go.
     const tools = document.createElement('div');
     tools.innerHTML = `
@@ -341,13 +341,19 @@ export class App {
           </div>
           <span class="divider"></span>
         </div>
-        <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
+        <div class="fit-wrap">
+          <button class="icon" data-act="fit" title="Fit: the whole chart, then its width, in turn" aria-label="Fit" aria-haspopup="menu" aria-expanded="false">${ICONS.fit}</button>
+          <div class="fit-menu" role="menu" aria-label="Fit" hidden>
+            <button role="menuitem" data-fit="whole">Whole chart</button>
+            <button role="menuitem" data-fit="width">Width</button>
+          </div>
+        </div>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
         <button class="icon" data-act="walk" title="Walkthrough: follow one run through the flowchart, node by node, from a node you click, choosing an arrow at each step; for presenting it, or reading it alone" aria-label="Walkthrough" hidden>${ICONS.walk}</button>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
-      status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), undo: q('[data-act="undo"]'),
+      status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), fitMenu: q('.fit-menu'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
       fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'), walk: q('[data-act="walk"]'),
       exportButton: q('[data-act="export"]'), exportMenu: q('.export-menu'),
@@ -1637,6 +1643,15 @@ export class App {
     this.el.dir.setAttribute('aria-expanded', String(open));
   }
 
+  /** Whether the pointer is over the Fit button or its menu (Q255), which then stays open. */
+  private fitTimer: number | undefined;
+
+  private showFitMenu(open: boolean): void {
+    window.clearTimeout(this.fitTimer);
+    this.el.fitMenu.hidden = !open;
+    this.el.fit.setAttribute('aria-expanded', String(open));
+  }
+
   private showExportMenu(open: boolean): void {
     this.el.exportMenu.hidden = !open;
     this.el.exportButton.setAttribute('aria-expanded', String(open));
@@ -1920,6 +1935,10 @@ export class App {
         return;
       }
       if (!target.closest('.dir-wrap')) this.showDirMenu(false);
+      // The Fit menu (Q255): a view picked is glided to.
+      const fitKind = target.closest<HTMLElement>('.fit-menu [data-fit]')?.dataset.fit;
+      if (fitKind === 'whole' || fitKind === 'width') { this.tab.chart.fitTo(fitKind); return; }
+      if (!target.closest('.fit-wrap')) this.showFitMenu(false);
       // The Export menu (T6.3): an item picked saves; a click anywhere else but its button
       // closes it.
       const exported = target.closest<HTMLElement>('.export-menu [data-export]')?.dataset.export;
@@ -1949,7 +1968,7 @@ export class App {
       if (act === 'add') void this.addNode(null);
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
-      if (act === 'fit') this.tab.chart.fit(true); // the whole chart (Q253; the button's choice is still open)
+      if (act === 'fit') this.tab.chart.fitNext(); // the whole chart, then its width, in turn (Q255)
       if (act === 'export') this.showExportMenu(!!this.el.exportMenu.hidden);
       if (act === 'print') this.openPrint();
       if (act === 'syntax') this.toggleText();
@@ -1979,6 +1998,15 @@ export class App {
       this.dirHover = false;
       window.clearTimeout(this.dirTimer);
       this.dirTimer = window.setTimeout(() => this.showDirMenu(false), 200);
+    });
+
+    // Pointing at Fit shows its two views, Whole chart and Width (Q255), as the direction
+    // button shows its ways; leaving both hides them, a moment later.
+    const fitWrap = this.el.fit.parentElement!;
+    fitWrap.addEventListener('mouseenter', () => this.showFitMenu(true));
+    fitWrap.addEventListener('mouseleave', () => {
+      window.clearTimeout(this.fitTimer);
+      this.fitTimer = window.setTimeout(() => this.showFitMenu(false), 200);
     });
 
     // A print started some other way than the print page (a browser's own menu) gets
@@ -2029,6 +2057,7 @@ export class App {
       else if (key === 'escape') {
         if (this.tabsMenuOpen) this.closeTabsMenus();
         else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
+        else if (!this.el.fitMenu.hidden) this.showFitMenu(false);
         else if (!this.el.exportMenu.hidden) this.showExportMenu(false);
         else if (this.tab.walking) this.tab.leaveWalk(); // Q233
         else if (this.hlOn) this.setHighlighting(false);

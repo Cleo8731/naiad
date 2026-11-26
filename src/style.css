@@ -571,7 +571,7 @@ body.dragging-tab #app { pointer-events: none; }
    top left, Clear beside it; the pill at its foot. Icon buttons have no border; a soft
    square shows behind the icon under the pointer, and behind a switch that is on. */
 .island-row { position: absolute; top: 14px; left: 14px; z-index: 7; display: flex; align-items: center; gap: 8px; user-select: none; }
-.island, .pill, .dir-menu, .export-menu, .clear {
+.island, .pill, .dir-menu, .fit-menu, .export-menu, .clear {
   border: 1px solid var(--line); background: var(--panel); box-shadow: 0 8px 24px -10px var(--shadow);
 }
 .island { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-control); }
@@ -617,6 +617,18 @@ body.dragging-tab #app { pointer-events: none; }
   display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
 }
 .dir-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+/* Fit's menu (Q255): its two views, named, above it as the direction button's ways are. */
+.fit-wrap { position: relative; display: flex; }
+.fit-menu {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); z-index: 9;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px; border-radius: 14px;
+}
+.fit-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+.fit-menu button, .fit-menu button:hover {
+  height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--text); box-shadow: none; text-align: left; white-space: nowrap;
+}
+.fit-menu button:hover { background: var(--accent-soft); }
 /* The rail's Export button's menu (T6.3; on the rail, the user, 2026-11-25): opens on a
    click to the button's right, over the window, its top on the button's. It is placed
    from the narrow button (34px), and while it is open the button stays narrow and looks

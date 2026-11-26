@@ -180,6 +180,8 @@ const MIN_ZOOM = 0.15;
 /** The zoom under which an opened chart's text, 14 px at full size, is smaller than 9 px:
  * below it, the opening view fits the chart's width instead of the whole chart (Q253). */
 const FIT_READABLE = 9 / 14;
+/** The **Fit** button's two views (Q255). */
+export type FitKind = 'whole' | 'width';
 const MAX_ZOOM = 4;
 /** How much one wheel event changes the zoom, per unit of its deltaY: a mouse wheel's
  * notch is 100, so a plain notch zooms e^0.16, 17.4%. A Ctrl-marked event is a pinch
@@ -388,7 +390,7 @@ export class Chart {
   /** The walk bar at the chart's foot, and the edge chips (`placeChips`). */
   private walkBar: HTMLDivElement;
   private walkChips: HTMLDivElement;
-  /** The view travelling to the walk's next place: its frame (`walkCamera`). */
+  /** The view travelling to the walk's next place (`walkCamera`) or to a Fit (`glideView`): its frame. */
   private walkFrame: number | null = null;
   /** The drawing's own frame's corner (its viewBox's x and y), to place a point of an arrow's line. */
   private origin = { x: 0, y: 0 };
@@ -715,8 +717,9 @@ export class Chart {
     if (c) this.events.onWalk({ kind: 'choose', edge: c.edge });
   }
 
-  /** Stops the walk's view where it is (the person panned or zoomed). */
+  /** Stops the walk's view, or a Fit's glide, where it is (the person panned or zoomed). */
   private stopWalkGlide(): void {
+    this.viewGoal = null;
     if (this.walkFrame === null) return;
     cancelAnimationFrame(this.walkFrame);
     this.walkFrame = null;
@@ -1185,19 +1188,57 @@ export class Chart {
   }
 
   /**
-   * Fits the chart in its area. The whole chart, unless that would make its text smaller
-   * than 9 px (Q253, T1.6: a tall chart fitted whole could not be read); then the chart's
-   * width, top first, so it opens readable and scrolls down. `whole` always fits the whole
-   * chart (the **Fit** button).
+   * Fits the chart in its area at once, as a chart opens and after an edit while the view
+   * is not moved: the whole chart, unless that would make its text smaller than 9 px
+   * (Q253, T1.6: a tall chart fitted whole could not be read); then the chart's width,
+   * top first, so it opens readable and scrolls down.
    */
-  fit(whole = false): void {
+  fit(): void {
     this.stopGlide();
+    this.stopWalkGlide();
     const r = this.stage.getBoundingClientRect();
     this.fitWaiting = !!this.size.w && !r.width;
-    if (!this.size.w || !r.width) return;
-    // 24 px clear at each side; at the top and the foot, 12 px clear of the chart's tools
-    // laid over the chart (Undo's island, the pill), so no node is fitted under them
-    // (seen 2026-11-25: a tall chart's last node sat under the pill).
+    const goal = this.fitGoal('open');
+    if (!goal) return;
+    this.view = goal;
+    this.placedWidth = stageWidth(this.stage);
+    this.manual = false;
+    this.apply();
+  }
+
+  /** The **Fit** button's two views (Q255), glided to: the whole chart, or its width. */
+  fitTo(kind: FitKind): void {
+    const goal = this.fitGoal(kind);
+    if (!goal) return;
+    this.placedWidth = stageWidth(this.stage);
+    this.manual = false;
+    this.glideView(goal);
+  }
+
+  /**
+   * A click on **Fit** (Q255): the whole chart, unless it is shown now (or being glided
+   * to); then the chart's width. So clicks go back and forth between the two, and after
+   * the view was moved the first click shows the whole chart.
+   */
+  fitNext(): void {
+    const whole = this.fitGoal('whole');
+    if (!whole) return;
+    const at = this.viewGoal ?? this.view;
+    const same = Math.abs(Math.log(at.k / whole.k)) < 0.01 && Math.abs(at.x - whole.x) < 2 && Math.abs(at.y - whole.y) < 2;
+    this.fitTo(same ? 'width' : 'whole');
+  }
+
+  /**
+   * Where a fit puts the view, or null while the chart has no size or no room. 24 px clear
+   * at each side; at the top and the foot, 12 px clear of the chart's tools laid over the
+   * chart (Undo's island, the pill), so no node is fitted under them (seen 2026-11-25: a
+   * tall chart's last node sat under the pill). Width fits the chart's width (at most a
+   * little over full size, as every fit); a chart then shorter than its area is centred
+   * in it, as a whole one is, and a taller one starts at the top.
+   */
+  private fitGoal(kind: 'open' | FitKind): { x: number; y: number; k: number } | null {
+    const r = this.stage.getBoundingClientRect();
+    if (!this.size.w || !r.width) return null;
     const pad = 24;
     const tools = this.toolBands(r);
     const top = Math.max(pad, tools.top ? tools.top + 12 : 0);
@@ -1205,13 +1246,54 @@ export class Chart {
     const band = Math.max(1, r.height - top - foot);
     const kWidth = Math.min(1.15, (r.width - 2 * pad) / this.size.w);
     const kWhole = Math.min(kWidth, band / this.size.h);
-    const byWidth = !whole && kWhole < FIT_READABLE && kWidth > kWhole;
-    this.view.k = Math.max(MIN_ZOOM, byWidth ? kWidth : kWhole);
-    this.view.x = (r.width - this.size.w * this.view.k) / 2;
-    this.view.y = top + (byWidth ? 0 : Math.max(0, (band - this.size.h * this.view.k) / 2));
-    this.placedWidth = stageWidth(this.stage);
-    this.manual = false;
-    this.apply();
+    const byWidth = kind === 'width' || (kind === 'open' && kWhole < FIT_READABLE);
+    const k = Math.max(MIN_ZOOM, byWidth ? kWidth : kWhole);
+    return { k, x: (r.width - this.size.w * k) / 2, y: top + Math.max(0, (band - this.size.h * k) / 2) };
+  }
+
+  /** Where the view is gliding to (`glideView`), or null. */
+  private viewGoal: { x: number; y: number; k: number } | null = null;
+
+  /**
+   * Moves the view to `to` smoothly (the user, 2026-11-26, with Q255: a Fit glides, never
+   * snaps): the zoom changes evenly, the middle of the view travels in a straight line,
+   * easing in and out as a walkthrough's move does (`walkEase`). It shares the walk's
+   * frame, so a pan, a wheel or a walk's move stops it where it is. Without motion when
+   * the person's system asks for less of it.
+   */
+  private glideView(to: { x: number; y: number; k: number }): void {
+    this.stopGlide();
+    this.stopWalkGlide();
+    const from = { ...this.view };
+    const r = this.stage.getBoundingClientRect();
+    const ax = r.width / 2, ay = r.height / 2;
+    const c0 = { x: (ax - from.x) / from.k, y: (ay - from.y) / from.k };
+    const c1 = { x: (ax - to.x) / to.k, y: (ay - to.y) / to.k };
+    const zoom = Math.abs(Math.log(to.k / from.k));
+    const onScreen = Math.hypot(c1.x - c0.x, c1.y - c0.y) * Math.min(from.k, to.k);
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const end = () => {
+      this.walkFrame = null;
+      this.viewGoal = null;
+      this.view = { ...to };
+      this.apply();
+    };
+    if (still || (onScreen < 2 && zoom < 0.01)) { end(); return; }
+    const time = Math.min(900, 360 + onScreen * 0.3 + zoom * 220);
+    const l0 = Math.log(from.k), l1 = Math.log(to.k);
+    let started: number | null = null;
+    const tick = (now: number) => {
+      started ??= now;
+      const t = Math.min(1, (now - started) / time);
+      if (t >= 1) { end(); return; }
+      const e = walkEase(t);
+      const k = Math.exp(l0 + (l1 - l0) * e);
+      this.view = { x: ax - k * (c0.x + (c1.x - c0.x) * e), y: ay - k * (c0.y + (c1.y - c0.y) * e), k };
+      this.apply();
+      this.walkFrame = requestAnimationFrame(tick);
+    };
+    this.viewGoal = { ...to };
+    this.walkFrame = requestAnimationFrame(tick);
   }
 
   /** How far down from the chart's top, and up from its foot, the chart's tools reach

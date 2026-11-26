@@ -87,7 +87,7 @@ export const chartMock = () => ({
     sidebarShown: boolean[] = [];
     destroyed = false;
     constructor(private stage: HTMLElement, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
-    resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {} fitTo() {} fitNext() {}
     /** Each walk the tab showed (T6.4), a copy, or null when it ended; and whether the view was to move. */
     walks: (import('../src/walk').WalkView | null)[] = [];
     walkMoves: boolean[] = [];
