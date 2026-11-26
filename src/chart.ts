@@ -177,6 +177,9 @@ function mermaidConfig(c: Colours, dark: boolean): Parameters<typeof mermaid.ini
 }
 
 const MIN_ZOOM = 0.15;
+/** The zoom under which an opened chart's text, 14 px at full size, is smaller than 9 px:
+ * below it, the opening view fits the chart's width instead of the whole chart (Q253). */
+const FIT_READABLE = 9 / 14;
 const MAX_ZOOM = 4;
 /** How much one wheel event changes the zoom, per unit of its deltaY: a mouse wheel's
  * notch is 100, so a plain notch zooms e^0.16, 17.4%. A Ctrl-marked event is a pinch
@@ -1181,7 +1184,13 @@ export class Chart {
     this.placeChips();
   }
 
-  fit(): void {
+  /**
+   * Fits the chart in its area. The whole chart, unless that would make its text smaller
+   * than 9 px (Q253, T1.6: a tall chart fitted whole could not be read); then the chart's
+   * width, top first, so it opens readable and scrolls down. `whole` always fits the whole
+   * chart (the **Fit** button).
+   */
+  fit(whole = false): void {
     this.stopGlide();
     const r = this.stage.getBoundingClientRect();
     this.fitWaiting = !!this.size.w && !r.width;
@@ -1194,10 +1203,12 @@ export class Chart {
     const top = Math.max(pad, tools.top ? tools.top + 12 : 0);
     const foot = Math.max(pad, tools.foot ? tools.foot + 12 : 0);
     const band = Math.max(1, r.height - top - foot);
-    const k = Math.min(1.15, (r.width - 2 * pad) / this.size.w, band / this.size.h);
-    this.view.k = Math.max(MIN_ZOOM, k);
+    const kWidth = Math.min(1.15, (r.width - 2 * pad) / this.size.w);
+    const kWhole = Math.min(kWidth, band / this.size.h);
+    const byWidth = !whole && kWhole < FIT_READABLE && kWidth > kWhole;
+    this.view.k = Math.max(MIN_ZOOM, byWidth ? kWidth : kWhole);
     this.view.x = (r.width - this.size.w * this.view.k) / 2;
-    this.view.y = top + Math.max(0, (band - this.size.h * this.view.k) / 2);
+    this.view.y = top + (byWidth ? 0 : Math.max(0, (band - this.size.h * this.view.k) / 2));
     this.placedWidth = stageWidth(this.stage);
     this.manual = false;
     this.apply();

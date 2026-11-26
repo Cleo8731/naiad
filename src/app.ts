@@ -1949,7 +1949,7 @@ export class App {
       if (act === 'add') void this.addNode(null);
       if (act === 'undo') void this.tab.history(true);
       if (act === 'redo') void this.tab.history(false);
-      if (act === 'fit') this.tab.chart.fit();
+      if (act === 'fit') this.tab.chart.fit(true); // the whole chart (Q253; the button's choice is still open)
       if (act === 'export') this.showExportMenu(!!this.el.exportMenu.hidden);
       if (act === 'print') this.openPrint();
       if (act === 'syntax') this.toggleText();
