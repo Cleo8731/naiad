@@ -50,6 +50,15 @@ A title that holds parentheses, brackets, braces or a double quote is written in
 quotes, in any shape: `id["Title with (punctuation)"]`, `id{"Sure (really)?"}`. Other
 punctuation needs no quotes.
 
+Naiad itself is more careful when it writes a title or an arrow's label: it puts the
+text in double quotes unless the text holds only letters, digits, spaces, underscores
+and `. , ? !`, starts with a letter, digit or underscore, and holds no word Mermaid
+keeps for itself, such as `end`. So a title typed in Naiad as `Held: evidence not
+available` is written `"Held: evidence not available"` inside the node's brackets,
+because of the colon. A
+group's title, and the title of a node whose shape Naiad changes, are always quoted.
+Mermaid reads the quoted and the unquoted forms the same way.
+
 The word `end` in lower case cannot be a node's id: Mermaid reads it as the end of a
 group.
 
