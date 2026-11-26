@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Walk (T6.4) in the real App (src/app.ts), on the fake disk of app-harness.ts: the pill's
-// Walk button in View mode only (Q229), a walk's steps through the tab, the sidebar
+// Walkthrough button in View mode only (Q229), waiting for the node to start from (Q242), a walk's steps through the tab, the sidebar
 // following it, and the walk kept, or ended, as the file and the mode change. What the
 // chart draws of a walk is in walk.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,16 +27,15 @@ async function start(text = BASE) {
 
 const q = <T extends Element>(s: string) => document.querySelector<T>(s);
 const walkButton = () => q<HTMLButtonElement>('[data-act="walk"]')!;
-const walkItem = (from: 'start' | 'selected') => q<HTMLButtonElement>(`.walk-menu [data-walk-from="${from}"]`)!;
-/** Walk, through its menu (the user, 2026-11-26): from the start, or from the node selected. */
-const walkFrom = (from: 'start' | 'selected') => {
-  walkButton().click();
-  walkItem(from).click();
-};
 const viewButton = () => q<HTMLButtonElement>('[data-act="view"]')!;
 const chart = () => charts.list[charts.list.length - 1] as unknown as { walks: ({ here: string | null; choices: { to: string; edge: number }[]; starts: { to: string }[] } | null)[]; walkMoves: boolean[]; drawn: string[] };
 const lastWalk = () => chart().walks[chart().walks.length - 1];
 const walk = (action: unknown) => chartEvents.last!.onWalk(action as never);
+/** A walkthrough from `id`: the button, then a click on that node (Q242). */
+const walkAt = (id: string) => {
+  walkButton().click();
+  walk({ kind: 'start', id });
+};
 const readTitle = () => q('.sidebar .read-title')?.textContent ?? null;
 /** A key pressed on the page, outside any field. */
 const press = (key: string) => {
@@ -64,47 +63,42 @@ describe('the Walk button (Q229)', () => {
     await vi.waitFor(() => expect(walkButton().hidden).toBe(true));
   });
 
-  it('starts at the one place no arrow points to, shows it in the sidebar, hides the pill and turns Highlight off', async () => {
+  it('waits for the node to start from, hides the pill and turns Highlight off (Q242)', async () => {
     await start();
     await toView();
     q<HTMLButtonElement>('[data-act="highlight"]')!.click();
     expect(q('[data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('true');
-    walkFrom('start');
-    expect(lastWalk()).toMatchObject({ here: 'boil', choices: [{ to: 'ready' }] });
-    expect(readTitle()).toBe('Boil the water');
+    walkButton().click();
+    expect(lastWalk()).toMatchObject({ here: null });
     expect(q<HTMLElement>('.pill')!.hidden).toBe(true);
     expect(q('[data-act="highlight"]')!.getAttribute('aria-pressed')).toBe('false');
+    walk({ kind: 'start', id: 'boil' });
+    expect(lastWalk()).toMatchObject({ here: 'boil', choices: [{ to: 'ready' }] });
+    expect(readTitle()).toBe('Boil the water');
   });
 
-  it('with several places to start, the reader picks one', async () => {
-    await start(BASE.replace('bag --> pour', 'bag --> pour\n    note[Spare cups]'));
-    await toView();
-    walkFrom('start');
-    expect(lastWalk()).toMatchObject({ here: null, starts: [{ to: 'boil' }, { to: 'note' }] });
-    walk({ kind: 'start', id: 'note' });
-    expect(lastWalk()).toMatchObject({ here: 'note', choices: [] });
-  });
-
-  it('its menu: from the start, or from the node selected now, which is off while no node is selected (the user, 2026-11-26)', async () => {
+  it('starts at any node clicked, not only one no arrow points to; Start again goes back to it (Q242)', async () => {
     await start();
     await toView();
-    const menu = () => q<HTMLElement>('.walk-menu')!;
-    walkButton().click();
-    expect(menu().hidden).toBe(false);
-    expect(walkButton().getAttribute('aria-expanded')).toBe('true');
-    expect(walkItem('selected').disabled).toBe(true);
-    press('Escape');
-    expect(menu().hidden).toBe(true);
-    expect(chart().walks).toEqual([]); // nothing started
+    walkAt('ready');
+    expect(lastWalk()).toMatchObject({ here: 'ready', choices: [{ to: 'pour' }, { to: 'bag' }] });
+    walk({ kind: 'choose', edge: 2 });
+    expect(lastWalk()!.here).toBe('bag');
+    walk({ kind: 'again' });
+    expect(lastWalk()!.here).toBe('ready');
+  });
+
+  it('a node selected before is no shortcut: the walkthrough still waits for a click (Q242)', async () => {
+    await start();
+    await toView();
     chartEvents.last!.onSelect({ kind: 'node', id: 'ready' });
     walkButton().click();
-    expect(walkItem('selected').disabled).toBe(false);
-    expect(walkItem('selected').title).toBe('Start the walkthrough at "Tea bag in?"');
-    walkItem('selected').click();
-    expect(menu().hidden).toBe(true);
-    expect(lastWalk()).toMatchObject({ here: 'ready', choices: [{ to: 'pour' }, { to: 'bag' }] });
-    walk({ kind: 'again' }); // Start again goes to the start
-    expect(lastWalk()!.here).toBe('boil');
+    expect(lastWalk()!.here).toBeNull();
+    expect(walkButton().hasAttribute('aria-haspopup')).toBe(false); // one button, no menu
+    walk({ kind: 'start', id: 'nowhere' }); // not a node of the chart: still picking
+    expect(lastWalk()!.here).toBeNull();
+    press('Escape'); // Esc cancels while picking, too
+    expect(lastWalk()).toBeNull();
   });
 });
 
@@ -112,7 +106,7 @@ describe('a walk', () => {
   it('takes the chosen arrow, goes back, starts again and leaves; nothing is written', async () => {
     const { disk } = await start();
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     walk({ kind: 'choose', edge: 0 });
     expect(lastWalk()!.here).toBe('ready');
     expect(lastWalk()!.choices.map((c) => c.to)).toEqual(['pour', 'bag']);
@@ -143,7 +137,7 @@ describe('a walk', () => {
     await vi.waitFor(() => expect(clear().hidden).toBe(false));
     expect(clear().textContent).toContain('Clear 2');
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     expect(clear().hidden).toBe(true);
     walk({ kind: 'leave' });
     expect(clear().hidden).toBe(false);
@@ -153,7 +147,7 @@ describe('a walk', () => {
   it('keys (Q233): 1 to 9 take a choice, Right arrow takes the one way on, Left arrow goes back, Escape leaves', async () => {
     await start();
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     expect(press('ArrowRight').defaultPrevented).toBe(true); // one way on: Next
     expect(lastWalk()!.here).toBe('ready');
     press('ArrowRight'); // two ways on: Right arrow does nothing
@@ -171,21 +165,18 @@ describe('a walk', () => {
     expect(press('1').defaultPrevented).toBe(false); // no walk: the keys are not taken
   });
 
-  it('keys while picking where to start: 1 to 9 pick the place; in a text field they type', async () => {
-    const { ui } = await start(BASE.replace('bag --> pour', 'bag --> pour\n    note[Spare cups]'));
+  it('keys while picking where to start: 1 to 9 pick nothing, as no node is offered (Q242)', async () => {
+    await start(BASE.replace('bag --> pour', 'bag --> pour\n    note[Spare cups]'));
     await toView();
-    walkFrom('start');
-    const field = ui.area();
-    field.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true, cancelable: true }));
-    expect(lastWalk()!.here).toBeNull();
+    walkButton().click();
     press('2');
-    expect(lastWalk()!.here).toBe('note');
+    expect(lastWalk()!.here).toBeNull();
   });
 
   it('ends when View mode is switched off', async () => {
     await start();
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     viewButton().click();
     await vi.waitFor(() => expect(lastWalk()).toBeNull());
     expect(q<HTMLElement>('.pill')!.hidden).toBe(false);
@@ -194,7 +185,7 @@ describe('a walk', () => {
   it('when an agent deletes the place it is at, it steps back to the last place still there', async () => {
     const { disk } = await start();
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     walk({ kind: 'choose', edge: 0 });
     walk({ kind: 'choose', edge: 2 }); // at "Add a bag"
     const drawn = chart().drawn.length;
@@ -208,7 +199,7 @@ describe('a walk', () => {
   it('when the file changes elsewhere, it stays where it is and the view does not move', async () => {
     const { disk } = await start();
     await toView();
-    walkFrom('start');
+    walkAt('boil');
     walk({ kind: 'choose', edge: 0 });
     const drawn = chart().drawn.length;
     disk.outside(FILE, BASE + '%% @boil\n%% Fresh water only.\n');

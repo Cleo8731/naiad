@@ -496,7 +496,8 @@ export class Chart {
    */
   setWalk(view: WalkView | null, move = true): void {
     this.walk = view;
-    this.stage.classList.toggle('walking', !!view);
+    // While the reader picks where to start, nothing fades: any node can be clicked (Q242).
+    this.stage.classList.toggle('walking', !!view?.here);
     if (view) this.trace(null);
     this.paintWalk();
     this.paintHighlights(); // hidden for the walk, back when it ends (the user, 2026-11-26)
@@ -561,10 +562,13 @@ export class Chart {
     return this.canvas.querySelector(`[data-node="${CSS.escape(id)}"]`) ?? this.canvas.querySelector(`[data-sub="${CSS.escape(id)}"]`);
   }
 
-  /** The places the walk can go next: the arrows' ends, or, while picking, the places to start. */
+  /**
+   * The places the walk can go next: the arrows' ends. While the reader picks where to
+   * start, none: any node can be picked (Q242), so none is lit, chipped or keyed.
+   */
   private walkNext(): Choice[] {
     const w = this.walk;
-    return !w ? [] : w.here ? w.choices : w.starts;
+    return w?.here ? w.choices : [];
   }
 
   private paintWalk(): void {
@@ -688,14 +692,14 @@ export class Chart {
 
   /**
    * A click on the chart during a walk: a place to go next, or the arrow (or its label)
-   * that leads there, takes that choice; while picking, a place to start starts there.
+   * that leads there, takes that choice; while picking, any node starts there (Q242).
    * Anything else does nothing, so a stray click never ends or moves the walk.
    */
   private walkClick(t: Target | null): void {
     const w = this.walk;
     if (!w || !t) return;
     if (!w.here) {
-      if (t.kind !== 'edge' && w.starts.some((s) => s.to === t.id)) this.events.onWalk({ kind: 'start', id: t.id });
+      if (t.kind === 'node') this.events.onWalk({ kind: 'start', id: t.id });
       return;
     }
     const c = t.kind === 'edge' ? w.choices.find((x) => x.edge === t.index) : w.choices.find((x) => x.to === t.id);
@@ -843,7 +847,7 @@ export class Chart {
     } else {
       // The next places are clicked on the chart, or, out of view, on their edge chips;
       // the bar names none of them (the user, 2026-11-26).
-      choices.append(note(!w.here ? 'Click a place to start on the chart' : w.choices.length === 1 ? 'Click the next step on the chart' : 'Click a next step on the chart'));
+      choices.append(note(!w.here ? 'Click the node to start from' : w.choices.length === 1 ? 'Click the next step on the chart' : 'Click a next step on the chart'));
     }
     const leave = button('leave', 'Leave', undefined, 'Leave the walkthrough (Esc)');
     leave.classList.add('walk-leave');

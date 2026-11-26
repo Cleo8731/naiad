@@ -209,7 +209,7 @@ describe('the chart during a walk', () => {
     expect(classes('hl')).toEqual(['C']);
   });
 
-  test('one way on: a note to click it; an end offers Start again; picking, a place to start out of view gets a chip', () => {
+  test('one way on: a note to click it; an end offers Start again; picking where to start, nothing fades, no chip, no key (Q242)', () => {
     chart.setWalk(view('A'));
     expect(texts()).toEqual(['Back', 'Leave']);
     expect(note()).toBe('Click the next step on the chart');
@@ -217,12 +217,13 @@ describe('the chart during a walk', () => {
     chart.setWalk(view('C'));
     expect(stage.querySelector('.walk-choices')!.textContent).toBe('The end of this pathStart again');
     chart.setWalk(null);
-    chart.setWalk(walkView(SNAP, []), false); // D, the only place to start, lies off to the right
+    chart.setWalk(walkView(SNAP, []), false); // D, the only node no arrow points to, lies off to the right
     expect(texts()).toEqual(['Back', 'Leave']);
-    expect(note()).toBe('Click a place to start on the chart');
-    expect(chipTexts()).toEqual(['➜Note']);
-    expect(stage.querySelector<HTMLElement>('.walk-chip')!.dataset).toMatchObject({ walk: 'start', value: 'D' });
-    expect(chart.walkChoice(0)).toEqual({ kind: 'start', id: 'D' });
+    expect(note()).toBe('Click the node to start from');
+    expect(stage.classList.contains('walking')).toBe(false); // nothing fades: any node can be picked
+    expect(classes('walk-on')).toEqual([]);
+    expect(chipTexts()).toEqual([]);
+    expect(chart.walkChoice(0)).toBeNull();
   });
 
   test('a click on a place to go, or on its arrow or label, takes that choice; anything else does nothing', () => {
@@ -241,10 +242,13 @@ describe('the chart during a walk', () => {
     expect(events.onSelect).not.toHaveBeenCalled();
   });
 
-  test('while picking, a click on a place to start starts there', () => {
+  test('while picking, a click on any node starts there; on an arrow or empty space, nothing (Q242)', () => {
     chart.setWalk(walkView(SNAP, []));
-    click(stage.querySelector('[data-node="A"]')!);
-    expect(events.onWalk).not.toHaveBeenCalled(); // not a place to start
+    click(stage.querySelector('.edge-hit[data-edge="0"]')!);
+    click(stage);
+    expect(events.onWalk).not.toHaveBeenCalled();
+    click(stage.querySelector('[data-node="A"]')!); // an arrow points to it, yet it can start
+    expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'start', id: 'A' });
     click(stage.querySelector('[data-node="D"]')!);
     expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'start', id: 'D' });
   });

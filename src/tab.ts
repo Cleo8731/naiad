@@ -15,7 +15,7 @@ import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/
 import { snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
-import { choicesFrom, startNodes, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
+import { choicesFrom, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
 
 type Source = 'chart' | 'text' | 'disk' | 'history';
 interface Step { text: string; disk: boolean }
@@ -781,6 +781,8 @@ export class Tab {
    * reader picks where to start; null when there is no walk. Nothing of it is written.
    */
   private walkPath: WalkStep[] | null = null;
+  /** The node the reader picked to start from, where Start again goes (Q242). */
+  private walkFrom: string | null = null;
 
   /** A node's title as the sidebar shows it, or its id. */
   titleOf(id: string): string {
@@ -791,19 +793,15 @@ export class Tab {
   get walking(): boolean { return this.walkPath !== null; }
 
   /**
-   * Starts a walk (the pill's Walk button, Q229, and its menu): from the start, at the
-   * one node no arrow points to, or, with several, the reader picks one; or, with
-   * `fromSelected`, at the node selected now (the user, 2026-11-26). The Highlight switch
-   * goes off: a click now walks. The highlights are hidden until the walk ends.
+   * Starts a walk (the pill's Walkthrough button, Q229): it waits for the reader to click
+   * the node to start from, any node (the user's idea, 2026-11-26, Q242). The Highlight
+   * switch goes off: a click now walks. The highlights are hidden until the walk ends.
    */
-  startWalk(fromSelected = false): void {
+  startWalk(): void {
     if (!this.snap || !this.win.viewing()) return;
-    const sel = this.selection;
-    if (fromSelected && (sel?.kind !== 'node' || !(sel.id in this.snap.nodes))) return;
     if (this.win.highlighting()) this.win.setHighlighting(false);
-    const starts = startNodes(this.snap);
-    this.walkPath = fromSelected && sel?.kind === 'node' ? [{ id: sel.id, via: null }]
-      : starts.length === 1 ? [{ id: starts[0], via: null }] : [];
+    this.walkPath = [];
+    this.walkFrom = null;
     this.showWalk(true);
     this.paintHighlights(); // the highlights hide for the walk, and Clear with them
   }
@@ -819,9 +817,9 @@ export class Tab {
 
   /**
    * A key pressed during a walk (Q233, the user, 2026-11-26): Left arrow goes Back; Right
-   * arrow takes Next when there is one way on; 1 to 9 take the next place (or, while
-   * picking, the place to start) at that place in the order they lie on the chart
-   * (`Chart.walkChoice`). Escape, which leaves, is the
+   * arrow takes Next when there is one way on; 1 to 9 take the next place at that place in
+   * the order they lie on the chart (`Chart.walkChoice`); while picking where to start,
+   * none (Q242). Escape, which leaves, is the
    * window's (it closes an open menu first). Returns whether the key was the walk's.
    */
   walkKey(key: string): boolean {
@@ -845,8 +843,18 @@ export class Tab {
     const path = this.walkPath;
     if (!path || !this.snap) return;
     if (action.kind === 'leave') { this.leaveWalk(); return; }
-    if (action.kind === 'again') { this.startWalk(); return; } // Start again: from the start
-    if (action.kind === 'start') this.walkPath = [{ id: action.id, via: null }];
+    if (action.kind === 'again') {
+      // Start again: back to the node picked (Q242), or to picking if it has gone.
+      const from = this.walkFrom;
+      this.walkPath = from !== null && from in this.snap.nodes ? [{ id: from, via: null }] : [];
+      this.showWalk(true);
+      return;
+    }
+    if (action.kind === 'start') {
+      if (!(action.id in this.snap.nodes)) return;
+      this.walkPath = [{ id: action.id, via: null }];
+      this.walkFrom = action.id;
+    }
     if (action.kind === 'back') {
       if (path.length < 2) return;
       path.pop();
