@@ -115,7 +115,10 @@ impl WindowSet {
 mod tests {
     use super::*;
 
-    fn sorted(mut v: Vec<String>) -> Vec<String> {
+    /// Sorted, in lower case: which spelling of a file two windows share is listed
+    /// depends on the order of a HashMap, and Windows reads both the same.
+    fn sorted(v: Vec<String>) -> Vec<String> {
+        let mut v: Vec<String> = v.into_iter().map(|p| p.to_lowercase()).collect();
         v.sort();
         v
     }
@@ -126,10 +129,10 @@ mod tests {
         let now = Instant::now();
         w.set_views("main", vec!["C:\\a.mmd".into(), "C:\\b.mmd".into()]);
         w.set_views("w1", vec!["c:\\A.MMD".into(), "C:\\c.mmd".into()]);
-        assert_eq!(sorted(w.shown(now)), ["C:\\a.mmd", "C:\\b.mmd", "C:\\c.mmd"]);
+        assert_eq!(sorted(w.shown(now)), ["c:\\a.mmd", "c:\\b.mmd", "c:\\c.mmd"]);
         // A window's new list replaces its old one.
         w.set_views("main", vec![]);
-        assert_eq!(sorted(w.shown(now)), ["C:\\c.mmd", "c:\\A.MMD"]);
+        assert_eq!(sorted(w.shown(now)), ["c:\\a.mmd", "c:\\c.mmd"]);
     }
 
     /// The case T6.2 guards against: a tab moving between windows never leaves its file
