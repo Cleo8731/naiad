@@ -349,7 +349,7 @@ describe('the Undo island and the floating pill (T4.9)', () => {
     const left = [...pill.querySelectorAll<HTMLElement>('button[data-act]')].filter(visible).map((b) => b.dataset.act);
     expect(left).toEqual(['fit', 'highlight', 'walk']);
     expect(iconOf('walk')).toBe('walk');
-    expect(button('walk').getAttribute('aria-label')).toBe('Walk');
+    expect(button('walk').getAttribute('aria-label')).toBe('Walkthrough'); // Q239, the user, 2026-11-26
     expect(visible(shownArea().querySelector('.island'))).toBe(false);
     expect([visible(button('wheel')), visible(button('view'))]).toEqual([true, true]);
   });

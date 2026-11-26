@@ -344,8 +344,8 @@ export class App {
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
         <div class="walk-wrap">
-          <button class="icon" data-act="walk" title="Walk: follow one run through the flowchart, node by node, choosing an arrow at each step" aria-label="Walk" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.walk}</button>
-          <div class="walk-menu" role="menu" aria-label="Walk" hidden>
+          <button class="icon" data-act="walk" title="Walkthrough: follow one run through the flowchart, node by node, choosing an arrow at each step; for presenting it, or reading it alone" aria-label="Walkthrough" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.walk}</button>
+          <div class="walk-menu" role="menu" aria-label="Walkthrough" hidden>
             <button role="menuitem" data-walk-from="start">From the start</button><button role="menuitem" data-walk-from="selected">From the selected node</button>
           </div>
         </div>
@@ -1652,7 +1652,7 @@ export class App {
       const sel = this.tab.selected;
       const from = this.el.walkMenu.querySelector<HTMLButtonElement>('[data-walk-from="selected"]')!;
       from.disabled = sel?.kind !== 'node';
-      from.title = sel?.kind === 'node' ? `Walk from "${this.tab.titleOf(sel.id)}"` : 'Select a node on the chart first';
+      from.title = sel?.kind === 'node' ? `Start the walkthrough at "${this.tab.titleOf(sel.id)}"` : 'Select a node on the chart first';
     }
     this.el.walkMenu.hidden = !open;
     this.el.walk.setAttribute('aria-expanded', String(open));

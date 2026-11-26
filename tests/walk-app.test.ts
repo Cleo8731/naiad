@@ -99,7 +99,7 @@ describe('the Walk button (Q229)', () => {
     chartEvents.last!.onSelect({ kind: 'node', id: 'ready' });
     walkButton().click();
     expect(walkItem('selected').disabled).toBe(false);
-    expect(walkItem('selected').title).toBe('Walk from "Tea bag in?"');
+    expect(walkItem('selected').title).toBe('Start the walkthrough at "Tea bag in?"');
     walkItem('selected').click();
     expect(menu().hidden).toBe(true);
     expect(lastWalk()).toMatchObject({ here: 'ready', choices: [{ to: 'pour' }, { to: 'bag' }] });

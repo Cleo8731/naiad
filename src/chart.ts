@@ -391,7 +391,7 @@ export class Chart {
     this.walkBar = document.createElement('div');
     this.walkBar.className = 'walk-bar';
     this.walkBar.setAttribute('role', 'toolbar');
-    this.walkBar.setAttribute('aria-label', 'Walk');
+    this.walkBar.setAttribute('aria-label', 'Walkthrough');
     this.walkBar.hidden = true;
     this.walkChips = document.createElement('div');
     this.walkChips.className = 'walk-chips';
@@ -841,7 +841,7 @@ export class Chart {
       // the bar names none of them (the user, 2026-11-26).
       choices.append(note(!w.here ? 'Click a place to start on the chart' : w.choices.length === 1 ? 'Click the next step on the chart' : 'Click a next step on the chart'));
     }
-    const leave = button('leave', 'Leave', undefined, 'Leave the walk (Esc)');
+    const leave = button('leave', 'Leave', undefined, 'Leave the walkthrough (Esc)');
     leave.classList.add('walk-leave');
     this.walkBar.append(back, choices, leave);
   }

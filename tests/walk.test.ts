@@ -124,7 +124,7 @@ describe('the chart during a walk', () => {
     expect(bar.hidden).toBe(false);
     expect(texts()).toEqual(['Back', 'Leave']);
     expect(note()).toBe('Click a next step on the chart');
-    expect([...bar.querySelectorAll('button')].map((b) => b.title)).toEqual(['Back along the path taken (Left arrow)', 'Leave the walk (Esc)']);
+    expect([...bar.querySelectorAll('button')].map((b) => b.title)).toEqual(['Back along the path taken (Left arrow)', 'Leave the walkthrough (Esc)']);
     click(bar.querySelector('.walk-back')!);
     expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'back' });
     expect(events.onSelect).not.toHaveBeenCalled(); // a click on the bar is not a click on the chart
