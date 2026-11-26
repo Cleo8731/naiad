@@ -68,6 +68,15 @@ class Rewriter {
       if (this.repl.has(i)) return;
       li.chains?.forEach((ch) => ch.groups.forEach((g) => g.forEach((r) => keep(li.parent, r.id))));
     });
+    // A node named in a group inside `parent` already has its place there: Mermaid gives
+    // it to the inner group, so a bare mention in `parent` would be a needless line (bug
+    // hunt T6.5, oA48).
+    const parentOf = new Map(doc.subs.map((s) => [s.line, s.parent]));
+    const within = (g: number, p: number) => {
+      for (let q = parentOf.get(g); q !== undefined; q = parentOf.get(q)) if (q === p) return true;
+      return false;
+    };
+    const keptBelow = (parent: number, id: string) => [...keptAt].some(([g, ids]) => ids.has(id) && within(g, parent));
     const groups: { pieces: Piece[]; parent: number }[] = [];
     for (const [i, pieces] of this.repl) groups.push({ pieces, parent: doc.info[i].parent });
     for (const list of this.after.values()) groups.push(...list);
@@ -79,7 +88,7 @@ class Rewriter {
         if (p.optional) {
           const id = p.ids[0];
           if (subIds.has(id)) continue;
-          if (keptAt.get(parent)?.has(id) || (parent === -1 && keptAny.has(id))) continue;
+          if (keptAt.get(parent)?.has(id) || (parent === -1 && keptAny.has(id)) || keptBelow(parent, id)) continue;
           keep(parent, id);
         }
         out.push(p.text);
