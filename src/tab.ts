@@ -806,8 +806,9 @@ export class Tab {
 
   /**
    * A key pressed during a walk (Q233, the user, 2026-11-26): Left arrow goes Back; Right
-   * arrow takes Next when there is one way on; 1 to 9 take the choice (or, while picking,
-   * the place to start) at that place in the walk bar. Escape, which leaves, is the
+   * arrow takes Next when there is one way on; 1 to 9 take the next place (or, while
+   * picking, the place to start) at that place in the order they lie on the chart
+   * (`Chart.walkChoice`). Escape, which leaves, is the
    * window's (it closes an open menu first). Returns whether the key was the walk's.
    */
   walkKey(key: string): boolean {
@@ -820,9 +821,8 @@ export class Tab {
       return true;
     }
     if (/^[1-9]$/.test(key)) {
-      const n = Number(key) - 1;
-      if (view.here === null) { const s = view.starts[n]; if (s) this.onWalk({ kind: 'start', id: s.to }); }
-      else { const c = view.choices[n]; if (c) this.onWalk({ kind: 'choose', edge: c.edge }); }
+      const action = this.chart.walkChoice(Number(key) - 1);
+      if (action) this.onWalk(action);
       return true;
     }
     return false;

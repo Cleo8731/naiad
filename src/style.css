@@ -979,7 +979,9 @@ input.switch:checked::before { transform: translateX(14px); }
 }
 
 /* Walk's bar (T6.4): in the pill's place at the chart's foot while a walk is shown, with
-   Back, the choices and Leave. Its buttons wrap in a narrow chart. */
+   Back, the next places out of view and Leave. A place's button shows its name in full,
+   wrapping onto more lines and growing to fit (the user, 2026-11-26); the buttons wrap
+   in a narrow chart. */
 .walk-bar {
   position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 8; width: fit-content; max-width: calc(100% - 28px); margin: 0 auto;
   display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 24px; user-select: none;
@@ -992,21 +994,24 @@ input.switch:checked::before { transform: translateX(14px); }
   background: transparent; color: var(--text); font: inherit; font-size: 13px; white-space: nowrap;
   max-width: 280px; overflow: hidden; text-overflow: ellipsis;
 }
-.walk-choices button { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
+.walk-choices button {
+  height: auto; min-height: 34px; padding: 6px 14px; border-radius: 17px; white-space: normal; overflow: visible;
+  line-height: 1.3; text-align: center; max-width: 320px;
+  background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600;
+}
 .walk-bar button:hover:not(:disabled) { border-color: var(--accent); }
 .walk-bar button:disabled { opacity: 0.45; }
 .walk-back, .walk-leave { flex: none; }
-.walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; white-space: nowrap; }
+.walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
 /* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named on the chart's
    edge on its side; a click takes that choice. Placed by `placeChips` in `chart.ts`. */
 .walk-chips { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .walk-chip {
   position: absolute; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
-  max-width: 260px; height: 30px; padding: 0 12px 0 8px; border-radius: var(--radius-pill);
+  max-width: 260px; min-height: 30px; padding: 5px 12px 5px 8px; border-radius: 15px; line-height: 1.3; text-align: left;
   border: 1px solid var(--accent); background: var(--panel); color: var(--text); font: inherit; font-size: 12.5px;
-  box-shadow: 0 6px 18px -8px var(--shadow); white-space: nowrap; cursor: pointer;
+  box-shadow: 0 6px 18px -8px var(--shadow); cursor: pointer;
 }
-.walk-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .walk-chip:hover { background: var(--accent-soft); }
 .walk-chip-dir { flex: none; display: inline-block; color: var(--accent); font-size: 13px; line-height: 1; }
 @media print { .walk-bar, .walk-chips { display: none !important; } }

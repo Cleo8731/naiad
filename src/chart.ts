@@ -374,6 +374,12 @@ export class Chart {
   private walkFrame: number | null = null;
   /** The drawing's own frame's corner (its viewBox's x and y), to place a point of an arrow's line. */
   private origin = { x: 0, y: 0 };
+  /**
+   * The walk's next places that are out of view, by `choiceKey`: only these get a button
+   * in the walk bar (the user, 2026-11-26). Planned from the view's goal as a step starts,
+   * then kept true to what is in view (`placeChips`).
+   */
+  private walkOff: string[] = [];
 
   constructor(private stage: HTMLElement, private events: ChartEvents) {
     this.canvas = document.createElement('div');
@@ -487,10 +493,71 @@ export class Chart {
     this.stage.classList.toggle('walking', !!view);
     if (view) this.trace(null);
     this.paintWalk();
+    this.walkOff = [];
     this.renderWalkBar();
     if (!view) { this.stopWalkGlide(); this.walkChips.replaceChildren(); return; }
-    if (move) this.walkCamera(was ? view.via : null);
-    else this.placeChips();
+    if (move) {
+      // The bar lists the places the view will leave out, so the view's goal is
+      // reckoned again with the bar at its height.
+      this.walkOff = this.walkGoal()?.left ?? [];
+      if (this.walkOff.length) this.renderWalkBar();
+      this.walkCamera(was ? view.via : null);
+    } else this.placeChips();
+  }
+
+  /** A choice's name for the out-of-view list: its arrow, or, while picking, its place. */
+  private choiceKey(c: Choice): string {
+    return c.edge >= 0 ? `e${String(c.edge)}` : `n${c.to}`;
+  }
+
+  /**
+   * The walk's next places in the order they lie on the chart (the user, 2026-11-26): left
+   * to right, or top to bottom in a chart drawn sideways (LR, RL). Each arrow is placed
+   * where it leaves the walk's place, which is where the eye meets it; then by its middle;
+   * then by the file's order. A place to start, or an arrow not drawn, by its place.
+   */
+  private walkOrder(): Choice[] {
+    const w = this.walk;
+    const next = this.walkNext();
+    if (!w || next.length < 2) return next;
+    const sideways = /^(LR|RL)$/.test(this.snap?.direction ?? '');
+    const r = this.stage.getBoundingClientRect();
+    const keyed = next.map((c, i) => {
+      let near: { x: number; y: number } | null = null;
+      let mid: { x: number; y: number } | null = null;
+      const line = c.edge >= 0 ? this.canvas.querySelector<SVGPathElement>(`[data-edge-line="${String(c.edge)}"]`) : null;
+      try {
+        const length = line?.getTotalLength() ?? 0;
+        if (line && length > 0) {
+          const forward = this.snap?.edges[c.edge]?.start === w.here;
+          const d = Math.min(40, length / 3);
+          const p = line.getPointAtLength(forward ? d : length - d);
+          const m = line.getPointAtLength(length / 2);
+          near = { x: p.x - this.origin.x, y: p.y - this.origin.y };
+          mid = { x: m.x - this.origin.x, y: m.y - this.origin.y };
+        }
+      } catch { near = null; }
+      if (!near) {
+        const b = this.chartRect(c.to, r);
+        near = mid = b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null;
+      }
+      const along = (p: { x: number; y: number } | null) => (p ? (sideways ? p.y : p.x) : Infinity);
+      const across = (p: { x: number; y: number } | null) => (p ? (sideways ? p.x : p.y) : Infinity);
+      return { c, i, a: Math.round(along(near)), m: along(mid), b: across(near) };
+    });
+    keyed.sort((p, q) => p.a - q.a || p.m - q.m || p.b - q.b || p.i - q.i);
+    return keyed.map((k) => k.c);
+  }
+
+  /**
+   * What the key 1 to 9 takes during a walk (Q233): the walk's `n`th next place (from 0)
+   * in the order they lie on the chart, whether in view or not; null when there is none.
+   */
+  walkChoice(n: number): WalkAction | null {
+    const w = this.walk;
+    const c = w ? this.walkOrder()[n] : undefined;
+    if (!w || !c) return null;
+    return w.here ? { kind: 'choose', edge: c.edge } : { kind: 'start', id: c.to };
   }
 
   /** The drawn node or group with this id. */
@@ -542,7 +609,7 @@ export class Chart {
    * over full size. Returns the zoom and the chart's point to put at `anchor`, the middle
    * of the chart's area between its tools and the walk bar.
    */
-  private walkGoal(): { k: number; cx: number; cy: number; ax: number; ay: number } | null {
+  private walkGoal(): { k: number; cx: number; cy: number; ax: number; ay: number; left: string[] } | null {
     const w = this.walk;
     const r = this.stage.getBoundingClientRect();
     if (!w || !r.width || !r.height) return null;
@@ -562,17 +629,29 @@ export class Chart {
     };
     const mid = (b: NonNullable<typeof u>) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
     const c0 = mid(u);
+    const left: string[] = [];
     const others = next.filter((c) => c.to !== focusId)
-      .map((c) => this.chartRect(c.to, r))
-      .filter((b): b is NonNullable<typeof b> => !!b)
-      .sort((a, b) => Math.hypot(mid(a).x - c0.x, mid(a).y - c0.y) - Math.hypot(mid(b).x - c0.x, mid(b).y - c0.y));
-    for (const b of others) {
+      .map((c) => ({ c, b: this.chartRect(c.to, r) }))
+      .filter((o): o is { c: Choice; b: NonNullable<typeof u> } => {
+        if (!o.b) left.push(this.choiceKey(o.c));
+        return !!o.b;
+      })
+      .sort((a, b) => Math.hypot(mid(a.b).x - c0.x, mid(a.b).y - c0.y) - Math.hypot(mid(b.b).x - c0.x, mid(b.b).y - c0.y));
+    for (const { c: choice, b } of others) {
       const joined = join(u, b);
       if (kOf(joined) >= WALK_READABLE) u = joined;
+      else left.push(this.choiceKey(choice));
     }
     const k = Math.max(MIN_ZOOM, kOf(u));
     const c = mid(u);
-    return { k, cx: c.x, cy: c.y, ax: r.width / 2, ay: top + ah / 2 };
+    // A place left out may still lie inside the view's frame: only those that end outside it are out of view.
+    const wHalf = r.width / 2 / k, hHalf = ah / 2 / k;
+    const outside = left.filter((key) => {
+      const o = others.find((x) => this.choiceKey(x.c) === key);
+      if (!o) return true;
+      return o.b.x < c.x - wHalf || o.b.x + o.b.w > c.x + wHalf || o.b.y < c.y - hHalf || o.b.y + o.b.h > c.y + hHalf;
+    });
+    return { k, cx: c.x, cy: c.y, ax: r.width / 2, ay: top + ah / 2, left: outside };
   }
 
   /**
@@ -667,6 +746,22 @@ export class Chart {
     if (!this.walk || this.walkFrame !== null || !next.length) { this.walkChips.replaceChildren(); return; }
     const r = this.stage.getBoundingClientRect();
     if (!r.width) return;
+    const inView = (b: DOMRect, top: number, bottom: number) => {
+      const x0 = b.left - r.left, y0 = b.top - r.top;
+      return x0 >= 0 && x0 + b.width <= r.width && y0 >= top && y0 + b.height <= bottom;
+    };
+    // The walk bar lists what is out of view; listing more makes it taller, so it is
+    // checked again, at most twice.
+    for (let i = 0; i < 2; i++) {
+      const bands = this.walkBands(r);
+      const off = next.filter((c) => {
+        const b = this.walkItem(c.to)?.getBoundingClientRect();
+        return !b || !inView(b, bands.top, r.height - bands.foot);
+      }).map((c) => this.choiceKey(c));
+      if (off.join(' ') === this.walkOff.join(' ')) break;
+      this.walkOff = off;
+      this.renderWalkBar();
+    }
     const bands = this.walkBands(r);
     const top = bands.top + CHIP_INSET;
     const bottom = r.height - bands.foot - CHIP_INSET;
@@ -676,11 +771,11 @@ export class Chart {
     const cy = (top + bottom) / 2;
     const placed: DOMRect[] = [];
     this.walkChips.replaceChildren();
-    for (const c of next) {
+    for (const c of this.walkOrder()) {
       const b = this.walkItem(c.to)?.getBoundingClientRect();
       if (!b) continue;
+      if (inView(b, top - CHIP_INSET, bottom + CHIP_INSET)) continue;
       const x0 = b.left - r.left, y0 = b.top - r.top;
-      if (x0 >= 0 && x0 + b.width <= r.width && y0 >= top - CHIP_INSET && y0 + b.height <= bottom + CHIP_INSET) continue;
       const dx = x0 + b.width / 2 - cx;
       const dy = y0 + b.height / 2 - cy;
       const s = Math.min(dx > 0 ? (right - cx) / dx : dx < 0 ? (left - cx) / dx : Infinity, dy > 0 ? (bottom - cy) / dy : dy < 0 ? (top - cy) / dy : Infinity);
@@ -716,7 +811,7 @@ export class Chart {
     }
   }
 
-  /** The walk bar: Back, the choices (or Next, or the places to start), and Leave; at an end, Start again. */
+  /** The walk bar: Back, the next places out of view (or a note to click on the chart), and Leave; at an end, Start again. */
   private renderWalkBar(): void {
     const w = this.walk;
     this.walkBar.hidden = !w;
@@ -738,16 +833,23 @@ export class Chart {
     back.disabled = !w.canBack;
     const choices = document.createElement('div');
     choices.className = 'walk-choices';
-    if (!w.here) {
-      // Each name is also the button's tooltip, with its key (Q233): a long one is cut short to fit the bar.
-      choices.append(note('Start at'), ...w.starts.map((s, i) => button('start', s.title, s.to, withKey(s.title, i))));
-    } else if (!w.choices.length) {
+    if (w.here && !w.choices.length) {
       choices.append(note('The end of this path'), button('again', 'Start again'));
-    } else if (w.choices.length === 1) {
-      const c = w.choices[0];
-      choices.append(button('choose', 'Next', String(c.edge), `${c.label ? `${c.label} → ` : ''}${c.title} (Right arrow)`));
     } else {
-      choices.append(...w.choices.map((c, i) => { const name = c.label ? `${c.label} → ${c.title}` : c.title; return button('choose', name, String(c.edge), withKey(name, i)); }));
+      // Only the next places out of view get a button, named in full, in the order they
+      // lie on the chart; the rest are clicked on the chart (the user, 2026-11-26). The
+      // tooltip names the key (Q233), which counts every next place in that order.
+      const order = this.walkOrder();
+      const one = w.here && order.length === 1;
+      const off = order.map((c, i) => ({ c, i })).filter(({ c }) => this.walkOff.includes(this.choiceKey(c)));
+      if (!off.length) {
+        choices.append(note(!w.here ? 'Click a place to start on the chart' : one ? 'Click the next step on the chart' : 'Click a next step on the chart'));
+      } else {
+        choices.append(note(w.here ? 'Out of view' : 'Start at, out of view'), ...off.map(({ c, i }) => {
+          const name = c.label ? `${c.label} → ${c.title}` : c.title;
+          return w.here ? button('choose', name, String(c.edge), one ? `${name} (Right arrow)` : withKey(name, i)) : button('start', name, c.to, withKey(name, i));
+        }));
+      }
     }
     const leave = button('leave', 'Leave', undefined, 'Leave the walk (Esc)');
     leave.classList.add('walk-leave');

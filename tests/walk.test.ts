@@ -3,6 +3,7 @@
 // and go, how it keeps its place when the file changes, and what the chart shows of it:
 // the places lit, the walk bar, clicks that walk, and an edge chip for a next place out of
 // view.
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Chart, type ChartEvents } from '../src/chart';
 import { choicesFrom, startNodes, stillThere, walkView, type WalkView } from '../src/walk';
@@ -114,29 +115,79 @@ describe('the chart during a walk', () => {
     expect(classes('walk-on')).toEqual([]);
   });
 
-  test('the walk bar: Back, a button for each choice named by its label and place, and Leave', () => {
+  const texts = () => [...stage.querySelectorAll('.walk-bar button')].map((b) => b.textContent);
+  const note = () => stage.querySelector('.walk-note')?.textContent ?? null;
+
+  test('the walk bar: with every next place in view, Back, a note to click on the chart, and Leave', () => {
     chart.setWalk(view('B'));
     const bar = stage.querySelector<HTMLElement>('.walk-bar')!;
     expect(bar.hidden).toBe(false);
-    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
-    // A long name is cut short to fit: the tooltip holds it whole.
-    expect([...bar.querySelectorAll('button')].map((b) => b.title)).toEqual(['Back along the path taken (Left arrow)', 'Yes → Done (1)', 'No → Start (2)', 'Leave the walk (Esc)']);
-    click(bar.querySelectorAll('button')[1]);
-    expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'choose', edge: 1 });
+    expect(texts()).toEqual(['Back', 'Leave']);
+    expect(note()).toBe('Click a next step on the chart');
+    expect([...bar.querySelectorAll('button')].map((b) => b.title)).toEqual(['Back along the path taken (Left arrow)', 'Leave the walk (Esc)']);
     click(bar.querySelector('.walk-back')!);
     expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'back' });
     expect(events.onSelect).not.toHaveBeenCalled(); // a click on the bar is not a click on the chart
   });
 
-  test('one way on is Next; an end offers Start again; picking offers each place to start', () => {
+  test('a next place out of view gets a button in the bar, named in full, in the order the places lie on the chart (the user, 2026-11-26)', () => {
+    // "No" leads far left, "Yes" far right: too far to fit in view with B, text readable.
+    places.A = rect(-1500, 100, 80, 40);
+    places.C = rect(1500, 300, 80, 40);
+    chart.setWalk(view('B'));
+    expect(texts()).toEqual(['Back', 'No → Start', 'Yes → Done', 'Leave']); // not the file's order, Yes first
+    expect(note()).toBe('Out of view');
+    expect([...stage.querySelectorAll<HTMLButtonElement>('.walk-choices button')].map((b) => b.title)).toEqual(['No → Start (1)', 'Yes → Done (2)']);
+    expect(chart.walkChoice(0)).toEqual({ kind: 'choose', edge: 2 }); // the key 1
+    click(stage.querySelectorAll('.walk-choices button')[1]);
+    expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'choose', edge: 1 });
+    // Swapped sides, swapped order. (Shown without moving the view: after the file
+    // changed, as the view then stays; the glide above never lands here, so it ends first.)
+    chart.setWalk(null);
+    places.A = rect(900, 100, 80, 40);
+    places.C = rect(-300, 300, 80, 40);
+    chart.setWalk(view('B'), false);
+    expect(texts()).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
+    expect(chart.walkChoice(0)).toEqual({ kind: 'choose', edge: 1 });
+    // "No" back in view (the reader panned): only "Yes" keeps its button, with its key still 1.
+    places.A = rect(300, 100, 80, 40);
+    chart.setWalk(view('B'), false);
+    expect(texts()).toEqual(['Back', 'Yes → Done', 'Leave']);
+    expect(stage.querySelector<HTMLButtonElement>('.walk-choices button')!.title).toBe('Yes → Done (1)');
+    Object.assign(places, { A: rect(100, 100, 80, 40), C: rect(100, 300, 80, 40) });
+  });
+
+  test('a chart drawn sideways (LR) orders the places top to bottom', () => {
+    Object.assign(chart as any, { snap: { ...SNAP, direction: 'LR' } });
+    places.A = rect(900, 500, 80, 40);
+    places.C = rect(900, 50, 80, 40);
+    chart.setWalk(view('B'), false);
+    expect(texts()).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
+    Object.assign(places, { A: rect(100, 100, 80, 40), C: rect(100, 300, 80, 40) });
+  });
+
+  test('the bar\'s buttons show a name in full, wrapping onto more lines, as edge chips do', () => {
+    const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = (sel: string) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((m) => m[1].split(',').map((s) => s.trim()).includes(sel)).map((m) => m[2]).join(';');
+    for (const sel of ['.walk-choices button', '.walk-chip']) {
+      expect(rule(sel), sel).not.toMatch(/white-space:\s*nowrap|text-overflow|(^|[;\s])height:\s*\d/);
+      expect(rule(sel), sel).toMatch(/min-height/);
+    }
+    expect(rule('.walk-choices button')).toMatch(/white-space:\s*normal/);
+  });
+
+  test('one way on: a note to click it; an end offers Start again; picking, a place to start out of view gets a button', () => {
     chart.setWalk(view('A'));
-    const texts = () => [...stage.querySelectorAll('.walk-bar button')].map((b) => b.textContent);
-    expect(texts()).toEqual(['Back', 'Next', 'Leave']);
+    expect(texts()).toEqual(['Back', 'Leave']);
+    expect(note()).toBe('Click the next step on the chart');
     expect(stage.querySelector<HTMLButtonElement>('.walk-back')!.disabled).toBe(true);
     chart.setWalk(view('C'));
     expect(stage.querySelector('.walk-choices')!.textContent).toBe('The end of this pathStart again');
-    chart.setWalk(walkView(SNAP, []));
+    chart.setWalk(null);
+    chart.setWalk(walkView(SNAP, []), false); // D, the only place to start, lies off to the right
     expect(texts()).toEqual(['Back', 'Note', 'Leave']);
+    expect(note()).toBe('Start at, out of view');
+    expect(chart.walkChoice(0)).toEqual({ kind: 'start', id: 'D' });
   });
 
   test('a click on a place to go, or on its arrow or label, takes that choice; anything else does nothing', () => {

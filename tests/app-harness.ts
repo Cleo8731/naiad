@@ -92,6 +92,12 @@ export const chartMock = () => ({
     walks: (import('../src/walk').WalkView | null)[] = [];
     walkMoves: boolean[] = [];
     setWalk(view: import('../src/walk').WalkView | null, move = true) { this.walks.push(view ? JSON.parse(JSON.stringify(view)) : null); this.walkMoves.push(move); }
+    /** The `n`th next place, in the file's order here (the real one orders them as they lie on the chart). */
+    walkChoice(n: number) {
+      const w = this.walks[this.walks.length - 1];
+      const c = w ? (w.here ? w.choices : w.starts)[n] : undefined;
+      return !w || !c ? null : w.here ? { kind: 'choose' as const, edge: c.edge } : { kind: 'start' as const, id: c.to };
+    }
     /** The view as the person moved it (T6.2): null while fitted. */
     view: { x: number; y: number; k: number } | null = null;
     placement() { return this.view; }
