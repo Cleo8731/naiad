@@ -9,6 +9,7 @@ import { addDirectionMarks } from './direction-marks';
 import { raiseGroupTitles } from './group-titles';
 import { markLabelsInGroups } from './label-pills';
 import { lightArrow, unlightArrows, unreadyArrows } from './arrow-hover';
+import { layChips, type ChipWish, type Edge } from './chip-layout';
 import { readyToLift, relockColours, unlockColours, unready } from './class-colours';
 import type { Choice, WalkAction, WalkView } from './walk';
 
@@ -776,7 +777,8 @@ export class Chart {
     const cx = r.width / 2;
     const cy = (top + bottom) / 2;
     const seen = { left: 0, top: bands.top, right: r.width, bottom: r.height - bands.foot };
-    const placed: DOMRect[] = [];
+    const wishes: ChipWish[] = [];
+    const made: HTMLButtonElement[] = [];
     this.walkChips.replaceChildren();
     const order = this.walkOrder();
     order.forEach((c, i) => {
@@ -810,20 +812,16 @@ export class Chart {
       // Its size is fixed once measured, so a place near the right edge cannot narrow it.
       const w = chip.offsetWidth, h = chip.offsetHeight;
       chip.style.width = `${String(w)}px`;
-      // Centred on that point, kept inside, and moved along the edge clear of a chip
-      // placed before it.
-      let px = Math.min(Math.max(at.x - w / 2, left), right - w);
-      let py = Math.min(Math.max(at.y - h / 2, top), bottom - h);
-      const alongX = Math.min(at.y - top, bottom - at.y) <= Math.min(at.x - left, right - at.x); // on the top or foot edge: move sideways
-      for (let j = 0; j < placed.length * 2 + 1; j++) {
-        const hit = placed.find((p) => px < p.right + 6 && px + w > p.left - 6 && py < p.bottom + 6 && py + h > p.top - 6);
-        if (!hit) break;
-        if (alongX) px = Math.min(hit.right + 6, right - w);
-        else py = Math.min(hit.bottom + 6, bottom - h);
-      }
-      chip.style.left = `${String(px)}px`;
-      chip.style.top = `${String(py)}px`;
-      placed.push(new DOMRect(px, py, w, h));
+      // Centred on that point on its nearest edge; `layChips` keeps chips clear of each other.
+      const edge: Edge = Math.min(at.y - top, bottom - at.y) <= Math.min(at.x - left, right - at.x)
+        ? (at.y - top <= bottom - at.y ? 'top' : 'bottom')
+        : (at.x - left <= right - at.x ? 'left' : 'right');
+      wishes.push({ edge, x: at.x, y: at.y, w, h });
+      made.push(chip);
+    });
+    layChips(wishes, { left, top, right, bottom }).forEach((p, k) => {
+      made[k].style.left = `${String(p.x)}px`;
+      made[k].style.top = `${String(p.y)}px`;
     });
   }
 
