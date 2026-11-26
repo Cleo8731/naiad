@@ -4,6 +4,7 @@
 // bridge (dev/bridge.ts). The page never names the highlights file: each of them finds
 // it beside the flowchart's file (src-tauri/src/highlights.rs).
 
+import type { Target } from './chart';
 import { fnv1a64 } from './core/hash';
 
 /** A run of the checker from a terminal: `naiad check <file>...` or `naiad fix <file>...`. */
@@ -28,12 +29,17 @@ export interface Backend {
    * page in a browser says no.
    */
   otherWindow(): Promise<boolean>;
+  /** The window's name: "main" for the program's first window, "w1", "w2"... for later ones (T6.2); "main" in a browser. */
+  windowName: string;
   /**
-   * Calls `take` with the files a later start of Naiad handed to this window (T6.1): a
-   * double-clicked file while Naiad runs, or `naiad <file>`. Files handed over before
-   * this was called come at once. Only the desktop app is handed files.
+   * Calls `take` with what arrives for this window, in the order it came: a file a later
+   * start of Naiad handed over (T6.1) or another window sent here (Q214), a tab moved in
+   * from another window (T6.2), or tabs kept at the last close (Q216). What came before
+   * this was called comes at once. Only the desktop app has arrivals.
    */
-  onHandedOver(take: (paths: string[]) => void): void;
+  onArrivals(take: (items: Arrival[]) => void): void;
+  /** The program's other windows (T6.2, Q216); null in a browser, which has one page. */
+  windows: Windows | null;
   read(path: string): Promise<string>;
   /**
    * Writes the file whole. Given `expected` (the file's text as read), it writes only
@@ -100,16 +106,59 @@ export interface Backend {
   } | null;
 }
 
+/** What moves with a tab into another window (T6.2), as plain data: its file, the text it left, Undo and Redo, the selection, and the view if the person moved it. */
+export interface MovedTab {
+  file: string | null;
+  text: string;
+  undo: { text: string; disk: boolean }[];
+  redo: { text: string; disk: boolean }[];
+  selection: Target | null;
+  view: { x: number; y: number; k: number } | null;
+}
+
+/** One thing that arrives for a window (`Backend.onArrivals`). `at`: where a moved tab was let go, in the page's pixels. */
+export type Arrival = { file: string } | { tab: MovedTab; at?: [number, number] } | { kept: unknown };
+
+/** A window's place on the screen: its corner, its inner size in screen pixels, and whether it is maximized (Q216). */
+export type Place = [number, number, number, number, boolean];
+
+/** The calls one window makes about the program's other windows (T6.2, Q216). */
+export interface Windows {
+  /** A tab named `name` is dragged outside this window: the Naiad window under the pointer shows where it would land. */
+  dragOver(name: string): void;
+  /** The drag ended without leaving the tab anywhere. */
+  dragEnd(): void;
+  /** The tab is let go outside the window: notes where, and says whether another Naiad window is there. */
+  release(): Promise<boolean>;
+  /** The tab, already saved, goes where it was let go: into that window, or a new one. Returns that window's name. */
+  dropTab(path: string | null, tab: MovedTab): Promise<string>;
+  /** Calls `at` while a tab from another window is dragged over this one (in the page's pixels), and `off` once it leaves or the drag ends. */
+  onDragAt(at: (x: number, y: number, name: string) => void, off: () => void): void;
+  /** A new window for kept tabs (Q216), at `place`. */
+  openWindow(kept: unknown, place: Place | null): Promise<string>;
+  /** Where this window is now. */
+  place(): Promise<Place | null>;
+  /** Puts this window at `place`. */
+  putAt(place: Place): void;
+  /** Whether another of the program's windows is open. */
+  othersOpen(): Promise<boolean>;
+  /** When another window shows `path`, it shows its tab and comes to the front, and this says true (Q214). */
+  showElsewhere(path: string): Promise<boolean>;
+  /** Closes this window without asking: its last tab went to another window. */
+  closeNow(): void;
+}
+
 const NEW_FILTERS = [{ name: 'Mermaid flowchart', extensions: ['mmd', 'mermaid'] }];
 const OPEN_FILTERS = NEW_FILTERS;
 
 async function desktop(): Promise<Backend> {
   const { invoke } = await import('@tauri-apps/api/core');
-  const { listen } = await import('@tauri-apps/api/event');
   const dialog = await import('@tauri-apps/plugin-dialog');
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const me = getCurrentWindow();
   return {
     kind: 'desktop',
+    windowName: me.label,
     async cliJob() {
       const job = await invoke<[string, [string, string][]] | null>('cli_job');
       if (!job) return null;
@@ -118,18 +167,39 @@ async function desktop(): Promise<Backend> {
     cliDone: (code, output) => invoke<void>('cli_done', { code, output }),
     initialPath: () => invoke<string | null>('initial_file'),
     otherWindow: () => invoke<boolean>('other_window'),
-    onHandedOver(take) {
+    onArrivals(take) {
+      // Events go to this window only (`emit_to`); listening on it alone keeps another
+      // window's events out.
       const fetchWaiting = () => {
-        void invoke<string[]>('handed_over_files').then((paths) => { if (paths.length) take(paths); }).catch(() => {});
+        void invoke<string[]>('arrivals').then((texts) => {
+          const items = texts.flatMap((t) => { try { return [JSON.parse(t) as Arrival]; } catch { return []; } });
+          if (items.length) take(items);
+        }).catch(() => {});
       };
-      void listen('files-handed-over', fetchWaiting).then(fetchWaiting);
+      void me.listen('arrivals', fetchWaiting).then(fetchWaiting);
+    },
+    windows: {
+      dragOver: (name) => { void invoke('drag_over', { name }).catch(() => {}); },
+      dragEnd: () => { void invoke('drag_end').catch(() => {}); },
+      release: () => invoke<boolean>('drag_release'),
+      dropTab: (path, tab) => invoke<string>('drop_tab', { path, tab: JSON.stringify(tab) }),
+      onDragAt(at, off) {
+        void me.listen<[number, number, string]>('tab-drag-at', (e) => at(...e.payload));
+        void me.listen('tab-drag-off', () => off());
+      },
+      openWindow: (kept, place) => invoke<string>('open_window', { kept: JSON.stringify(kept), place }),
+      place: () => invoke<Place | null>('window_place').catch(() => null),
+      putAt: (place) => { void invoke('place_window', { place }).catch(() => {}); },
+      othersOpen: () => invoke<boolean>('others_open').catch(() => false),
+      showElsewhere: (path) => invoke<boolean>('show_elsewhere', { path }).catch(() => false),
+      closeNow: () => { void me.destroy(); },
     },
     read: (path) => invoke<string>('read_file', { path }),
     write: (path, text, expected) => invoke<boolean>('write_file', { path, contents: text, expected: expected ?? null }),
     async watch(path, onChange) {
       // One save can raise several events (write, rename); wait for them to settle.
       let timer: number | undefined;
-      const unlisten = await listen<string>('file-changed', (e) => {
+      const unlisten = await me.listen<string>('file-changed', (e) => {
         if (e.payload !== path) return;
         window.clearTimeout(timer);
         timer = window.setTimeout(onChange, 80);
@@ -225,7 +295,9 @@ function browser(): Backend {
     cliDone: async () => {},
     initialPath: async () => (await call('api/file')).path,
     otherWindow: async () => false,
-    onHandedOver: () => {},
+    windowName: 'main',
+    onArrivals: () => {},
+    windows: null,
     read: async (path) => (await call('api/file', { headers: shows(path) })).text,
     write: (path, text, expected) => put('api/file', path, text, expected),
     async watch(path, onChange) {

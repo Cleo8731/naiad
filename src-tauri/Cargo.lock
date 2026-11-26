@@ -2136,6 +2136,7 @@ version = "0.3.13"
 dependencies = [
  "getrandom 0.3.4",
  "notify",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

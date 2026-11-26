@@ -4,7 +4,7 @@
 // The window around it (`App`, src/app.ts) holds the toolbar, the tab strip and the
 // window's choices; it shows one of its tabs at a time, and the others keep theirs.
 
-import type { Backend } from './backend';
+import type { Backend, MovedTab } from './backend';
 import { Chart, type Target } from './chart';
 import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
 import { EditError, parseLink } from './core/edits';
@@ -415,6 +415,46 @@ export class Tab {
     if (this.stale) void this.queue(() => this.refresh(true));
     this.paint();
     void this.readHighlights();
+  }
+
+  /** What moves with this tab into another window (T6.2), after `leave` has saved it. */
+  moved(): MovedTab {
+    return {
+      file: this.path,
+      text: this.text,
+      undo: [...this.undoStack],
+      redo: [...this.redoStack],
+      selection: this.selection,
+      view: this.chart.placement(),
+    };
+  }
+
+  /**
+   * A blank tab takes over a tab moved from another window (T6.2): it opens the file,
+   * then, if the file still holds the text the tab left, takes its Undo and Redo and its
+   * selection, if the item is still there. A file changed meanwhile opens as it is now,
+   * with no Undo, as any file opened. The view the person moved comes too.
+   */
+  async takeOver(m: MovedTab): Promise<void> {
+    if (m.file === null) return;
+    await this.open(m.file);
+    if (this.closed || this.path !== m.file) return;
+    const steps = (list: unknown): Step[] => (Array.isArray(list) ? list : [])
+      .filter((s): s is Step => typeof s?.text === 'string' && typeof s?.disk === 'boolean')
+      .map((s) => ({ text: s.text, disk: s.disk }));
+    if (this.text === plainText(m.text)) {
+      this.undoStack = steps(m.undo).slice(-300);
+      this.redoStack = steps(m.redo);
+      const s = m.selection;
+      const snap = this.snap;
+      const there = !!s && !!snap && (
+        (s.kind === 'node' && s.id in snap.nodes)
+        || (s.kind === 'sub' && s.id in snap.subs)
+        || (s.kind === 'edge' && Number.isInteger(s.index) && s.index >= 0 && s.index < snap.edges.length));
+      if (there) this.select(s);
+    }
+    if (m.view) this.chart.setPlacement(m.view);
+    this.paint();
   }
 
   /** The tab is closed, after `leave`: it stops watching its file, and its chart goes. */

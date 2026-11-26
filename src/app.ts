@@ -11,7 +11,7 @@
 // Syntax pane's text, and saves it. One tab is shown at a time; the others keep
 // everything as it was (T1.16).
 
-import type { Backend } from './backend';
+import type { Arrival, Backend, MovedTab, Place } from './backend';
 import { configureMermaid, type Target, type WheelMode } from './chart';
 import { FLOWCHART_ID } from './core/descriptions';
 import { ICONS } from './icons';
@@ -105,23 +105,32 @@ function forget(key: string): void {
 type Axis = 'row' | 'col';
 
 /**
- * What Remember opened files keeps (T1.23): the tabs' files in their order, and the shown
- * tab's; while split (T1.17), also the second group's files, each group's shown file, the
- * axis and the divider's place.
+ * What Remember opened files keeps of a window (T1.23): the tabs' files in their order,
+ * and the shown tab's; while split (T1.17), also the second group's files, each group's
+ * shown file, the axis and the divider's place; and the window's place (Q216). The first
+ * window's is kept under "opentabs", each later window's under "openwindow:<its name>".
  */
 interface Kept {
   files: string[];
   shown: string | null;
   split?: { second: string[]; shown: [string | null, string | null]; axis: Axis; at: number };
+  place?: Place;
 }
+
+/** The start of the keys that keep the later windows' tabs (Q216). */
+const WINDOW_KEY = 'openwindow:';
 
 /** The kept files, as written by `keep`; anything else is none. */
 function readKept(stored: string | null): Kept {
   const strings = (v: unknown) => (Array.isArray(v) ? v.filter((f): f is string => typeof f === 'string') : []);
   const text = (v: unknown) => (typeof v === 'string' ? v : null);
   try {
-    const v = JSON.parse(stored ?? '') as { files?: unknown; shown?: unknown; split?: Record<string, unknown> };
+    const v = JSON.parse(stored ?? '') as { files?: unknown; shown?: unknown; split?: Record<string, unknown>; place?: unknown };
     const kept: Kept = { files: strings(v.files), shown: text(v.shown) };
+    const p = v.place;
+    if (Array.isArray(p) && p.length === 5 && p.slice(0, 4).every((n) => Number.isInteger(n)) && typeof p[4] === 'boolean') {
+      kept.place = p as Place;
+    }
     const s = v.split;
     if (s && typeof s === 'object' && (s.axis === 'row' || s.axis === 'col')) {
       const shown = Array.isArray(s.shown) ? s.shown : [];
@@ -132,6 +141,19 @@ function readKept(stored: string | null): Kept {
   } catch {
     return { files: [], shown: null };
   }
+}
+
+/** The later windows' kept tabs (Q216), in the order the windows were made. */
+function keptWindows(): { key: string; kept: Kept }[] {
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(WINDOW_KEY)) keys.push(key);
+    }
+  } catch { /* as in `remember` */ }
+  const number = (key: string) => Number(key.slice(WINDOW_KEY.length).replace(/^w/, '')) || 0;
+  return keys.sort((a, b) => number(a) - number(b)).map((key) => ({ key, kept: readKept(remember(key)) }));
 }
 
 /** A group's strip (T1.25, T1.17): its box, the tabs' list, the list of every tab and its button, the +, and the × that closes the split. */
@@ -407,22 +429,27 @@ export class App {
       window.addEventListener('storage', (e) => { if (e.key === 'recent' || e.key === null) this.recent?.reload(); });
     }
 
-    // The files of the last close (T1.23), then the file Naiad was started on, shown (Q157).
-    const path = await this.backend.initialPath().catch(() => null);
-    await this.reopen(path !== null);
+    // The files of the last close (T1.23), then the file Naiad was started on, shown
+    // (Q157). Only the program's first window does this; a later one (T6.2) is given its
+    // tabs as arrivals.
+    const firstWindow = this.backend.windowName === 'main';
+    const path = firstWindow ? await this.backend.initialPath().catch(() => null) : null;
+    const others = firstWindow ? await this.reopen(path !== null) : [];
     if (path) await this.open(path);
     this.recentFollows(this.tab);
     this.keeping = true;
-    this.keep();
-    // T6.1: a file opened while Naiad runs comes here as a tab (Q213); one already open
-    // shows its tab (Q214). The window has already come to the front.
-    this.backend.onHandedOver((paths) => {
-      for (const p of paths) {
-        void this.open(p)
-          .catch((e) => this.toast(`Could not open ${basename(p)}: ${errorText(e)}`))
-          .then(() => this.recent?.update());
-      }
-    });
+    void this.keep();
+    // What comes to this window (T6.1, T6.2): a file opened while Naiad runs comes here as
+    // a tab (Q213), and one already open shows its tab (Q214); a tab moved in from another
+    // window; the tabs this window had at the last close (Q216).
+    this.backend.onArrivals((items) => { for (const item of items) this.arrive(item); });
+    // A tab from another window dragged over this one: where it would land shows.
+    this.backend.windows?.onDragAt(
+      (x, y, name) => this.paintLanding(this.arrivalLanding(x, y).show, name),
+      () => this.paintLanding(null, ''),
+    );
+    // The other windows open at the last close come back, each with its tabs (Q216).
+    void this.reopenWindows(others);
 
     // The shown tab's highlights file is looked at once a second (and at once when the
     // view comes back into sight), so an agent's highlights show without Naiad watching
@@ -554,7 +581,7 @@ export class App {
     this.lastShown = tab;
     for (const t of seen) if (t !== tab && !before.has(t)) t.show();
     if (tab !== was || !before.has(tab)) tab.show();
-    this.keep();
+    void this.keep();
     this.fitHeader();
   }
 
@@ -568,39 +595,86 @@ export class App {
   /** Remember opened files (T1.23): on until the person turns it off (Q156). */
   private get remembering(): boolean { return remember('remember-files') !== 'off'; }
 
-  /** The Settings window's switch: off forgets the kept files at once; on keeps this window's at once. */
+  /** The Settings window's switch: off forgets every window's kept files at once; on keeps this window's at once. */
   private setRemembering(on: boolean): void {
     remember('remember-files', on ? 'on' : 'off');
-    if (on) this.keep();
-    else forget('opentabs');
+    if (on) { void this.keep(); return; }
+    forget('opentabs');
+    for (const { key } of keptWindows()) forget(key);
+  }
+
+  /** Where this window's tabs are kept (Q216): the first window's under "opentabs", a later one's under its own name. */
+  private get keptKey(): string {
+    return this.backend.windowName === 'main' ? 'opentabs' : `${WINDOW_KEY}${this.backend.windowName}`;
+  }
+
+  /**
+   * This window closes while others stay open (T6.2): its tabs are not kept, since the
+   * person closed them. Keeping stops, so no later write brings them back.
+   */
+  private forgetMine(): void {
+    this.keeping = false;
+    forget(this.keptKey);
   }
 
   /**
    * Keeps the tabs' files, in their order, and the shown tab's, for the next start
-   * (T1.23): at each opening, closing and showing of a tab, so they outlast a shutdown,
-   * and once more as the window closes, so that of two windows the one closed last is
-   * remembered. Blank tabs are not kept. `naiad serve`'s page keeps nothing.
+   * (T1.23), with the window's place (Q216): at each opening, closing and showing of a
+   * tab, so they outlast a shutdown, and once more as the last window closes. Each window
+   * keeps its own (`keptKey`). Blank tabs are not kept. `naiad serve`'s page keeps nothing.
    */
-  private keep(): void {
+  private async keep(): Promise<void> {
     if (!this.keeping || this.backend.kind === 'served' || !this.remembering) return;
     const filesOf = (tabs: Tab[]) => tabs.flatMap((t) => (t.file ? [t.file] : []));
     const kept: Kept = { files: filesOf(this.tabs), shown: this.tab.file };
     const [a, b] = this.groups;
     if (b) kept.split = { second: filesOf(b.tabs), shown: [a.shown.file, b.shown.file], axis: this.axis, at: this.at };
-    remember('opentabs', JSON.stringify(kept));
+    const place = this.backend.windows ? await this.backend.windows.place() : null;
+    if (place) kept.place = place;
+    // The window may have stopped keeping while its place was asked for (`forgetMine`).
+    if (this.keeping && this.remembering) remember(this.keptKey, JSON.stringify(kept));
   }
 
   /**
-   * At start (T1.23, Q155): opens again the files kept at the last close, in their order,
-   * and shows the one that was shown, unless a file Naiad was started on is to be shown
-   * instead (`named`, Q157). Nothing opens with the switch off, or with another Naiad
-   * window running: the kept files are then that window's (Q157). Files no longer there
-   * are skipped, and one notice names them.
+   * At start, in the program's first window (T1.23, Q155, Q216): puts the window where it
+   * was and opens again the files it kept at the last close (`restore`). With none of its
+   * own, it takes the first of the other windows' (the first window was closed before
+   * them). Returns the other windows' kept tabs, opened once the start is done
+   * (`reopenWindows`). Nothing opens with the switch off, or with another Naiad program
+   * running: the kept files are then that program's (Q157).
    */
-  private async reopen(named: boolean): Promise<void> {
-    if (this.backend.kind === 'served' || !this.remembering) return;
-    const kept = readKept(remember('opentabs'));
-    if (!kept.files.length || (await this.backend.otherWindow().catch(() => false))) return;
+  private async reopen(named: boolean): Promise<{ key: string; kept: Kept }[]> {
+    if (this.backend.kind === 'served' || !this.remembering) return [];
+    if (await this.backend.otherWindow().catch(() => false)) return [];
+    let kept = readKept(remember('opentabs'));
+    const others = this.backend.windows ? keptWindows() : [];
+    if (!kept.files.length && others.length) {
+      kept = others[0].kept;
+      forget(others.shift()!.key);
+    }
+    if (kept.place) this.backend.windows?.putAt(kept.place);
+    await this.restore(kept, named);
+    return others;
+  }
+
+  /** The other windows open at the last close come back (Q216), each in a window of its own, at its place; their old keys go, as each new window keeps its own. */
+  private async reopenWindows(others: { key: string; kept: Kept }[]): Promise<void> {
+    const win = this.backend.windows;
+    if (!win) return;
+    for (const { key, kept } of others) {
+      forget(key);
+      if (!kept.files.length) continue;
+      await win.openWindow(kept, kept.place ?? null).catch((e) => this.toast(`A window could not be opened again: ${errorText(e)}`));
+    }
+  }
+
+  /**
+   * Opens again the files a window kept (T1.23), in their order, and shows the one that
+   * was shown, unless a file Naiad was started on is to be shown instead (`named`, Q157).
+   * Files no longer there are skipped, and one notice names them.
+   */
+  private async restore(kept: Kept, named: boolean): Promise<void> {
+    if (!kept.files.length) return;
     const found = await this.backend.existing(kept.files).catch(() => kept.files.map(() => true));
     const gone = kept.files.filter((_, i) => !found[i]).map(basename);
     this.reopening = true;
@@ -986,7 +1060,7 @@ export class App {
       window.removeEventListener('pointerup', up);
       this.divider.classList.remove('dragging');
       document.body.classList.remove('resizing', 'resizing-rows');
-      this.keep();
+      void this.keep();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -1002,48 +1076,69 @@ export class App {
     if (e.button !== 0 || !this.groups[0].bar) return;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const { ghost, zone, line } = this.drag;
+    const { ghost } = this.drag;
     const item = this.parts.get(tab)!.item;
+    const name = tab.file ? basename(tab.file) : BLANK_NAME;
+    // Outside the window (T6.2): the window under the pointer is told, at most every 30
+    // ms, and once more for the last move.
+    const win = this.backend.windows;
+    let out = false;
+    let told = 0;
+    let telling: number | undefined;
+    const tell = () => { window.clearTimeout(telling); telling = undefined; told = Date.now(); win?.dragOver(name); };
     let on = false;
     let land: Landing | null = null;
     const move = (m: PointerEvent) => {
       if (!on) {
         if (Math.hypot(m.clientX - x0, m.clientY - y0) <= 6) return;
         on = true;
-        ghost.textContent = tab.file ? basename(tab.file) : BLANK_NAME;
+        ghost.textContent = name;
         ghost.hidden = false;
         item.classList.add('dragging');
         document.body.classList.add('dragging-tab');
         this.closeTabsMenus();
       }
+      if (win && (m.clientX < 0 || m.clientY < 0 || m.clientX >= window.innerWidth || m.clientY >= window.innerHeight)) {
+        if (!out) {
+          out = true;
+          ghost.hidden = true;
+          land = null;
+          this.paintLanding(null, name);
+        }
+        if (Date.now() - told >= 30) tell();
+        else telling ??= window.setTimeout(tell, 30);
+        return;
+      }
+      if (out) {
+        out = false;
+        window.clearTimeout(telling);
+        telling = undefined;
+        ghost.hidden = false;
+        win?.dragEnd();
+      }
       ghost.style.left = `${String(m.clientX + 12)}px`;
       ghost.style.top = `${String(m.clientY + 8)}px`;
       land = this.landing(tab, m.clientX, m.clientY);
-      const box = land && land.kind !== 'strip' ? land.zone : null;
-      zone.hidden = !box;
-      if (box) {
-        const label = document.createElement('span');
-        label.textContent = `${ghost.textContent} opens here`;
-        zone.replaceChildren(label);
-        Object.assign(zone.style, { left: px(box.left), top: px(box.top), width: px(box.width), height: px(box.height) });
-      }
-      line.hidden = land?.kind !== 'strip';
-      if (land?.kind === 'strip') {
-        Object.assign(line.style, { left: px(land.line), top: px(land.bar.top + 6), height: px(Math.max(0, land.bar.height - 12)) });
-      }
+      this.paintLanding(land, name);
     };
     const end = (drop: boolean) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('keydown', key, true);
+      window.clearTimeout(telling);
       if (!on) return;
       ghost.hidden = true;
-      zone.hidden = true;
-      line.hidden = true;
+      this.paintLanding(null, name);
       item.classList.remove('dragging');
       document.body.classList.remove('dragging-tab');
       this.noClick = true;
       window.setTimeout(() => { this.noClick = false; }, 0);
+      if (out) {
+        // Let go outside the window: into the window there, or a new one (T6.2).
+        if (drop) void this.sendTab(tab);
+        else win?.dragEnd();
+        return;
+      }
       if (drop && land) this.land(tab, land);
     };
     const up = () => end(true);
@@ -1057,8 +1152,120 @@ export class App {
     window.addEventListener('keydown', key, true);
   }
 
-  /** Where a tab dragged to (x, y) would land, if anywhere (Q180, Q185). */
-  private landing(tab: Tab, x: number, y: number): Landing | null {
+  /** Shows where a dragged tab named `name` would land: a line in a strip, or the half it would open in; nothing for null. */
+  private paintLanding(land: Landing | null, name: string): void {
+    const { zone, line } = this.drag;
+    const box = land && land.kind !== 'strip' ? land.zone : null;
+    zone.hidden = !box;
+    if (box) {
+      const label = document.createElement('span');
+      label.textContent = `${name} opens here`;
+      zone.replaceChildren(label);
+      Object.assign(zone.style, { left: px(box.left), top: px(box.top), width: px(box.width), height: px(box.height) });
+    }
+    line.hidden = land?.kind !== 'strip';
+    if (land?.kind === 'strip') {
+      Object.assign(line.style, { left: px(land.line), top: px(land.bar.top + 6), height: px(Math.max(0, land.bar.height - 12)) });
+    }
+  }
+
+  /**
+   * Where a tab from another window let go at (x, y) goes (T6.2): at that place in a
+   * strip; else after the shown tab of the half it is over, or of the active half. It
+   * never splits the window. `show`: what to show while it is dragged there.
+   */
+  private arrivalLanding(x: number, y: number): { group: Group; index: number; show: Landing | null } {
+    const land = this.landing(null, x, y);
+    if (land?.kind === 'strip') return { group: land.group, index: land.index, show: land };
+    const group = land?.kind === 'half' ? land.group : this.groupOf(this.tab)!;
+    const r = this.parts.get(group.shown)!.chartarea.getBoundingClientRect();
+    const zone = inside(r, x, y) ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+    return { group, index: group.tabs.indexOf(group.shown) + 1, show: zone && { kind: 'half', group, zone } };
+  }
+
+  /**
+   * A tab let go outside its window (T6.2; the user, 2026-11-25): saved first, as when it
+   * closes, it moves into the Naiad window there, or else into a new window of its own.
+   * A window's only tab moves only into another window; let go anywhere else it stays.
+   * The window it leaves closes once its last tab has gone.
+   */
+  private async sendTab(tab: Tab): Promise<void> {
+    const win = this.backend.windows;
+    if (!win || this.closing.has(tab)) return;
+    const over = await win.release().catch(() => false);
+    if (this.tabs.length === 1 && !over) return;
+    const name = tab.file ? basename(tab.file) : BLANK_NAME;
+    this.closing.add(tab);
+    try {
+      if (!(await tab.leave(`Move ${name} to another window`, () => this.show(tab))) || !this.tabs.includes(tab)) return;
+      await win.dropTab(tab.file, tab.moved());
+    } catch (e) {
+      this.toast(`Could not move ${name}: ${errorText(e)}`);
+      return;
+    } finally {
+      this.closing.delete(tab);
+    }
+    if (this.tabs.length === 1 && over) {
+      await tab.highlightsWritten();
+      this.forgetMine();
+      win.closeNow();
+      return;
+    }
+    this.drop(tab);
+  }
+
+  /** What comes to this window (`Backend.onArrivals`), taken one at a time, in order. */
+  private arriving: Promise<void> = Promise.resolve();
+  private arrive(item: Arrival): void {
+    const run = this.arriving.then(async () => {
+      if ('file' in item) {
+        await this.open(item.file).catch((e) => this.toast(`Could not open ${basename(item.file)}: ${errorText(e)}`));
+        this.recent?.update();
+      } else if ('tab' in item) {
+        await this.inOrder(() => this.takeTab(item.tab, item.at));
+      } else if ('kept' in item) {
+        await this.restore(readKept(JSON.stringify(item.kept)), false);
+        this.recentFollows(this.tab);
+      }
+    });
+    this.arriving = run.catch(() => {});
+  }
+
+  /**
+   * A tab moved in from another window (T6.2): a new tab where it was let go, or the
+   * window's only tab when that is blank (a window made for it), shown, then given the
+   * tab's file, Undo and Redo, selection and view (`Tab.takeOver`). Moving leaves the
+   * recent list's order alone.
+   */
+  private async takeTab(m: MovedTab, at?: [number, number]): Promise<void> {
+    this.paintLanding(null, '');
+    const there = m.file === null ? undefined : this.tabs.find((t) => t.file !== null && samePath(t.file, m.file!));
+    if (there) { this.show(there); return; }
+    const blank = this.tabs.length === 1 && this.tab.file === null ? this.tab : null;
+    if (blank && m.file === null) return;
+    let tab = blank;
+    if (!tab) {
+      tab = this.makeTab();
+      const spot = at ? this.arrivalLanding(at[0], at[1]) : { group: this.groupOf(this.tab)!, index: Infinity };
+      if (!at) spot.index = spot.group.tabs.indexOf(spot.group.shown) + 1;
+      spot.group.tabs.splice(Math.min(spot.index, spot.group.tabs.length), 0, tab);
+    }
+    this.show(tab);
+    this.paintStrip();
+    this.recentFollows(tab, true);
+    if (m.file === null) return;
+    this.reopening = true;
+    try {
+      await tab.takeOver(m);
+    } finally {
+      this.reopening = false;
+    }
+    if (tab.file === null && !blank) { this.drop(tab); return; } // it could not be read; the toast said so
+    this.recentFollows(tab, true);
+  }
+
+  /** Where a tab dragged to (x, y) would land, if anywhere (Q180, Q185); `tab` is null for one from another window. */
+  private landing(tab: Tab | null, x: number, y: number): Landing | null {
     for (const g of this.groups) {
       const bar = g.bar?.box.getBoundingClientRect();
       if (!bar || !inside(bar, x, y)) continue;
@@ -1137,7 +1344,7 @@ export class App {
       opened: (path) => {
         if (own() === this.tab) this.backend.setWindowTitle(`${basename(path)} - Naiad`);
         this.backend.viewing(this.files());
-        this.keep();
+        void this.keep();
       },
     };
   }
@@ -1159,7 +1366,9 @@ export class App {
         if (asked) lettingGo.add(tab);
       }
       if (!this.tabs.some((t) => !lettingGo.has(t) && t.waiting())) {
-        this.keep(); // the window closed last is the one remembered (T1.23)
+        // The windows open as the last one closes are the ones remembered (T1.23, Q216).
+        if (await this.backend.windows?.othersOpen()) this.forgetMine();
+        else await this.keep();
         return true;
       }
     }
@@ -1181,12 +1390,21 @@ export class App {
    * tab, and a blank tab it was picked from closes. One file at a time.
    */
   open(path: string): Promise<void> {
-    const run = this.opens.then(() => this.openNow(path));
+    return this.inOrder(() => this.openNow(path));
+  }
+
+  /** Runs `job` after the opens before it: one file opening, or one tab moving in, at a time. */
+  private inOrder(job: () => Promise<void>): Promise<void> {
+    const run = this.opens.then(job);
     this.opens = run.catch(() => {});
     return run;
   }
 
   private async openNow(path: string): Promise<void> {
+    // A file another window shows: that window shows its tab and comes to the front,
+    // never a second copy (Q214, T6.2).
+    const here = this.tabs.some((t) => t.file !== null && samePath(t.file, path));
+    if (!here && (await this.backend.windows?.showElsewhere(path))) return;
     await this.openInTab(path);
     // A flowchart opened, or its tab shown: the recent list's pane goes (the user, 2026-11-14).
     if (this.tab.file !== null && samePath(this.tab.file, path)) this.recentFollows(this.tab, true);
@@ -1604,7 +1822,7 @@ export class App {
       if (g) this.dragGrip(e, g);
       if ((e.target as Element).closest('.split-divider')) this.dragDivider(e);
     });
-    this.divider.addEventListener('dblclick', () => { this.setShare(0.5); this.fitHeader(); this.keep(); });
+    this.divider.addEventListener('dblclick', () => { this.setShare(0.5); this.fitHeader(); void this.keep(); });
     // While split, a press anywhere in a half makes it the active half (Q181); the press
     // still does what it does there.
     this.el.body.addEventListener('pointerdown', (e) => {

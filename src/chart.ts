@@ -355,6 +355,24 @@ export class Chart {
   /** Call when another file is opened, so the next drawing is fitted to the window. */
   resetView(): void { this.fitted = false; }
 
+  /** The view as the person panned and zoomed it, or null while it is fitted (a tab moved to another window takes it along, T6.2). */
+  placement(): { x: number; y: number; k: number } | null {
+    return this.manual ? { ...this.view } : null;
+  }
+
+  /** Puts the view where `placement` said, after the drawing; it then stays, as a pan or zoom would. */
+  setPlacement(view: { x: number; y: number; k: number }): void {
+    const ok = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
+    if (!ok(view.x) || !ok(view.y) || !ok(view.k) || view.k <= 0) return;
+    this.stopGlide();
+    this.view = { x: view.x, y: view.y, k: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.k)) };
+    this.fitted = true;
+    this.manual = true;
+    this.fitWaiting = false;
+    this.placedWidth = stageWidth(this.stage);
+    this.apply();
+  }
+
   /** Call when the chart's tools (Undo's island, the pill) over this chart have been
    * shown or hidden: a view still fitted is fitted again around them; one the user
    * panned or zoomed stays. (Seen 2026-11-25: a file's first drawing came before its

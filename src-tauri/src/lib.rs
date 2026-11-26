@@ -7,6 +7,7 @@
 
 mod highlights;
 mod serve;
+mod window_set;
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -18,6 +19,7 @@ use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
+use window_set::WindowSet;
 
 /// `naiad check <file>...` and `naiad fix <file>...`: the checker, run from a terminal.
 /// The page does the work with Mermaid's own parser (src/cli.ts) in a window that is
@@ -85,11 +87,18 @@ fn print_out(text: &str) {
     let _ = out.flush();
 }
 
-/// The window's file watches, one per file it shows (a tab each).
+/// The windows' file watches, one per file a window shows (a tab each).
 #[derive(Default)]
 struct Watching(Mutex<WatchList>);
 
-/// The watches by the path the page named, each with the number `watch_file` gave it.
+/// A watch's key: the window's label and the path its page named (T6.2). A tab moved to
+/// another window is watched there under its own key, so the old window's late stop
+/// ends nothing of the new window's.
+fn watch_key(label: &str, path: &str) -> String {
+    format!("{label}\n{path}")
+}
+
+/// The watches by `watch_key`, each with the number `watch_file` gave it.
 #[derive(Default)]
 struct WatchList {
     last: u64,
@@ -113,6 +122,12 @@ impl WatchList {
             return true;
         }
         false
+    }
+
+    /// Ends every watch of the window `label` (it closed).
+    fn forget_window(&mut self, label: &str) {
+        let prefix = format!("{label}\n");
+        self.by_path.retain(|key, _| !key.starts_with(&prefix));
     }
 }
 
@@ -158,35 +173,338 @@ fn flowchart_files(args: impl IntoIterator<Item = String>, cwd: &Path) -> Vec<St
         .collect()
 }
 
-/// Files handed over by a later start of Naiad while this one runs (T6.1): a
-/// double-clicked file, or `naiad <file>`. The later start ends at once, and its files
-/// wait here until the page takes them (`handed_over_files`), so none is lost when the
-/// page is still loading.
+/// The program's windows (T6.2): what waits for each page, what each shows, the window
+/// used last (window_set.rs).
 #[derive(Default)]
-struct HandedOver(Mutex<Vec<String>>);
+struct Windows(Mutex<WindowSet>, Mutex<Option<Aim>>);
 
-/// A later start's arguments reach this program (T6.1): the window comes to the front,
-/// and its flowchart files wait for the page, which the event "files-handed-over" wakes.
-/// Only the window shown hands over: `naiad check`, `fix` and `serve` never take part
-/// (`run`). One window today, so it is the window used last (Q213).
-fn hand_over(app: &AppHandle, argv: Vec<String>, cwd: String) {
-    let files = flowchart_files(argv.into_iter().skip(1), Path::new(&cwd));
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-    if files.is_empty() {
-        return;
-    }
-    app.state::<HandedOver>().0.lock().unwrap().extend(files);
-    let _ = app.emit_to("main", "files-handed-over", ());
+/// Where a dragged tab was let go (`drag_release`): the Naiad window there, if any, and
+/// the pointer's place on the screen. Kept so the tab lands there even when the page
+/// asks a question first, while the pointer moves away (`drop_tab`).
+struct Aim {
+    to: Option<String>,
+    at: tauri::PhysicalPosition<f64>,
 }
 
-/// The files handed over since the page last asked, in the order they came (T6.1).
+/// A window's place: its top-left corner and inner size in screen pixels, and whether
+/// it is maximized.
+type Place = (i32, i32, u32, u32, bool);
+
+/// The window `label`, or, if it is gone, any of the program's windows.
+fn window_or_any(app: &AppHandle, label: &str) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window(label).or_else(|| app.webview_windows().into_values().next())
+}
+
+fn bring_forward(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+/// Tells a window's page that something waits for it (`arrivals`).
+fn wake(app: &AppHandle, label: &str) {
+    let _ = app.emit_to(label, "arrivals", ());
+}
+
+/// Records what every window shows, together (highlights.rs, the view record). Called
+/// with the set held, so that two changes reach the record in the order they were made.
+fn publish(set: &mut WindowSet) {
+    let all: Vec<PathBuf> = set.shown(std::time::Instant::now()).into_iter().map(PathBuf::from).collect();
+    let flowcharts: Vec<&Path> = all.iter().map(PathBuf::as_path).collect();
+    highlights::show_all(&flowcharts);
+}
+
+/// A later start's arguments reach this program (T6.1): each flowchart file goes to the
+/// window that shows it (Q214), or else to the window used last (Q213), and waits there
+/// for the page, which the event "arrivals" wakes; that window comes to the front. Only
+/// a start that shows a window hands over: `naiad check`, `fix` and `serve` never take
+/// part (`run`).
+fn hand_over(app: &AppHandle, argv: Vec<String>, cwd: String) {
+    let files = flowchart_files(argv.into_iter().skip(1), Path::new(&cwd));
+    let mut woken: Vec<String> = Vec::new();
+    let front = {
+        let state = app.state::<Windows>();
+        let mut set = state.0.lock().unwrap();
+        let last = window_or_any(app, &set.last).map(|w| w.label().to_string()).unwrap_or_default();
+        for file in files {
+            let to = set.showing(&file).unwrap_or_else(|| last.clone());
+            set.arrive(&to, serde_json::json!({ "file": file }).to_string());
+            if !woken.contains(&to) {
+                woken.push(to);
+            }
+        }
+        woken.last().cloned().unwrap_or(last)
+    };
+    for label in &woken {
+        wake(app, label);
+    }
+    if let Some(window) = window_or_any(app, &front) {
+        bring_forward(&window);
+    }
+}
+
+/// What waits for this window's page, oldest first, as JSON texts: `{"file": path}` (a
+/// file handed over or shown here, T6.1), `{"tab": ..., "at": [x, y]}` (a tab moved
+/// in, T6.2) or `{"kept": ...}` (tabs to open again, Q216).
 #[tauri::command]
-fn handed_over_files(waiting: State<HandedOver>) -> Vec<String> {
-    std::mem::take(&mut *waiting.0.lock().unwrap())
+fn arrivals(window: tauri::WebviewWindow, windows: State<Windows>) -> Vec<String> {
+    windows.0.lock().unwrap().take(window.label())
+}
+
+/// The Naiad window under the pointer, other than `me`, with the pointer's place.
+fn window_under(app: &AppHandle, me: &str) -> Option<(tauri::WebviewWindow, tauri::PhysicalPosition<f64>)> {
+    let at = app.cursor_position().ok()?;
+    let others: Vec<tauri::WebviewWindow> =
+        app.webview_windows().into_values().filter(|w| w.label() != me).collect();
+    #[cfg(windows)]
+    {
+        use std::ffi::c_void;
+        #[repr(C)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+        #[link(name = "user32")]
+        extern "system" {
+            fn WindowFromPoint(point: Point) -> *mut c_void;
+            fn GetAncestor(window: *mut c_void, flags: u32) -> *mut c_void;
+        }
+        const ROOT: u32 = 2;
+        // SAFETY: both calls take plain values and return a handle, null when none.
+        let top = unsafe { GetAncestor(WindowFromPoint(Point { x: at.x as i32, y: at.y as i32 }), ROOT) };
+        if top.is_null() {
+            return None;
+        }
+        others.into_iter().find(|w| w.hwnd().is_ok_and(|h| h.0 as *mut c_void == top)).map(|w| (w, at))
+    }
+    #[cfg(not(windows))]
+    {
+        let inside = |w: &tauri::WebviewWindow| {
+            let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) else { return false };
+            at.x >= p.x as f64
+                && at.y >= p.y as f64
+                && at.x < (p.x + s.width as i32) as f64
+                && at.y < (p.y + s.height as i32) as f64
+        };
+        others.into_iter().find(|w| inside(w)).map(|w| (w, at))
+    }
+}
+
+/// The pointer's place inside `window`, in the page's own pixels.
+fn in_page(window: &tauri::WebviewWindow, at: tauri::PhysicalPosition<f64>) -> (f64, f64) {
+    let (cx, cy) = window.inner_position().map(|p| (p.x, p.y)).unwrap_or((0, 0));
+    let scale = window.scale_factor().unwrap_or(1.0);
+    ((at.x - cx as f64) / scale, (at.y - cy as f64) / scale)
+}
+
+/// A tab named `name` is being dragged outside its window (T6.2): the Naiad window
+/// under the pointer is told where it is ("tab-drag-at", in its own pixels), and one it
+/// has left is told so ("tab-drag-off").
+#[tauri::command]
+fn drag_over(name: String, window: tauri::WebviewWindow, app: AppHandle, windows: State<Windows>) {
+    let under = window_under(&app, window.label());
+    let now = under.as_ref().map(|(w, _)| w.label().to_string());
+    let left = {
+        let mut set = windows.0.lock().unwrap();
+        let left = set.hovered.clone().filter(|h| Some(h) != now.as_ref());
+        set.hovered = now;
+        left
+    };
+    if let Some(left) = left {
+        let _ = app.emit_to(left.as_str(), "tab-drag-off", ());
+    }
+    if let Some((w, at)) = under {
+        let (x, y) = in_page(&w, at);
+        let _ = app.emit_to(w.label(), "tab-drag-at", (x, y, name));
+    }
+}
+
+/// The drag ended: the window it was over, if any, is told so.
+#[tauri::command]
+fn drag_end(app: AppHandle, windows: State<Windows>) {
+    let left = windows.0.lock().unwrap().hovered.take();
+    if let Some(left) = left {
+        let _ = app.emit_to(left.as_str(), "tab-drag-off", ());
+    }
+}
+
+/// A dragged tab is let go outside its window: notes where (`Aim`), tells the window it
+/// was over that the drag ended, and says whether another Naiad window is there (a
+/// window's only tab moves only into another window).
+#[tauri::command]
+fn drag_release(window: tauri::WebviewWindow, app: AppHandle, windows: State<Windows>) -> bool {
+    let under = window_under(&app, window.label());
+    let over = under.is_some();
+    *windows.1.lock().unwrap() = app.cursor_position().ok().map(|at| Aim {
+        to: under.map(|(w, _)| w.label().to_string()),
+        at,
+    });
+    let left = windows.0.lock().unwrap().hovered.take();
+    if let Some(left) = left {
+        let _ = app.emit_to(left.as_str(), "tab-drag-off", ());
+    }
+    over
+}
+
+/// A tab let go outside its window (T6.2): it goes to the Naiad window under the
+/// pointer, or else into a new window there (the user, 2026-11-25). `tab` is the page's
+/// account of it (its file, Undo and Redo, selection, view), passed on as it is; its
+/// file, `path`, counts as shown throughout (window_set.rs). Returns the window it went
+/// to. The page has already saved the tab (`Tab.leave`), and drops it once this returns.
+#[tauri::command]
+async fn drop_tab(path: Option<String>, tab: String, window: tauri::WebviewWindow, app: AppHandle) -> Result<String, String> {
+    let tab: serde_json::Value = serde_json::from_str(&tab).map_err(|e| e.to_string())?;
+    if let Some(p) = &path {
+        check(p)?;
+    }
+    let me = window.label().to_string();
+    let windows = app.state::<Windows>();
+    // Where it was let go (`drag_release`), or else where the pointer is now.
+    let aim = windows.1.lock().unwrap().take();
+    let (under, at) = match aim {
+        Some(aim) => (aim.to.and_then(|l| app.get_webview_window(&l)).map(|w| (w, aim.at)), Some(aim.at)),
+        None => (window_under(&app, &me), app.cursor_position().ok()),
+    };
+    let left = windows.0.lock().unwrap().hovered.take();
+    if let Some(left) = left {
+        let _ = app.emit_to(left.as_str(), "tab-drag-off", ());
+    }
+    let now = std::time::Instant::now();
+    if let Some((to, at)) = under {
+        let (x, y) = in_page(&to, at);
+        {
+            let mut set = windows.0.lock().unwrap();
+            set.arrive(to.label(), serde_json::json!({ "tab": tab, "at": [x, y] }).to_string());
+            if let Some(p) = &path {
+                set.move_view(p, &me, to.label(), now);
+                publish(&mut set);
+            }
+        }
+        wake(&app, to.label());
+        bring_forward(&to);
+        return Ok(to.label().to_string());
+    }
+    // A new window, placed so the pointer is over its tabs, a little in from the left.
+    let at = at.ok_or("Naiad could not tell where the pointer is.")?;
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    let place = ((at.x - 160.0 * scale) as i32, (at.y - 18.0 * scale) as i32, size.width, size.height, false);
+    let label = {
+        let mut set = windows.0.lock().unwrap();
+        let label = set.new_label();
+        set.arrive(&label, serde_json::json!({ "tab": tab }).to_string());
+        if let Some(p) = &path {
+            set.move_view(p, &me, &label, now);
+            publish(&mut set);
+        }
+        label
+    };
+    if let Err(e) = make_window(&app, &label, Some(place)) {
+        let others: Vec<String> = app.webview_windows().into_keys().collect();
+        let mut set = windows.0.lock().unwrap();
+        set.forget(&label, &others);
+        publish(&mut set);
+        return Err(e);
+    }
+    Ok(label)
+}
+
+/// A new window for tabs kept at the last close (Q216): `kept` is the page's account of
+/// them, opened by the new window's page; `place` is where the window was.
+#[tauri::command]
+async fn open_window(kept: String, place: Option<Place>, app: AppHandle) -> Result<String, String> {
+    let kept: serde_json::Value = serde_json::from_str(&kept).map_err(|e| e.to_string())?;
+    let windows = app.state::<Windows>();
+    let label = {
+        let mut set = windows.0.lock().unwrap();
+        let label = set.new_label();
+        set.arrive(&label, serde_json::json!({ "kept": kept }).to_string());
+        label
+    };
+    if let Err(e) = make_window(&app, &label, place) {
+        let others: Vec<String> = app.webview_windows().into_keys().collect();
+        windows.0.lock().unwrap().forget(&label, &others);
+        return Err(e);
+    }
+    Ok(label)
+}
+
+/// Makes a window like the first, named `label`, at `place` when given, and shows it.
+fn make_window(app: &AppHandle, label: &str, place: Option<Place>) -> Result<(), String> {
+    let mut config = app.config().app.windows.first().cloned().ok_or("Naiad has no window settings.")?;
+    config.label = label.to_string();
+    config.visible = false;
+    let window = tauri::WebviewWindowBuilder::from_config(app, &config)
+        .and_then(|b| b.build())
+        .map_err(|e| e.to_string())?;
+    if let Some(place) = place {
+        put(&window, place);
+    }
+    bring_forward(&window);
+    Ok(())
+}
+
+/// Puts a window at `place`. A corner on no screen today (a screen since unplugged) is
+/// left where Windows puts it; the size and maximizing still apply.
+fn put(window: &tauri::WebviewWindow, (x, y, width, height, maximized): Place) {
+    let on_screen = window.available_monitors().is_ok_and(|screens| {
+        screens.iter().any(|m| {
+            let (p, s) = (m.position(), m.size());
+            let (cx, cy) = (x + 40, y + 10);
+            cx >= p.x && cy >= p.y && cx < p.x + s.width as i32 && cy < p.y + s.height as i32
+        })
+    });
+    if on_screen {
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    if width > 0 && height > 0 {
+        let _ = window.set_size(tauri::PhysicalSize::new(width, height));
+    }
+    if maximized {
+        let _ = window.maximize();
+    }
+}
+
+/// Puts this window where it was at the last close (Q216).
+#[tauri::command]
+fn place_window(place: Place, window: tauri::WebviewWindow) {
+    put(&window, place);
+}
+
+/// Where this window is now, for Remember opened files (Q216).
+#[tauri::command]
+fn window_place(window: tauri::WebviewWindow) -> Option<Place> {
+    let p = window.outer_position().ok()?;
+    let s = window.inner_size().ok()?;
+    Some((p.x, p.y, s.width, s.height, window.is_maximized().unwrap_or(false)))
+}
+
+/// Whether another of the program's windows is open (a window closing then forgets its
+/// kept tabs, Q216).
+#[tauri::command]
+fn others_open(window: tauri::WebviewWindow, app: AppHandle) -> bool {
+    app.webview_windows().keys().any(|l| l != window.label())
+}
+
+/// Opening `path` from this window when another window shows it (Q214): that window
+/// shows its tab and comes to the front, and this returns true.
+#[tauri::command]
+fn show_elsewhere(path: String, window: tauri::WebviewWindow, app: AppHandle, windows: State<Windows>) -> bool {
+    let there = {
+        let mut set = windows.0.lock().unwrap();
+        match set.showing(&path).filter(|l| l != window.label()) {
+            Some(label) => {
+                set.arrive(&label, serde_json::json!({ "file": path }).to_string());
+                label
+            }
+            None => return false,
+        }
+    };
+    wake(&app, &there);
+    if let Some(w) = app.get_webview_window(&there) {
+        bring_forward(&w);
+    }
+    true
 }
 
 /// Whether another Naiad window was already running when this one started (T1.23,
@@ -384,22 +702,25 @@ fn on_disk(target: &Path) -> PathBuf {
 }
 
 /// Starts watching a file, beside the window's other files. Emits "file-changed" with the
-/// path whenever it changes on disk. Returns the watch's number, for `unwatch_file`.
+/// path to this window whenever the file changes on disk. Returns the watch's number,
+/// for `unwatch_file`.
 #[tauri::command]
-fn watch_file(path: String, app: AppHandle, state: State<Watching>) -> Result<u64, String> {
+fn watch_file(path: String, window: tauri::WebviewWindow, app: AppHandle, state: State<Watching>) -> Result<u64, String> {
     let p = check(&path)?;
     let named = path.clone();
+    let label = window.label().to_string();
+    let to = label.clone();
     let watcher = watch_folder(&p, move || {
-        let _ = app.emit("file-changed", named.clone());
+        let _ = app.emit_to(to.as_str(), "file-changed", named.clone());
     })?;
-    Ok(state.0.lock().map_err(|e| e.to_string())?.add(path, watcher))
+    Ok(state.0.lock().map_err(|e| e.to_string())?.add(watch_key(&label, &path), watcher))
 }
 
 /// Ends the watch `watch_file` started on `path` and numbered `id` (its tab closed, or
 /// shows another file).
 #[tauri::command]
-fn unwatch_file(path: String, id: u64, state: State<Watching>) -> Result<(), String> {
-    state.0.lock().map_err(|e| e.to_string())?.remove(&path, id);
+fn unwatch_file(path: String, id: u64, window: tauri::WebviewWindow, state: State<Watching>) -> Result<(), String> {
+    state.0.lock().map_err(|e| e.to_string())?.remove(&watch_key(window.label(), &path), id);
     Ok(())
 }
 
@@ -515,12 +836,14 @@ fn write_highlights(path: String, contents: String, expected: Option<String>) ->
     }
 }
 
-/// The window now shows these flowcharts, one per tab, and no others.
+/// The window now shows these flowcharts, one per tab, and no others. The view record
+/// names every window's flowcharts together (`publish`).
 #[tauri::command]
-fn view_files(paths: Vec<String>) -> Result<(), String> {
+fn view_files(paths: Vec<String>, window: tauri::WebviewWindow, windows: State<Windows>) -> Result<(), String> {
     let checked = paths.iter().map(|p| check(p)).collect::<Result<Vec<_>, _>>()?;
-    let flowcharts: Vec<&Path> = checked.iter().map(PathBuf::as_path).collect();
-    highlights::show_all(&flowcharts);
+    let mut set = windows.0.lock().unwrap();
+    set.set_views(window.label(), checked.iter().map(|p| p.to_string_lossy().into_owned()).collect());
+    publish(&mut set);
     Ok(())
 }
 
@@ -559,16 +882,34 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Watching::default())
-        .manage(HandedOver::default())
-        .on_window_event(|_window, event| {
-            // The window is closing: it shows no flowchart any more (Q44).
-            if let tauri::WindowEvent::Destroyed = event {
-                highlights::show(None);
+        .manage(Windows::default())
+        .on_window_event(|window, event| {
+            let app = window.app_handle();
+            match event {
+                // The window used last, where a file opened from outside goes (Q213).
+                tauri::WindowEvent::Focused(true) => {
+                    app.state::<Windows>().0.lock().unwrap().last = window.label().to_string();
+                }
+                // A window closed: it shows no flowchart any more (Q44), and its watches end.
+                tauri::WindowEvent::Destroyed => {
+                    let others: Vec<String> =
+                        app.webview_windows().into_keys().filter(|l| l != window.label()).collect();
+                    let state = app.state::<Windows>();
+                    let mut set = state.0.lock().unwrap();
+                    set.forget(window.label(), &others);
+                    publish(&mut set);
+                    drop(set);
+                    if let Ok(mut watches) = app.state::<Watching>().0.lock() {
+                        watches.forget_window(window.label());
+                    }
+                }
+                _ => {}
             }
         })
         .setup(|app| {
             if cli_args().is_none() {
                 mark_window();
+                app.state::<Windows>().0.lock().unwrap().last = "main".into();
                 // The window is made hidden (tauri.conf.json) so that the checker never
                 // shows one; in ordinary use it is shown here, before the page loads.
                 if let Some(window) = app.get_webview_window("main") {
@@ -588,7 +929,16 @@ pub fn run() {
             cli_job,
             cli_done,
             initial_file,
-            handed_over_files,
+            arrivals,
+            drag_over,
+            drag_end,
+            drag_release,
+            drop_tab,
+            open_window,
+            place_window,
+            window_place,
+            others_open,
+            show_elsewhere,
             other_window,
             existing_files,
             read_file,

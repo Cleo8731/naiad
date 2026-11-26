@@ -3,7 +3,7 @@
 // src/chart.ts (see `chartMock`). Mermaid's parser, the edits, the sidebar and the
 // saving are the real code. From the bug hunt's area C (saving, and changes from outside).
 import mermaid from 'mermaid';
-import type { Backend } from '../src/backend';
+import type { Arrival, Backend } from '../src/backend';
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -28,7 +28,7 @@ export const chartWheel: { mode: import('../src/chart').WheelMode | null } = { m
  * many drew at the same moment, at most (one Mermaid for the page).
  */
 export const charts: {
-  list: { drawn: string[]; sidebarShown: boolean[]; steps: string[]; destroyed: boolean }[]; drawing: number; most: number;
+  list: { drawn: string[]; sidebarShown: boolean[]; steps: string[]; destroyed: boolean; view: { x: number; y: number; k: number } | null }[]; drawing: number; most: number;
 } = { list: [], drawing: 0, most: 0 };
 
 /** What a test file passes to `vi.mock('../src/chart', ...)`. */
@@ -40,6 +40,10 @@ export const chartMock = () => ({
     destroyed = false;
     constructor(private stage: HTMLElement, events: import('../src/chart').ChartEvents) { chartEvents.last = events; charts.list.push(this); }
     resetView() {} clear() {} select() {} setHighlights() {} setHighlighting() {} setViewing() {} fit() {}
+    /** The view as the person moved it (T6.2): null while fitted. */
+    view: { x: number; y: number; k: number } | null = null;
+    placement() { return this.view; }
+    setPlacement(view: { x: number; y: number; k: number }) { this.view = view; }
     /** In order, each drawing finished ("drawn") and each time the app said the chart's
      * tools were shown or hidden, with whether the pill showed then ("tools shown", "tools hidden"). */
     steps: string[] = [];
@@ -99,8 +103,14 @@ export class FakeDisk {
   startFile: string | null = null;
   /** Whether another Naiad window is running as this one starts (`Backend.otherWindow`). */
   otherWindow = false;
-  /** Hands files to the window as a later start of Naiad would (`Backend.onHandedOver`, T6.1). */
-  handOver: (paths: string[]) => void = () => { throw new Error('the window is not listening for handed-over files'); };
+  /** Gives the window what arrives for it (`Backend.onArrivals`: a file, a moved tab, kept tabs; T6.1, T6.2). */
+  arrive: (items: Arrival[]) => void = () => { throw new Error('the window is not listening for arrivals'); };
+  /** Hands files to the window as a later start of Naiad would (T6.1). */
+  handOver(paths: string[]): void { this.arrive(paths.map((file) => ({ file }))); }
+  /** The window's name (`Backend.windowName`): "main" for the program's first window. */
+  windowName = 'main';
+  /** The program's other windows, for a desktop test of T6.2 (`Backend.windows`); null: a browser's one page. */
+  windows: Backend['windows'] = null;
   /** What Naiad's own title bar asked of the window, in order (`Backend.windowControls`, T4.10). */
   windowActs: string[] = [];
   private maximized: ((max: boolean) => void) | null = null;
@@ -114,7 +124,9 @@ export class FakeDisk {
       cliDone: async () => {},
       initialPath: async () => this.startFile,
       otherWindow: async () => this.otherWindow,
-      onHandedOver: (take) => { this.handOver = take; },
+      windowName: this.windowName,
+      onArrivals: (take) => { this.arrive = take; },
+      windows: this.windows,
       read: async (path) => {
         if (!this.files.has(path)) throw new Error('not found');
         const text = this.files.get(path)!;
