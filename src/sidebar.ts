@@ -9,10 +9,13 @@ import { SHAPES } from './core/scan';
 import { FLOWCHART_ID } from './core/descriptions';
 import type { ArrowKind, LinkParts } from './core/edits';
 import { ICONS } from './icons';
+import type { ClassPaint } from './semantics';
 
 export interface NodeView {
   kind: 'node'; id: string; title: string; description: string; shape: string;
   fill: string; group: string; groups: { id: string; title: string }[];
+  /** The colour the node's classes give it, shown in the Colour row's first swatch; null for none. */
+  classPaint?: ClassPaint | null;
 }
 export interface EdgeView {
   kind: 'edge'; index: number; from: string; to: string; label: string;
@@ -21,7 +24,11 @@ export interface EdgeView {
   colour: string;
   fromId: string; toId: string; ends: { id: string; title: string }[];
 }
-export interface SubView { kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number }
+export interface SubView {
+  kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number;
+  /** As a node's. */
+  classPaint?: ClassPaint | null;
+}
 /**
  * The flowchart's description, under any item (T1.13): `file` is the file's path, so
  * another file gets a panel of its own; `name` is the front matter's title, else the
@@ -357,8 +364,14 @@ export class Sidebar {
     return sel;
   }
 
-  /** A node or group is matched by its swatch's fill; an arrow, by its line, the swatch's border colour. */
-  private swatches(read: (v: View) => string, commit: (s: Swatch | null) => void, by: 'fill' | 'stroke' = 'fill'): HTMLElement {
+  /**
+   * A node or group is matched by its swatch's fill; an arrow, by its line, the swatch's
+   * border colour. The first swatch takes the item's own colour off: it is **No colour**,
+   * or, when the item's classes colour it (`paint`), that colour, named by the class
+   * (T1.6, Q259).
+   */
+  private swatches(read: (v: View) => string, commit: (s: Swatch | null) => void, by: 'fill' | 'stroke' = 'fill',
+    paint: (v: View) => ClassPaint | null | undefined = () => null): HTMLElement {
     const none = h('button', { class: 'swatch none', title: 'No colour', 'aria-label': 'No colour', click: () => commit(null) });
     const buttons = SWATCHES.map((s) => {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => commit(s) });
@@ -368,6 +381,13 @@ export class Sidebar {
     });
     this.sync.push((v) => {
       const value = read(v).toLowerCase();
+      const p = paint(v);
+      const name = p ? `${p.name}, from its class` : 'No colour';
+      none.title = name;
+      none.setAttribute('aria-label', name);
+      none.classList.toggle('from-class', !!p);
+      none.style.background = p ? p.fill || 'transparent' : '';
+      none.style.borderColor = p?.stroke ?? '';
       none.classList.toggle('on', value === '');
       buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i][by] === value));
     });
@@ -501,7 +521,7 @@ export class Sidebar {
       this.description(id, (v) => (v as NodeView).description, 'Describe this step. Markdown works: **bold**, lists, `code`, links.'),
       h('div', { class: 'props' },
         this.row('Shape', shape),
-        this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s))),
+        this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as NodeView).classPaint)),
         this.row('Group', group)),
       h('div', { class: 'side-foot' },
         h('span', { class: 'hint' }, 'Drag the dot beside the node onto another node to connect them.'),
@@ -558,7 +578,7 @@ export class Sidebar {
       count,
       h('div', { class: 'props' },
         this.row('Direction', dir),
-        this.row('Colour', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s)))),
+        this.row('Colour', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as SubView).classPaint))),
       h('div', { class: 'side-foot' },
         h('button', { click: () => a.addNodeIn(id) }, 'Add node inside'),
         h('button', { class: 'danger', title: 'Removes the frame; the nodes stay', click: () => a.ungroup(id) }, 'Ungroup')),

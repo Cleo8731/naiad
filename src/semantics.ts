@@ -18,6 +18,8 @@ export interface SnapEdge {
   id: string;
 }
 export interface SnapSub { title: string; nodes: string[]; dir: string; styles: string[] }
+/** The colour a node's or group's classes give it (`classDef`), and the class that gives it. */
+export interface ClassPaint { name: string; fill: string; stroke: string }
 
 export interface Snap {
   direction: string;
@@ -30,6 +32,28 @@ export interface Snap {
   /** The accessible title and description, which no edit changes (bug hunt round 5, A38). */
   accTitle: string;
   accDescr: string;
+  /**
+   * Each node's and group's colour from its classes, when they give one (T1.6, Q259). Only
+   * the sidebar reads it; the checks compare a chart without it (`canon`).
+   */
+  paint?: Record<string, ClassPaint>;
+}
+
+/**
+ * The colour a list of classes gives, read as Mermaid draws it: each class's `fill` and
+ * `stroke` in turn, the last one winning. `name` is the class that gives the fill, or the
+ * border when no class gives a fill.
+ */
+export function paintOf(classes: Map<string, { styles?: string[] }>, names: string[]): ClassPaint | null {
+  let fill = '', stroke = '', fillFrom = '', strokeFrom = '';
+  for (const name of names) {
+    for (const style of classes.get(name)?.styles ?? []) {
+      const m = /^\s*(fill|stroke)\s*:\s*(.*?)\s*(?:!important)?\s*$/i.exec(style);
+      if (!m || !m[2]) continue;
+      if (m[1].toLowerCase() === 'fill') { fill = m[2]; fillFrom = name; } else { stroke = m[2]; strokeFrom = name; }
+    }
+  }
+  return fill || stroke ? { name: fillFrom || strokeFrom, fill, stroke } : null;
 }
 
 /**
@@ -92,6 +116,19 @@ export async function snapshot(text: string, asIs = false): Promise<Snap> {
     snap.subs[id].styles = twin.styles;
     delete snap.nodes[id];
   }
+  // Mermaid gives every node the classes `default` and `node` before its own; a group,
+  // only its own (its `getCompiledStyles`).
+  const classes: Map<string, { styles?: string[] }> = db.getClasses?.() ?? new Map();
+  const paint: Record<string, ClassPaint> = {};
+  for (const v of db.getVertices().values()) {
+    const p = snap.nodes[v.id] && paintOf(classes, ['default', 'node', ...(v.classes ?? [])]);
+    if (p) paint[v.id] = p;
+  }
+  for (const g of db.getSubGraphs()) {
+    const p = snap.subs[g.id] && paintOf(classes, g.classes ?? []);
+    if (p) paint[g.id] = p;
+  }
+  snap.paint = paint;
   return snap;
 }
 

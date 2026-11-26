@@ -38,6 +38,7 @@ one file in the same way, without tabs, split view, the recent files list or
 | Rename | Double-click a node, press Enter / F2, or type in the title box at the top of the sidebar; there, Escape puts back the old title |
 | Connect two nodes | Point at a node and drag the dot beside it to another node, or Shift-click the second node |
 | Change an arrow | Click it: label, line, head, colour |
+| Colour a node or a group | Click it, then a swatch in the sidebar's **Colour** row. The first swatch takes the node's own colour off: it is **No colour**, or, when a class in the file (`classDef`) colours the node, that colour, named by the class ("process, from its class"). The swatch marked is the colour shown |
 | See where a node's arrows go | Rest the pointer on the node: its arrows and the nodes at their other ends stay, and the rest fades |
 | See which way a long arrow goes | Look along it: an arrow at least 250 px long at 100% zoom, with a head at one end only, carries a small arrowhead about every 150 px, pointing the way it goes |
 | Move an arrow's start or end | Point at the arrow and drag the dot at that end onto another node or group; or pick it under **From** or **To** in the sidebar |

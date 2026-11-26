@@ -1113,14 +1113,14 @@ export class Tab {
       const groups = Object.entries(snap.subs).map(([id, g]) => ({ id, title: g.title || id }));
       return {
         kind: 'node', id: s.id, title: nodeLabel(this.doc, s.id)?.title ?? n.text,
-        description: getDescriptions(this.text).get(s.id) ?? '', shape: n.type, fill: fillOf(n.styles),
+        description: getDescriptions(this.text).get(s.id) ?? '', shape: n.type, fill: fillOf(n.styles), classPaint: snap.paint?.[s.id] ?? null,
         group: Object.keys(snap.subs).find((id) => snap.subs[id].nodes.includes(s.id)) ?? '', groups,
       };
     }
     if (s.kind === 'sub') {
       const g = snap.subs[s.id];
       if (!g) return null;
-      return { kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), count: g.nodes.length };
+      return { kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), classPaint: snap.paint?.[s.id] ?? null, count: g.nodes.length };
     }
     const e = snap.edges[s.index];
     if (!e) return null;
