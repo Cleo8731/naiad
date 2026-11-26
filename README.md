@@ -131,6 +131,24 @@ skills. For Claude Code, that is one of:
 - `.claude/skills/naiad` inside a project; commit it and everyone working on the
   project has it.
 
+For other agent tools, the [skills](https://github.com/vercel-labs/skills) installer
+puts it where they read it. Run it in your project's folder:
+
+```powershell
+npx skills add Cleo8731/naiad
+```
+
+It puts the skill in the project's `.agents/skills/naiad`, which Codex, OpenCode,
+Gemini CLI, GitHub Copilot and many other tools read, and links Claude Code's
+`.claude/skills/naiad` to it; `-g` installs it for every project instead. The installer
+sends anonymous usage data to its maker, Vercel
+([what it sends](https://github.com/vercel-labs/skills/blob/main/docs/troubleshooting.md#telemetry)).
+To stop it, run this first in the same PowerShell window:
+
+```powershell
+$env:DISABLE_TELEMETRY = '1'
+```
+
 Then ask for a flowchart in your own words, for example: "Draw our order process as a
 Naiad flowchart in `docs/orders.mmd`, with a description for each step."
 
