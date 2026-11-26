@@ -617,6 +617,21 @@ body.dragging-tab #app { pointer-events: none; }
   display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
 }
 .dir-menu::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+/* The Walk button's menu (the user, 2026-11-26): from the start, or from the node
+   selected now; opens above the button on a click. */
+.walk-wrap { position: relative; display: flex; }
+.walk-wrap:has(> [data-act="walk"][hidden]) { display: none; } /* no gap in the pill for it in Edit mode */
+.walk-menu {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); z-index: 9;
+  display: flex; flex-direction: column; gap: 2px; min-width: 190px; padding: 5px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: 0 8px 24px -10px var(--shadow);
+}
+.walk-menu button {
+  height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--text); text-align: left; white-space: nowrap;
+}
+.walk-menu button:hover:not(:disabled) { background: var(--accent-soft); }
+.pill button.icon[data-act="walk"][aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 /* The rail's Export button's menu (T6.3; on the rail, the user, 2026-11-25): opens on a
    click to the button's right, over the window, its top on the button's. It is placed
    from the narrow button (34px), and while it is open the button stays narrow and looks
@@ -1003,6 +1018,9 @@ input.switch:checked::before { transform: translateX(14px); }
 .walk-bar button:hover:not(:disabled) { border-color: var(--accent); }
 .walk-bar button:disabled { opacity: 0.45; }
 .walk-back, .walk-leave { flex: none; }
+/* Leave is red, as it ends the walk (the user, 2026-11-26). */
+.walk-bar button.walk-leave { color: var(--bad); }
+.walk-bar button.walk-leave:hover:not(:disabled) { border-color: var(--bad); }
 .walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
 /* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named in full at the
    chart's edge, centred where its arrow leaves the view; its name wraps and the chip grows

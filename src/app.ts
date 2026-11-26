@@ -251,7 +251,7 @@ export class App {
   private el!: {
     status: HTMLElement; toast: HTMLElement; dir: HTMLButtonElement; dirMenu: HTMLElement; undo: HTMLButtonElement;
     redo: HTMLButtonElement; add: HTMLButtonElement; textToggle: HTMLButtonElement; pane: HTMLElement; fit: HTMLButtonElement;
-    highlight: HTMLButtonElement; walk: HTMLButtonElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
+    highlight: HTMLButtonElement; walk: HTMLButtonElement; walkMenu: HTMLElement; exportButton: HTMLButtonElement; exportMenu: HTMLElement; clear: HTMLButtonElement; view: HTMLButtonElement; about: HTMLButtonElement;
     wheel: HTMLButtonElement; recentToggle: HTMLButtonElement;
     /** The Undo island and Clear beside it, and the pill (T4.9), moved to the shown tab's chart. */
     islandRow: HTMLElement; island: HTMLElement; pill: HTMLElement; pillEdit: HTMLElement;
@@ -343,13 +343,18 @@ export class App {
         </div>
         <button class="icon" data-act="fit" title="Fit the chart to the window" aria-label="Fit">${ICONS.fit}</button>
         <button class="icon" data-act="highlight" title="Highlight: click nodes, arrows and groups to mark them, for you and the agent to point at (H)" aria-label="Highlight" aria-pressed="false">${ICONS.highlight}</button>
-        <button class="icon" data-act="walk" title="Walk: follow one run through the flowchart, node by node, choosing an arrow at each step" aria-label="Walk" hidden>${ICONS.walk}</button>
+        <div class="walk-wrap">
+          <button class="icon" data-act="walk" title="Walk: follow one run through the flowchart, node by node, choosing an arrow at each step" aria-label="Walk" aria-haspopup="menu" aria-expanded="false" hidden>${ICONS.walk}</button>
+          <div class="walk-menu" role="menu" aria-label="Walk" hidden>
+            <button role="menuitem" data-walk-from="start">From the start</button><button role="menuitem" data-walk-from="selected">From the selected node</button>
+          </div>
+        </div>
       </div>`;
     const q = <T extends HTMLElement>(sel: string) => (this.root.querySelector<T>(sel) ?? tools.querySelector<T>(sel))!;
     this.el = {
       status: q('.status'), toast: q('.toast'), dir: q('[data-act="dir"]'), dirMenu: q('.dir-menu'), undo: q('[data-act="undo"]'),
       redo: q('[data-act="redo"]'), add: q('[data-act="add"]'), textToggle: q('[data-act="syntax"]'), pane: q('.textpane'),
-      fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'), walk: q('[data-act="walk"]'),
+      fit: q('[data-act="fit"]'), highlight: q('[data-act="highlight"]'), walk: q('[data-act="walk"]'), walkMenu: q('.walk-menu'),
       exportButton: q('[data-act="export"]'), exportMenu: q('.export-menu'),
       clear: q('[data-act="clear"]'), view: q('[data-act="view"]'), about: q('[data-act="about"]'),
       wheel: q('[data-act="wheel"]'), recentToggle: q('[data-act="recent"]'),
@@ -587,6 +592,7 @@ export class App {
     this.setShare(this.at);
     for (const t of this.seen) if (!seen.has(t)) t.hide();
     this.showDirMenu(false);
+    this.showWalkMenu(false);
     this.parts.get(tab)!.chartarea.append(this.el.islandRow, this.el.pill);
     this.placeStrips();
     this.paintStrip();
@@ -1528,7 +1534,7 @@ export class App {
     // middle stays.
     this.el.pillEdit.hidden = on;
     if (on) this.showDirMenu(false);
-    if (!on) this.endViewNotice();
+    if (!on) { this.endViewNotice(); this.showWalkMenu(false); }
     remember('mode', on ? 'view' : 'edit');
     for (const tab of this.tabs) tab.paint();
   }
@@ -1635,6 +1641,21 @@ export class App {
     window.clearTimeout(this.dirTimer);
     this.el.dirMenu.hidden = !open;
     this.el.dir.setAttribute('aria-expanded', String(open));
+  }
+
+  /**
+   * The Walk button's menu (the user, 2026-11-26): a walk from the start, or from the
+   * node selected now; that item is off while no node is selected.
+   */
+  private showWalkMenu(open: boolean): void {
+    if (open) {
+      const sel = this.tab.selected;
+      const from = this.el.walkMenu.querySelector<HTMLButtonElement>('[data-walk-from="selected"]')!;
+      from.disabled = sel?.kind !== 'node';
+      from.title = sel?.kind === 'node' ? `Walk from "${this.tab.titleOf(sel.id)}"` : 'Select a node on the chart first';
+    }
+    this.el.walkMenu.hidden = !open;
+    this.el.walk.setAttribute('aria-expanded', String(open));
   }
 
   private showExportMenu(open: boolean): void {
@@ -1929,6 +1950,16 @@ export class App {
         return;
       }
       if (!target.closest('.export-wrap')) this.showExportMenu(false);
+      // The Walk menu: an item picked starts the walk; a click anywhere else but its
+      // button closes it.
+      const walkFrom = target.closest<HTMLButtonElement>('.walk-menu [data-walk-from]');
+      if (walkFrom) {
+        if (walkFrom.disabled) return;
+        this.showWalkMenu(false);
+        this.tab.startWalk(walkFrom.dataset.walkFrom === 'selected');
+        return;
+      }
+      if (!target.closest('.walk-wrap')) this.showWalkMenu(false);
       const listed = target.closest<HTMLElement>('.tabs-menu [data-tab]')?.dataset.tab;
       const group = this.groupAt(target);
       if (listed !== undefined) {
@@ -1957,7 +1988,7 @@ export class App {
       if (act === 'recent') this.toggleRecent();
       if (act === 'customize' || act === 'settings') this.openWindow(act);
       if (act === 'highlight') this.setHighlighting(!this.hlOn);
-      if (act === 'walk') this.tab.startWalk();
+      if (act === 'walk') this.showWalkMenu(!!this.el.walkMenu.hidden);
       if (act === 'clear') void this.tab.clearHighlights();
       if (act === 'view') void this.setViewing(!this.viewing);
       if (act === 'about') this.setAbout(!this.about);
@@ -2030,6 +2061,7 @@ export class App {
         if (this.tabsMenuOpen) this.closeTabsMenus();
         else if (!this.el.dirMenu.hidden) this.showDirMenu(false);
         else if (!this.el.exportMenu.hidden) this.showExportMenu(false);
+        else if (!this.el.walkMenu.hidden) this.showWalkMenu(false);
         else if (this.tab.walking) this.tab.leaveWalk(); // Q233
         else if (this.hlOn) this.setHighlighting(false);
         else this.select(null);

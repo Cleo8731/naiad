@@ -782,19 +782,28 @@ export class Tab {
    */
   private walkPath: WalkStep[] | null = null;
 
+  /** A node's title as the sidebar shows it, or its id. */
+  titleOf(id: string): string {
+    return nodeLabel(this.doc, id)?.title ?? this.snap?.nodes[id]?.text ?? id;
+  }
+
   /** Whether this tab shows a walk. */
   get walking(): boolean { return this.walkPath !== null; }
 
   /**
-   * Starts a walk (the pill's Walk button, Q229): at the one node no arrow points to, or,
-   * with several, the reader picks one. The Highlight switch goes off: a click now walks.
-   * The highlights are hidden until the walk ends (the user, 2026-11-26).
+   * Starts a walk (the pill's Walk button, Q229, and its menu): from the start, at the
+   * one node no arrow points to, or, with several, the reader picks one; or, with
+   * `fromSelected`, at the node selected now (the user, 2026-11-26). The Highlight switch
+   * goes off: a click now walks. The highlights are hidden until the walk ends.
    */
-  startWalk(): void {
+  startWalk(fromSelected = false): void {
     if (!this.snap || !this.win.viewing()) return;
+    const sel = this.selection;
+    if (fromSelected && (sel?.kind !== 'node' || !(sel.id in this.snap.nodes))) return;
     if (this.win.highlighting()) this.win.setHighlighting(false);
     const starts = startNodes(this.snap);
-    this.walkPath = starts.length === 1 ? [{ id: starts[0], via: null }] : [];
+    this.walkPath = fromSelected && sel?.kind === 'node' ? [{ id: sel.id, via: null }]
+      : starts.length === 1 ? [{ id: starts[0], via: null }] : [];
     this.showWalk(true);
     this.paintHighlights(); // the highlights hide for the walk, and Clear with them
   }
@@ -836,12 +845,12 @@ export class Tab {
     const path = this.walkPath;
     if (!path || !this.snap) return;
     if (action.kind === 'leave') { this.leaveWalk(); return; }
-    if (action.kind === 'again') { this.startWalk(); return; }
+    if (action.kind === 'again') { this.startWalk(); return; } // Start again: from the start
     if (action.kind === 'start') this.walkPath = [{ id: action.id, via: null }];
     if (action.kind === 'back') {
       if (path.length < 2) return;
       path.pop();
-      this.showWalk(true, true); // straight back, not along the arrow the wrong way
+      this.showWalk(true);
       return;
     }
     if (action.kind === 'choose') {
@@ -855,12 +864,11 @@ export class Tab {
 
   /**
    * Shows the walk: its place selected, so the sidebar shows its title and description,
-   * and the chart's walk view. `straight`: the view goes straight there (Back).
+   * and the chart's walk view.
    */
-  private showWalk(move: boolean, straight = false): void {
+  private showWalk(move: boolean): void {
     if (!this.walkPath || !this.snap) return;
     const view = walkView(this.snap, this.walkPath);
-    if (straight) view.via = null;
     const here = view.here;
     this.select(here === null ? null : here in this.snap.nodes ? { kind: 'node', id: here } : { kind: 'sub', id: here });
     this.chart.setWalk(view, move);
@@ -875,7 +883,7 @@ export class Tab {
     const kept = stillThere(this.snap, this.walkPath);
     const stepped = kept.length !== this.walkPath.length;
     this.walkPath = kept;
-    this.showWalk(stepped, true);
+    this.showWalk(stepped);
   }
 
   /** The arrow an edit of its label or style is putting in, and how it reads after (`edit`). */

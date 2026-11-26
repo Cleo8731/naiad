@@ -42,6 +42,16 @@ const WALK_READABLE = 11 / 14;
 const WALK_PAD = 48;
 const CHIP_INSET = 12;
 
+/**
+ * How far along a walk's glide is, from 0 to 1, at a time from 0 to 1: it speeds up
+ * gently, then slows down to a stop (cubic ease in and out), so the move is never jerky
+ * (the user, 2026-11-26).
+ */
+export function walkEase(t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+}
+
 /** A rounded node's corners (the user, 2026-11-16, Q164: 16 px, far from a square node's 4 px)
  * and an arrow's bends (the user, 2026-11-13), in px. */
 const ROUNDED_NODE_RADIUS = 16;
@@ -478,11 +488,9 @@ export class Chart {
   /**
    * Shows a walk (T6.4), or none: the places it can go lit and the rest faded, the path
    * taken marked, the walk bar, and the edge chips. With `move`, the view travels to the
-   * walk's place, along the arrow just taken (`walkCamera`); without, it stays (a
-   * redraw after the file changed).
+   * walk's place (`walkCamera`); without, it stays (a redraw after the file changed).
    */
   setWalk(view: WalkView | null, move = true): void {
-    const was = this.walk;
     this.walk = view;
     this.stage.classList.toggle('walking', !!view);
     if (view) this.trace(null);
@@ -490,7 +498,7 @@ export class Chart {
     this.paintHighlights(); // hidden for the walk, back when it ends (the user, 2026-11-26)
     this.renderWalkBar();
     if (!view) { this.stopWalkGlide(); this.walkChips.replaceChildren(); return; }
-    if (move) this.walkCamera(was ? view.via : null);
+    if (move) this.walkCamera();
     else this.placeChips();
   }
 
@@ -627,12 +635,12 @@ export class Chart {
   }
 
   /**
-   * Moves the view to the walk's place (`walkGoal`). After an arrow was taken (`via`),
-   * the view travels along that arrow's line, zooming out on the way when the arrow is
-   * long (Q232); otherwise it glides straight there. Without motion when the person's
-   * system asks for less of it.
+   * Moves the view to the walk's place (`walkGoal`) in a straight line, easing in and
+   * out, zooming out on the way when the way is long (Q232). It no longer follows the
+   * arrow's curves, which made a bumpy ride (the user, 2026-11-26). Without motion when
+   * the person's system asks for less of it.
    */
-  private walkCamera(via: number | null): void {
+  private walkCamera(): void {
     this.stopWalkGlide();
     this.stopGlide();
     const goal = this.walkGoal();
@@ -643,13 +651,7 @@ export class Chart {
     const from = { ...this.view };
     const c0 = { x: (ax - from.x) / from.k, y: (ay - from.y) / from.k };
     const c1 = { x: goal.cx, y: goal.cy };
-    const line = via !== null ? this.canvas.querySelector<SVGPathElement>(`[data-edge-line="${via}"]`) : null;
-    let length = 0;
-    try { length = line?.getTotalLength() ?? 0; } catch { length = 0; }
-    const at = (s: number) => { const p = line!.getPointAtLength(s); return { x: p.x - this.origin.x, y: p.y - this.origin.y }; };
-    const p0 = length ? at(0) : null;
-    const p1 = length ? at(length) : null;
-    const distance = length || Math.hypot(c1.x - c0.x, c1.y - c0.y);
+    const distance = Math.hypot(c1.x - c0.x, c1.y - c0.y);
     const end = () => {
       this.walkFrame = null;
       this.view = { x: ax - goal.k * c1.x, y: ay - goal.k * c1.y, k: goal.k };
@@ -659,7 +661,7 @@ export class Chart {
     const onScreen = distance * Math.min(from.k, goal.k);
     if (still || (onScreen < 2 && Math.abs(Math.log(goal.k / from.k)) < 0.01)) { end(); return; }
     const r = this.stage.getBoundingClientRect();
-    const time = Math.min(1400, 420 + onScreen * 0.35);
+    const time = Math.min(1400, 480 + onScreen * 0.35);
     // On a long way, the zoom dips so most of it is in view at the halfway point.
     const kMid = Math.max(MIN_ZOOM, Math.min(from.k, goal.k, (0.8 * Math.min(r.width, r.height)) / Math.max(1, distance)));
     const l0 = Math.log(from.k), l1 = Math.log(goal.k);
@@ -669,13 +671,9 @@ export class Chart {
       started ??= now;
       const t = Math.min(1, (now - started) / time);
       if (t >= 1) { end(); return; }
-      const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      const e = walkEase(t);
       const k = Math.exp(l0 + (l1 - l0) * e + 4 * e * (1 - e) * dip);
-      let c: { x: number; y: number };
-      if (p0 && p1) {
-        const p = at(length * e);
-        c = { x: p.x + (1 - e) * (c0.x - p0.x) + e * (c1.x - p1.x), y: p.y + (1 - e) * (c0.y - p0.y) + e * (c1.y - p1.y) };
-      } else c = { x: c0.x + (c1.x - c0.x) * e, y: c0.y + (c1.y - c0.y) * e };
+      const c = { x: c0.x + (c1.x - c0.x) * e, y: c0.y + (c1.y - c0.y) * e };
       this.view = { x: ax - k * c.x, y: ay - k * c.y, k };
       this.apply();
       this.walkFrame = requestAnimationFrame(tick);

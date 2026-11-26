@@ -5,7 +5,7 @@
 // view.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { Chart, type ChartEvents } from '../src/chart';
+import { Chart, walkEase, type ChartEvents } from '../src/chart';
 import { choicesFrom, startNodes, stillThere, walkView, type WalkView } from '../src/walk';
 
 type S = Parameters<typeof walkView>[0];
@@ -268,6 +268,52 @@ describe('the chart during a walk', () => {
     expect(Math.abs(turn)).toBeLessThan(Math.PI / 4);
     chart.setWalk(null);
     expect(stage.querySelectorAll('.walk-chip')).toHaveLength(0);
+  });
+
+  test('the view glides to the next place in a straight line, not along the curves of the arrow taken (the user, 2026-11-26)', () => {
+    // The arrow taken loops far out to the side; the view must not follow it.
+    const line = stage.querySelector('[data-edge-line="0"]') as any;
+    line.getTotalLength = () => 1000;
+    line.getPointAtLength = (d: number) => ({ x: 140 + Math.sin((d / 1000) * Math.PI) * 900, y: 120 + d / 10 });
+    places.B = rect(100, 1400, 80, 40); // far below, so there is a way to travel
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
+    const v0 = { ...(chart as any).view };
+    chart.setWalk(view('B'));
+    const goal = (chart as any).walkGoal();
+    const centre = (v: { x: number; y: number; k: number }) => ({ x: (goal.ax - v.x) / v.k, y: (goal.ay - v.y) / v.k });
+    const c0 = centre(v0), c1 = { x: goal.cx, y: goal.cy };
+    const seen: { x: number; y: number }[] = [];
+    for (let now = 0; frames.length && now < 5000; now += 50) {
+      frames.shift()!(now);
+      seen.push(centre((chart as any).view));
+    }
+    expect(seen.length).toBeGreaterThan(5);
+    const len = Math.hypot(c1.x - c0.x, c1.y - c0.y);
+    let last = -1;
+    for (const p of seen) {
+      const off = Math.abs((c1.x - c0.x) * (p.y - c0.y) - (c1.y - c0.y) * (p.x - c0.x)) / len; // distance from the straight way
+      expect(off).toBeLessThan(0.5);
+      const along = ((p.x - c0.x) * (c1.x - c0.x) + (p.y - c0.y) * (c1.y - c0.y)) / len;
+      expect(along).toBeGreaterThanOrEqual(last - 1e-6); // never back
+      last = along;
+    }
+    expect(last).toBeCloseTo(len, 3);
+    places.B = rect(100, 200, 80, 40);
+  });
+
+  test('the glide speeds up gently and slows to a stop (an ease in and out)', () => {
+    expect(walkEase(0)).toBe(0);
+    expect(walkEase(1)).toBe(1);
+    expect(walkEase(0.5)).toBeCloseTo(0.5, 9);
+    expect(walkEase(0.05)).toBeLessThan(0.001); // a soft start
+    expect(1 - walkEase(0.95)).toBeLessThan(0.001); // a soft stop
+    for (let t = 0; t < 1; t += 0.01) expect(walkEase(t + 0.01)).toBeGreaterThanOrEqual(walkEase(t));
+  });
+
+  test('Leave is red', () => {
+    const css = readFileSync('src/style.css', 'utf8');
+    expect(css).toMatch(/\.walk-bar button\.walk-leave \{[^}]*color:\s*var\(--bad\)/);
   });
 
   test('trace on hover does not run during a walk, which lights its own way', () => {
