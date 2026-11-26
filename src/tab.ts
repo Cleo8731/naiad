@@ -546,8 +546,9 @@ export class Tab {
     const items = parseHighlights(this.hlText);
     this.chart.setHighlights(this.snap ? resolveHighlights(items, this.snap) : []);
     if (!this.win.shown()) return;
-    // Clear, with the count of highlights in the file (T4.9).
-    this.bar.clear.hidden = items.length === 0 || this.path === null;
+    // Clear, with the count of highlights in the file (T4.9); gone during a walk, which
+    // hides the highlights (the user, 2026-11-26).
+    this.bar.clear.hidden = items.length === 0 || this.path === null || this.walking;
     this.bar.clear.querySelector('span')!.textContent = `Clear ${String(items.length)}`;
   }
 
@@ -787,6 +788,7 @@ export class Tab {
   /**
    * Starts a walk (the pill's Walk button, Q229): at the one node no arrow points to, or,
    * with several, the reader picks one. The Highlight switch goes off: a click now walks.
+   * The highlights are hidden until the walk ends (the user, 2026-11-26).
    */
   startWalk(): void {
     if (!this.snap || !this.win.viewing()) return;
@@ -794,6 +796,7 @@ export class Tab {
     const starts = startNodes(this.snap);
     this.walkPath = starts.length === 1 ? [{ id: starts[0], via: null }] : [];
     this.showWalk(true);
+    this.paintHighlights(); // the highlights hide for the walk, and Clear with them
   }
 
   /** Ends the walk; the view stays where the walk left it, and the pill comes back. */
@@ -801,6 +804,7 @@ export class Tab {
     if (this.walkPath === null) return;
     this.walkPath = null;
     this.chart.setWalk(null);
+    this.paintHighlights();
     this.select(null);
   }
 

@@ -130,53 +130,86 @@ describe('the chart during a walk', () => {
     expect(events.onSelect).not.toHaveBeenCalled(); // a click on the bar is not a click on the chart
   });
 
-  test('a next place out of view gets a button in the bar, named in full, in the order the places lie on the chart (the user, 2026-11-26)', () => {
-    // "No" leads far left, "Yes" far right: too far to fit in view with B, text readable.
+  const chipTexts = () => [...stage.querySelectorAll('.walk-chip')].map((c) => c.textContent);
+
+  test('a next place out of view gets an edge chip, named in full, in the order the places lie on the chart; the bar names none (the user, 2026-11-26)', () => {
+    // "No" leads far left, "Yes" far right. Shown without moving the view: after the
+    // file changed, as the view then stays.
     places.A = rect(-1500, 100, 80, 40);
     places.C = rect(1500, 300, 80, 40);
-    chart.setWalk(view('B'));
-    expect(texts()).toEqual(['Back', 'No → Start', 'Yes → Done', 'Leave']); // not the file's order, Yes first
-    expect(note()).toBe('Out of view');
-    expect([...stage.querySelectorAll<HTMLButtonElement>('.walk-choices button')].map((b) => b.title)).toEqual(['No → Start (1)', 'Yes → Done (2)']);
+    chart.setWalk(view('B'), false);
+    expect(texts()).toEqual(['Back', 'Leave']);
+    expect(note()).toBe('Click a next step on the chart');
+    expect(chipTexts()).toEqual(['➜No → Start', '➜Yes → Done']); // not the file's order, Yes first
+    expect([...stage.querySelectorAll<HTMLButtonElement>('.walk-chip')].map((b) => b.title)).toEqual(['No → Start (out of view; key 1)', 'Yes → Done (out of view; key 2)']);
     expect(chart.walkChoice(0)).toEqual({ kind: 'choose', edge: 2 }); // the key 1
-    click(stage.querySelectorAll('.walk-choices button')[1]);
-    expect(events.onWalk).toHaveBeenLastCalledWith({ kind: 'choose', edge: 1 });
-    // Swapped sides, swapped order. (Shown without moving the view: after the file
-    // changed, as the view then stays; the glide above never lands here, so it ends first.)
-    chart.setWalk(null);
+    // Swapped sides, swapped order.
     places.A = rect(900, 100, 80, 40);
     places.C = rect(-300, 300, 80, 40);
     chart.setWalk(view('B'), false);
-    expect(texts()).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
+    expect(chipTexts()).toEqual(['➜Yes → Done', '➜No → Start']);
     expect(chart.walkChoice(0)).toEqual({ kind: 'choose', edge: 1 });
-    // "No" back in view (the reader panned): only "Yes" keeps its button, with its key still 1.
+    // "No" back in view (the reader panned): only "Yes" keeps its chip, with its key still 1.
     places.A = rect(300, 100, 80, 40);
     chart.setWalk(view('B'), false);
-    expect(texts()).toEqual(['Back', 'Yes → Done', 'Leave']);
-    expect(stage.querySelector<HTMLButtonElement>('.walk-choices button')!.title).toBe('Yes → Done (1)');
+    expect(chipTexts()).toEqual(['➜Yes → Done']);
+    expect(stage.querySelector<HTMLButtonElement>('.walk-chip')!.title).toBe('Yes → Done (out of view; key 1)');
     Object.assign(places, { A: rect(100, 100, 80, 40), C: rect(100, 300, 80, 40) });
   });
 
   test('a chart drawn sideways (LR) orders the places top to bottom', () => {
     Object.assign(chart as any, { snap: { ...SNAP, direction: 'LR' } });
-    places.A = rect(900, 500, 80, 40);
-    places.C = rect(900, 50, 80, 40);
+    places.A = rect(900, 700, 80, 40);
+    places.C = rect(900, -200, 80, 40);
     chart.setWalk(view('B'), false);
-    expect(texts()).toEqual(['Back', 'Yes → Done', 'No → Start', 'Leave']);
+    expect(chipTexts()).toEqual(['➜Yes → Done', '➜No → Start']);
     Object.assign(places, { A: rect(100, 100, 80, 40), C: rect(100, 300, 80, 40) });
   });
 
-  test('the bar\'s buttons show a name in full, wrapping onto more lines, as edge chips do', () => {
+  test('an edge chip is centred where its arrow\'s line leaves the view', () => {
+    // "Yes" runs from B down and to the right, to C far below: it leaves the view's foot
+    // (y 600) at x 140 + 560 * 360 / 660, about 445, not where the line from the view's
+    // middle to C would meet it (about 279).
+    places.C = rect(100, 900, 80, 40);
+    const line = stage.querySelector('[data-edge-line="1"]') as any;
+    const from = { x: 140, y: 240 }, to = { x: 700, y: 900 };
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    line.getTotalLength = () => length;
+    line.getPointAtLength = (s: number) => ({ x: from.x + (to.x - from.x) * s / length, y: from.y + (to.y - from.y) * s / length });
+    chart.setWalk(view('B'), false);
+    const chip = stage.querySelector<HTMLElement>('.walk-chip')!;
+    expect(chip.textContent).toBe('➜Yes → Done');
+    expect(Math.abs(parseFloat(chip.style.left) - 445.4)).toBeLessThan(1.5); // jsdom gives it no width
+    // Its arrow points the way the line runs there: down and to the right.
+    const turn = Number(/rotate\(([-\d.e]+)rad\)/.exec(chip.querySelector<HTMLElement>('.walk-chip-dir')!.style.transform)![1]);
+    expect(turn).toBeCloseTo(Math.atan2(660, 560), 2);
+    places.C = rect(100, 300, 80, 40);
+  });
+
+  test('edge chips and the walk bar\'s buttons show a name in full, wrapping onto more lines', () => {
     const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     const rule = (sel: string) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((m) => m[1].split(',').map((s) => s.trim()).includes(sel)).map((m) => m[2]).join(';');
     for (const sel of ['.walk-choices button', '.walk-chip']) {
       expect(rule(sel), sel).not.toMatch(/white-space:\s*nowrap|text-overflow|(^|[;\s])height:\s*\d/);
       expect(rule(sel), sel).toMatch(/min-height/);
+      expect(rule(sel), sel).toMatch(/(^|[;\s])height:\s*auto/); // a button's own height (30px) would cut a second line
     }
-    expect(rule('.walk-choices button')).toMatch(/white-space:\s*normal/);
+    // The walk's place wears a highlight's halo (the user, 2026-11-26).
+    expect(rule('.stage.walking .canvas .node.walk-here')).toMatch(/var\(--hl\)/);
   });
 
-  test('one way on: a note to click it; an end offers Start again; picking, a place to start out of view gets a button', () => {
+  test('the highlights are hidden while a walk lasts and come back when it ends (the user, 2026-11-26)', () => {
+    chart.setHighlights([{ kind: 'node', id: 'A' }, { kind: 'edge', index: 1 }]);
+    expect(classes('hl')).toEqual(['A', 'edge 1', 'edge 1']);
+    chart.setWalk(view('B'));
+    expect(classes('hl')).toEqual([]);
+    chart.setHighlights([{ kind: 'node', id: 'C' }]); // the highlights file changed meanwhile
+    expect(classes('hl')).toEqual([]);
+    chart.setWalk(null);
+    expect(classes('hl')).toEqual(['C']);
+  });
+
+  test('one way on: a note to click it; an end offers Start again; picking, a place to start out of view gets a chip', () => {
     chart.setWalk(view('A'));
     expect(texts()).toEqual(['Back', 'Leave']);
     expect(note()).toBe('Click the next step on the chart');
@@ -185,8 +218,10 @@ describe('the chart during a walk', () => {
     expect(stage.querySelector('.walk-choices')!.textContent).toBe('The end of this pathStart again');
     chart.setWalk(null);
     chart.setWalk(walkView(SNAP, []), false); // D, the only place to start, lies off to the right
-    expect(texts()).toEqual(['Back', 'Note', 'Leave']);
-    expect(note()).toBe('Start at, out of view');
+    expect(texts()).toEqual(['Back', 'Leave']);
+    expect(note()).toBe('Click a place to start on the chart');
+    expect(chipTexts()).toEqual(['➜Note']);
+    expect(stage.querySelector<HTMLElement>('.walk-chip')!.dataset).toMatchObject({ walk: 'start', value: 'D' });
     expect(chart.walkChoice(0)).toEqual({ kind: 'start', id: 'D' });
   });
 

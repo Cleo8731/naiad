@@ -711,7 +711,9 @@ body.dragging-tab #app { pointer-events: none; }
 .stage.walking .canvas path.walk-path:not(.walk-on) { stroke: var(--accent) !important; stroke-width: 2.5px !important; opacity: 0.7; }
 .stage.walking .canvas path.walk-path:not(.walk-on) + path.dir-mark { stroke: var(--accent) !important; opacity: 0.7; }
 .stage.walking .canvas path.walk-on { stroke-width: 2.5px !important; }
-.stage.walking .canvas .node.walk-here { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--select) 60%, transparent)); }
+/* The walk's place wears a highlight's halo while the walk is there; the highlights
+   themselves are hidden for the walk (`Chart.paintHighlights`; the user, 2026-11-26). */
+.stage.walking .canvas .node.walk-here { filter: drop-shadow(0 0 2px var(--hl)) drop-shadow(0 0 4px var(--hl)) drop-shadow(0 0 6px var(--hl)); }
 .canvas .node.sel .label-container, .canvas .node.sel .label-container path,
 .canvas .node.sel > :is(rect, polygon, circle, ellipse, path) { stroke: var(--select) !important; stroke-width: 2.5px !important; }
 .canvas .cluster.sel > rect { stroke: var(--select) !important; stroke-width: 2px !important; }
@@ -979,9 +981,8 @@ input.switch:checked::before { transform: translateX(14px); }
 }
 
 /* Walk's bar (T6.4): in the pill's place at the chart's foot while a walk is shown, with
-   Back, the next places out of view and Leave. A place's button shows its name in full,
-   wrapping onto more lines and growing to fit (the user, 2026-11-26); the buttons wrap
-   in a narrow chart. */
+   Back, a note on what to click, and Leave; at an end, Start again. It names no next
+   place: those are clicked on the chart, or on their edge chips (the user, 2026-11-26). */
 .walk-bar {
   position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 8; width: fit-content; max-width: calc(100% - 28px); margin: 0 auto;
   display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 24px; user-select: none;
@@ -1003,12 +1004,13 @@ input.switch:checked::before { transform: translateX(14px); }
 .walk-bar button:disabled { opacity: 0.45; }
 .walk-back, .walk-leave { flex: none; }
 .walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
-/* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named on the chart's
-   edge on its side; a click takes that choice. Placed by `placeChips` in `chart.ts`. */
+/* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named in full at the
+   chart's edge, centred where its arrow leaves the view; its name wraps and the chip grows
+   to hold it. A click takes that choice. Placed by `placeChips` in `chart.ts`. */
 .walk-chips { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .walk-chip {
   position: absolute; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
-  max-width: 260px; min-height: 30px; padding: 5px 12px 5px 8px; border-radius: 15px; line-height: 1.3; text-align: left;
+  height: auto; max-width: 300px; min-height: 34px; padding: 6px 14px 6px 10px; border-radius: 17px; line-height: 1.3; text-align: left;
   border: 1px solid var(--accent); background: var(--panel); color: var(--text); font: inherit; font-size: 12.5px;
   box-shadow: 0 6px 18px -8px var(--shadow); cursor: pointer;
 }

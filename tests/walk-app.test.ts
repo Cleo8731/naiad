@@ -106,6 +106,22 @@ describe('a walk', () => {
     expect(disk.writes).toEqual([]);
   });
 
+  it('Clear, the button that takes the highlights off, is gone while a walk hides them (the user, 2026-11-26)', async () => {
+    const disk = new FakeDisk();
+    disk.files.set(FILE, BASE);
+    disk.highlights.set(FILE, 'boil\npour\n');
+    await startApp(disk, FILE);
+    const clear = () => q<HTMLButtonElement>('[data-act="clear"]')!;
+    await vi.waitFor(() => expect(clear().hidden).toBe(false));
+    expect(clear().textContent).toContain('Clear 2');
+    await toView();
+    walkButton().click();
+    expect(clear().hidden).toBe(true);
+    walk({ kind: 'leave' });
+    expect(clear().hidden).toBe(false);
+    expect(disk.highlights.get(FILE)).toBe('boil\npour\n'); // the file keeps them
+  });
+
   it('keys (Q233): 1 to 9 take a choice, Right arrow takes the one way on, Left arrow goes back, Escape leaves', async () => {
     await start();
     await toView();
