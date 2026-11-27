@@ -1,6 +1,6 @@
 [package]
 name = "naiad"
-version = "1.0.2"
+version = "1.0.3"
 description = "A lightweight viewer/editor for plain Mermaid flowchart files"
 license = "MIT"
 edition = "2021"
