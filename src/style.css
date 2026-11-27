@@ -907,11 +907,15 @@ input.class-rename {
 .class-item > .problem { padding: 2px 8px 4px; color: var(--bad); overflow-wrap: anywhere; }
 .class-item > .problem:empty { display: none; }
 .class-menu {
-  position: absolute; z-index: 5; top: calc(100% + 2px); right: 0; width: min(270px, 100%);
+  position: absolute; z-index: 5; top: calc(100% + 2px); right: 0; width: min(290px, 100%);
   display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control);
   background: var(--panel); box-shadow: 0 10px 28px rgb(0 0 0 / 0.16);
 }
 .class-menu .row > .row-label { width: 56px; }
+/* The colours stay on one row (the user, 2026-11-26), the class's own colour first when it
+   is none of the six: the swatches shrink a little in a narrow panel instead of wrapping. */
+.class-menu .swatches { flex: 1; min-width: 0; flex-wrap: nowrap; gap: 5px; }
+.class-menu .swatch { flex: 0 1 22px; min-width: 14px; height: auto; aspect-ratio: 1; }
 .class-menu-acts { display: flex; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .class-menu-acts button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); font-weight: 600; }
 .class-menu-acts button svg { width: 15px; height: 15px; display: block; }

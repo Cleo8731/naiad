@@ -1516,7 +1516,7 @@ export class App {
             this.toast(`${why()}The ${lost} you were typing was not saved, so Naiad stays in Edit mode.`);
             return;
           }
-          await tab.sidebar.settle(); // a description Done is writing is in the file first
+          await tab.sidebar.settle(); // a description whose editing ended is in the file first
         }
         const more = this.tabs.some((t) => t.sidebar.draft() || t.sidebar.typed() || t.sidebar.writing());
         if (!more) break;

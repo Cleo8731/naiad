@@ -149,6 +149,12 @@ describe('the About panel\'s Classes (Q264)', () => {
     expect(menuOf(1).querySelector<HTMLElement>('.swatch.own')!.hidden).toBe(true);
   });
 
+  it('the menu\'s colours stay on one row, its own colour too: they shrink instead of wrapping (the user, 2026-11-26)', async () => {
+    const css = (await import('node:fs')).readFileSync('src/style.css', 'utf8');
+    expect(/\n\.class-menu \.swatches \{([^}]*)\}/.exec(css)![1]).toMatch(/flex-wrap: nowrap/);
+    expect(/\n\.class-menu \.swatch \{([^}]*)\}/.exec(css)![1]).toMatch(/flex: 0 1 22px;[^}]*aspect-ratio: 1/);
+  });
+
   it('Border writes a thick or dashed border, and Normal takes it off (Q274)', async () => {
     const { ui } = await start();
     choose(listIn(openMenu(0), 'Border'), 'thickdashed');
@@ -238,7 +244,15 @@ describe('the panels\' order (Q272, Q277)', () => {
     expect(desc.classList.contains('editing')).toBe(false);
     button('Edit')!.click();
     expect(desc.classList.contains('editing')).toBe(true);
-    button('Cancel')!.click();
+    // No Done or Cancel: a click outside the box ends the editing (the user, 2026-11-26).
+    expect(desc.querySelectorAll('.desc-head button:not([hidden])').length).toBe(0);
+    // Focus going to another program keeps the box open.
+    const away = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    q<HTMLTextAreaElement>('.sidebar .desc-edit')!.blur();
+    away.mockRestore();
+    expect(desc.classList.contains('editing')).toBe(true);
+    q<HTMLTextAreaElement>('.sidebar .desc-edit')!.focus();
+    q<HTMLTextAreaElement>('.sidebar .desc-edit')!.blur();
     expect(desc.classList.contains('editing')).toBe(false);
     const css = (await import('node:fs')).readFileSync('src/style.css', 'utf8');
     expect(css).toMatch(/\n\.desc\.editing > \.desc-head \{[^}]*position: sticky/);

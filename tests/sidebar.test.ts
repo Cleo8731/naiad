@@ -39,7 +39,7 @@ describe('a description being written is kept while the file changes (bug hunt S
     expect([...group.options].map((o) => o.textContent)).toEqual(['None', 'Getting ready', 'Model', 'New group…']);
     expect(group.value).toBe('prep');
 
-    root.querySelector<HTMLButtonElement>('.desc button.primary')!.click(); // Done
+    now.blur(); // a click outside the box
     expect(actions.setDescription).toHaveBeenCalledWith('collect', 'A draft the person is still writing.');
   });
 

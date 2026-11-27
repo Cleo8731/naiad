@@ -258,7 +258,7 @@ export class Sidebar {
     return null;
   }
 
-  /** Done's writes of a description under way. */
+  /** The writes of descriptions whose editing ended, under way. */
   private writes = new Set<Promise<unknown>>();
 
   private track(write: Promise<unknown>): void {
@@ -267,15 +267,15 @@ export class Sidebar {
     write.then(end, end);
   }
 
-  /** Whether a description Done wrote is still being written. */
+  /** Whether a description whose editing ended is still being written. */
   writing(): boolean {
     return this.writes.size > 0;
   }
 
   /**
-   * Waits for the descriptions Done is writing; true when there were any. The app waits
-   * before the file is left, so a Done pressed as it is left is in the file first (bug
-   * hunt round 7, oC57).
+   * Waits for the descriptions being written as their editing ended; true when there were
+   * any. The app waits before the file is left, so a description ended as it is left is in
+   * the file first (bug hunt round 7, oC57).
    */
   async settle(): Promise<boolean> {
     if (!this.writes.size) return false;
@@ -774,9 +774,10 @@ export class Sidebar {
   }
 
   /**
-   * A description shown as Markdown with Edit, written in a box with Done and Cancel: a
-   * node's, or the flowchart's (`id` is `FLOWCHART_ID`). What is typed and not yet written
-   * is the panel's `draft()`.
+   * A description shown as Markdown with Edit, written in a box: a node's, or the
+   * flowchart's (`id` is `FLOWCHART_ID`). A click outside the box, Escape or Ctrl+Enter
+   * ends the editing and writes what was typed; Undo takes it back (the user, 2026-11-26:
+   * no Done or Cancel). What is typed and not yet written is the panel's `draft()`.
    */
   private description(id: string, read: (v: View) => string, placeholder: string): HTMLElement {
     const a = this.actions;
@@ -785,41 +786,44 @@ export class Sidebar {
       class: 'desc-edit', placeholder, spellcheck: 'true',
       keydown: (e) => {
         const ke = e as KeyboardEvent;
-        if (ke.key === 'Enter' && (ke.ctrlKey || ke.metaKey)) { e.preventDefault(); finish(true); }
-        if (ke.key === 'Escape') { e.stopPropagation(); finish(false); }
+        if (ke.key === 'Enter' && (ke.ctrlKey || ke.metaKey)) { e.preventDefault(); finish(); }
+        if (ke.key === 'Escape') { e.stopPropagation(); finish(); }
+      },
+      // Focus leaving the box for anything in the window ends the editing. Focus leaving
+      // the window (another program) keeps the box open, and so does a box taken out of
+      // the page as the panel is drawn again, whose text `draft()` and `resume` carry.
+      blur: () => {
+        if (this.editingDescription && area.isConnected && !area.hidden && document.hasFocus()) finish();
       },
     });
     const editBtn = h('button', { class: 'ghost', click: () => begin() }, 'Edit');
-    const doneBtn = h('button', { class: 'primary', title: 'Ctrl+Enter', click: () => finish(true) }, 'Done');
-    const cancelBtn = h('button', { class: 'ghost', title: 'Esc', click: () => finish(false) }, 'Cancel');
     let current = '';
     let started = ''; // the description as Edit showed it, or as the file has it since, while untouched
-    let pending: string | null = null; // what Done is writing, until that write has ended (C42)
-    let latest: string | null = null; // what the last Done pressed wrote or is writing
+    let pending: string | null = null; // what the end of an editing is writing, until that write has ended (C42)
+    let latest: string | null = null; // what the last editing ended wrote or is writing
     const paint = () => {
       const editing = this.editingDescription;
       el.classList.toggle('editing', editing);
       body.hidden = editing;
       area.hidden = !editing;
       editBtn.hidden = editing;
-      doneBtn.hidden = cancelBtn.hidden = !editing;
       if (editing) return;
       if (current.trim()) body.innerHTML = renderMarkdown(current);
       else body.replaceChildren(h('p', { class: 'empty' }, 'No description yet. Double-click here to write one.'));
     };
     const begin = () => {
       this.editingDescription = true;
-      // Edit pressed again while Done's write is checked shows what Done is writing, not
-      // the description it replaces (bug hunt round 5, C42).
+      // Edit pressed again while the last editing's write is checked shows what that write
+      // holds, not the description it replaces (bug hunt round 5, C42).
       area.value = started = pending ?? current;
       paint();
       area.focus();
     };
-    const finish = (save: boolean) => {
+    const finish = () => {
       this.editingDescription = false;
-      // Only a change the person made is saved: Done on an untouched description never
-      // puts back a text that a change on disk replaced meanwhile (bug hunt C26).
-      if (save && area.value !== started) {
+      // Only a change the person made is saved: ending an untouched description's editing
+      // never puts back a text that a change on disk replaced meanwhile (bug hunt C26).
+      if (area.value !== started) {
         const text = area.value;
         pending = latest = text;
         this.track(Promise.resolve(a.setDescription(id, text)).finally(() => { if (pending === text) pending = null; }));
@@ -833,7 +837,7 @@ export class Sidebar {
       return { id, text, written: () => { if (area.value === text) started = text; } };
     };
     this.resume = (text) => {
-      // A Done pressed since, with other text: that text stands, written or coming back
+      // An editing ended since, with other text: that text stands, written or coming back
       // on its own, and the older one never returns over it (bug hunt round 6, oC46, C45).
       if (latest !== null && text !== latest) return;
       // Typed into since Edit was pressed again: that typing began from `text` (`begin`),
@@ -849,10 +853,10 @@ export class Sidebar {
       if (this.editingDescription && area.value === started && current !== started) area.value = started = current;
       paint();
     });
-    // While it is edited, its head (Done, Cancel) stays at the panel's top as the panel
-    // scrolls, and its box grows with the text: one scroll bar, the panel's (Q278).
+    // While it is edited, its head stays at the panel's top as the panel scrolls, and its
+    // box grows with the text: one scroll bar, the panel's (Q278).
     const el = h('div', { class: 'desc' },
-      h('div', { class: 'desc-head' }, h('span', {}, 'Description'), editBtn, cancelBtn, doneBtn),
+      h('div', { class: 'desc-head' }, h('span', {}, 'Description'), editBtn),
       body, area);
     return el;
   }

@@ -459,7 +459,7 @@ describe('the sidebar never puts back a value a change on disk replaced (bug hun
     disk.outside(FILE, BASE.replace('%% Pull the raw exports from the warehouse.', '%% The agent wrote this instead.'));
     await sleep(500);
     expect(area.value).toBe('The agent wrote this instead.'); // an untouched description follows the file
-    document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click(); // Done
+    document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.blur(); // a click outside the box
     await sleep(1000);
     expect(disk.files.get(FILE)).toContain('The agent wrote this instead.');
     expect(disk.files.get(FILE)).not.toContain('Pull the raw exports');
@@ -526,14 +526,14 @@ describe('a description being written is saved when the person leaves it (bug hu
     expect(disk.files.get(FILE)).toContain('New node');
   });
 
-  it('Cancel still drops the description being written', async () => {
+  it('Escape writes the description being written, as a click outside the box does (the user, 2026-11-26)', async () => {
     const { disk, ui } = await start();
     await writing(ui);
-    document.querySelector<HTMLButtonElement>('.desc-head button[title="Esc"]')!.click(); // Cancel
-    select(ui, { kind: 'node', id: 'clean' });
+    document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.hidden).toBe(true);
     await sleep(800);
-    expect(disk.files.get(FILE)).toContain('Pull the raw exports');
-    expect(disk.files.get(FILE)).not.toContain(DRAFT);
+    expect(disk.files.get(FILE)).toContain(`%% ${DRAFT}`);
+    expect(disk.files.get(FILE)).not.toContain('Pull the raw exports');
   });
 
   // Bug hunt round 4, C40 and oC40: the description could not be written (the text pane
@@ -574,7 +574,7 @@ describe('a description being written is saved when the person leaves it (bug hu
     await writing(ui);
     ui.type(BROKEN);
     await sleep(400);
-    document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click(); // Done
+    document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.blur(); // a click outside the box
     await sleep(800);
     expect(disk.asked).toEqual([]);
     expect(box()!.hidden).toBe(false);
@@ -599,7 +599,7 @@ describe('a description being written is saved when the person leaves it (bug hu
 
   // Bug hunt round 5, C42: Edit pressed again while Done's write was still being checked
   // showed the old description, and when the write failed the description was lost.
-  const done = () => document.querySelector<HTMLButtonElement>('.desc-head button.primary')!.click();
+  const done = () => document.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!.blur(); // a click outside the box
   const edit = () => document.querySelector<HTMLButtonElement>('.desc-head button:not(.primary):not([title="Esc"])')!.click();
 
   it('C42: Edit pressed again while a Done that cannot be written is checked: the description comes back', async () => {

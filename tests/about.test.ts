@@ -30,12 +30,12 @@ const shownName = () => q('.sidebar .read-title')?.textContent ?? null;
 const body = () => q('.sidebar .desc-body')?.textContent?.trim() ?? null;
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.sidebar button')].find((b) => b.textContent === label && !b.hidden) ?? null;
 const select = (target: unknown) => chartEvents.last!.onSelect(target as never);
-/** Writes `text` as the flowchart's description: Edit, type, Done. */
+/** Writes `text` as the flowchart's description: Edit, type, a click outside the box. */
 function write(text: string) {
   button('Edit')!.click();
   const area = q<HTMLTextAreaElement>('.sidebar .desc-edit')!;
   area.value = text;
-  button('Done')!.click();
+  area.blur();
 }
 
 beforeEach(() => localStorage.clear());

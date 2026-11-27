@@ -318,7 +318,7 @@ export class Tab {
         }
       }
       await this.flushSave();
-      if (await this.sidebar.settle()) continue; // a Done pressed meanwhile: written, then saved (round 7, oC57)
+      if (await this.sidebar.settle()) continue; // a description ended meanwhile: written, then saved (round 7, oC57)
       if (!letGoDraft && this.sidebar.draft()) continue;
       if (!letGoBox && this.sidebar.typed()) continue;
       if (!this.typingWaits() || more++ >= 5) break;
@@ -333,7 +333,7 @@ export class Tab {
 
   /**
    * Writes the description being written in the sidebar, when the person changed it, as
-   * Done would (bug hunt round 3, C36), and again while more was typed as it was written
+   * ending its editing would (bug hunt round 3, C36), and again while more was typed as it was written
    * (round 4, C41). False when it could not be written; it then stays in its box.
    */
   async writeDraft(): Promise<boolean> {
@@ -357,8 +357,8 @@ export class Tab {
   }
 
   /**
-   * Writes a description the panel has left: by Done, or as the panel turns to another
-   * item or none (C36). One that cannot be written (the text pane holds an error, say) is
+   * Writes a description the panel has left: as its editing ends, or as the panel turns
+   * to another item or none (C36). One that cannot be written (the text pane holds an error, say) is
    * not dropped unasked: while its node is in the panel it goes back into its box; once
    * the panel has turned away, Naiad asks, and unless the person lets it go, turns back
    * to it (bug hunt round 4, C40). A node deleted meanwhile takes it along (C36's case,
@@ -1060,7 +1060,7 @@ export class Tab {
 
   select(target: Target | null): void {
     // A description being written goes into the file as the panel turns to another item
-    // or none, as Done would (bug hunt round 3, C36). A node's id stays its own, so the
+    // or none, as ending its editing would (bug hunt round 3, C36). A node's id stays its own, so the
     // edit is right even though it runs after the panel has changed.
     // With nothing selected, the panel is the flowchart's description while About is on.
     const draft = this.sidebar.draft();
