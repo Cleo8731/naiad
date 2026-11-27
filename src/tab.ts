@@ -132,6 +132,8 @@ export interface TabWindow {
   viewing(): boolean;
   /** The About button (D1.4, T1.13). */
   about(): boolean;
+  /** The window is still opening the files it starts with: a blank tab shows no message yet (Q262). */
+  starting(): boolean;
   /** The Highlight switch. */
   highlighting(): boolean;
   /** Whether the notice for an edit tried in View mode shows. */
@@ -1154,7 +1156,7 @@ export class Tab {
 
   paint(): void {
     const open = this.path !== null;
-    this.el.empty.hidden = open;
+    this.el.empty.hidden = open || this.win.starting();
     this.el.area.disabled = !open;
     this.chart.select(this.selection);
     this.paintHighlights();

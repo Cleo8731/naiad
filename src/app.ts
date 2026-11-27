@@ -225,6 +225,8 @@ export class App {
    * across starts, as the mode is (Q114).
    */
   private about = true;
+  /** The window is opening the files it starts with (`init`, Q262). */
+  private starting = true;
 
   /** The tab groups (T1.17): one, or two while split, the first the left or top half. */
   private groups: Group[] = [];
@@ -453,10 +455,18 @@ export class App {
     // The files of the last close (T1.23), then the file Naiad was started on, shown
     // (Q157). Only the program's first window does this; a later one (T6.2) is given its
     // tabs as arrivals.
+    // Until then a blank tab shows no "No file open", which would be wrong for the second
+    // it takes to open the file (Q262, the user, 2026-11-26).
     const firstWindow = this.backend.windowName === 'main';
-    const path = firstWindow ? await this.backend.initialPath().catch(() => null) : null;
-    const others = firstWindow ? await this.reopen(path !== null) : [];
-    if (path) await this.open(path);
+    let others: { key: string; kept: Kept }[] = [];
+    try {
+      const path = firstWindow ? await this.backend.initialPath().catch(() => null) : null;
+      others = firstWindow ? await this.reopen(path !== null) : [];
+      if (path) await this.open(path);
+    } finally {
+      this.starting = false;
+      for (const g of this.groups) for (const t of g.tabs) if (!t.file) t.paint();
+    }
     this.recentFollows(this.tab);
     this.keeping = true;
     void this.keep();
@@ -1349,6 +1359,7 @@ export class App {
       shown: () => own() === this.tab,
       viewing: () => this.viewing,
       about: () => this.about,
+      starting: () => this.starting,
       highlighting: () => this.hlOn,
       viewNotice: () => this.viewNotice,
       toast: (message) => {
