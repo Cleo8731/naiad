@@ -16,39 +16,45 @@ Windows 11 (x64) · `.mmd` and `.mermaid` flowcharts · Mermaid places the boxes
 
 [Install](#install) · [Using Naiad](#using-naiad) · [Working with an AI agent](#working-with-an-ai-agent) · [Commands](#commands) · [Limits](#limits)
 
-![A help-desk flowchart in Naiad's light Coral colours: clicking a step shows its description, the chart is zoomed and scrolled, a step's title and shape are changed, and the Syntax pane shows the file's text](media/reading-and-editing.gif)
+![A release flowchart in Naiad's light Coral colours: an agent writes the file line by line and the chart grows with it; a person adds a step and connects it; the agent moves the step into its group, gives it a class and writes its description](media/an-agent-draws-it.gif)
 
-Reading and editing: a click on a step shows its description in the sidebar; then the
-chart is zoomed and scrolled, a step's title and shape are changed, and the Syntax pane
-shows the file's text.
+An agent draws a flowchart, you add to it, the agent finishes it: the agent writes
+`release.mmd` line by line, and the chart and the Syntax pane grow with each line.
+**About** shows the whole flowchart's description. You add a step on the chart and drag
+its dot to connect it; the agent then moves the step into the Release group, gives it
+the class its kind of step has, and writes its description. The label at the top while
+the agent writes, and the chat card at the lower left, are added by the recording;
+Naiad doesn't show them.
 
-![A newsroom flowchart in Naiad's dark Kelp colours: an agent writes a new decision into the file and the chart redraws at once, then a second file opens beside the first](media/working-with-an-agent.gif)
+![The same flowchart in Naiad's dark Kelp colours: View mode, two parts highlighted and cleared, then a walkthrough from Open a pull request to Roll out to 100%, each step's description in the sidebar](media/reading-it-step-by-step.gif)
 
-Working with an agent: the agent writes a new decision into the file and the chart
-redraws at once; then a second file opens beside the first. The orange border and label
-mark the time the agent is writing; the recording adds them, and Naiad doesn't show
-them.
+Reading it step by step: View mode stops edits; **Highlight** marks a group and a step
+for an agent, and **Clear** takes the marks off. **Walkthrough** then follows one run
+from Open a pull request to Roll out to 100%: each click on the next step, or on its
+arrow's label, moves the walk on, and the sidebar shows that step's description.
 
 ## How the file works
 
 A node's description is a run of Mermaid comments, lines that start `%%`, under a line
 `%% @` followed by the node's id. Mermaid skips comments, so the file draws the same in
-any Mermaid tool. Part of the first recording's file:
+any Mermaid tool. Part of the recordings' file:
 
 ```text
 flowchart TD
-    sort{Seen it before?} -- no --> look(Reproduce the problem)
-
-%% @look
-%% Follow the customer's steps on a test account until the problem shows.
+    pr([Open a pull request])
+%% @pr
+%% Push your branch and open a pull request against `main`.
 %% .
-%% - Ask for a screenshot if the steps are unclear.
-%% - Note the version and the browser.
+%% **The description says**
+%% - what changed, and why
+%% - how you tested it
+%% - where reviewers should look first
 ```
 
-Click **Reproduce the problem** and the sidebar shows the lines under `%% @look` as
-Markdown: `%% .` is an empty line, so the two lines that start `-` are a list. A
-description that starts `%% @flowchart` describes the whole flowchart.
+Click **Open a pull request** and the sidebar shows the lines under `%% @pr` as
+Markdown: `%% .` is an empty line, so **The description says** starts a new paragraph,
+in bold, and the three lines that start `-` are a list. A description that starts
+`%% @flowchart` describes the whole flowchart.
 
 Naiad reloads the file whenever it changes on disk, so a change an agent makes shows at
 once. If you have an edit not yet saved at that moment, the version on disk wins and
@@ -95,11 +101,11 @@ right.
 | Open a file | **Open a file** on a blank tab, Ctrl+O there, a double-click on the file, or `naiad flow.mmd`. While Naiad is open, the file opens as a tab in its window |
 | Move a tab to a window of its own | Drag the tab out of the window and let go; drag it onto another Naiad window's tabs to move it there |
 | Read a description | Click a node; click empty space for the whole flowchart's description |
-| Write a description | Click the node, then **Edit** beside **Description** in the sidebar, then **Done** |
+| Write a description | Click the node, then **Edit** beside **Description** in the sidebar; click outside the box when you have finished |
 | Add a node | **+** in the bar along the bottom of the chart, or double-click empty space |
 | Rename a node | Double-click it, or select it and press Enter or F2 |
 | Connect two nodes | Point at a node and drag the dot beside it onto another node |
-| Change a shape, colour, group or arrow | Click it and use the sidebar |
+| Change a shape, colour, class, group or arrow | Click it and use the sidebar. A class (`classDef` in the file) gives every node in it one colour and border, and can give them one shape |
 | Delete | Select, then press Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows at the chart's top left |
 | Zoom and pan (move the view) | Mouse wheel or pinch to zoom; drag empty space to pan. For two-finger panning on a touchpad, click the first switch in the middle of the rail to Touchpad mode |
@@ -233,7 +239,7 @@ checks. Details:
 - Some Mermaid forms are drawn but can be changed only as text; the forms the chart can
   change are listed in
   [FILE-FORMAT.md](FILE-FORMAT.md#mermaid-syntax-naiad-can-edit-from-the-chart).
-- Version 1.0 has been tested on one Windows 11 computer.
+- Naiad has been tested on one Windows 11 computer.
 
 ## What Naiad reads and keeps
 
