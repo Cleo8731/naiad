@@ -221,14 +221,28 @@ describe('putting a node in a class from its panel (Q267, Q270)', () => {
   });
 });
 
-describe('the panels\' order (Q272)', () => {
+describe('the panels\' order (Q272, Q277)', () => {
   const order = () => [...document.querySelectorAll<HTMLElement>('.sidebar > .props, .sidebar > .desc, .sidebar > .hint')]
     .map((el) => (el.classList.contains('props') ? [...el.querySelectorAll(':scope > .row .row-label')].map((l) => l.textContent).join('+') : el.className));
 
-  it('a node: Class and Group, then the description, then Shape and Colour', async () => {
+  it('a node: Class and Group, then Shape and Colour, then the description, last (Q277)', async () => {
     await start();
     select({ kind: 'node', id: 'hold' });
-    expect(order()).toEqual(['Class+Group', 'desc', 'Shape+Colour']);
+    expect(order()).toEqual(['Class+Group', 'Shape+Colour', 'desc']);
+  });
+
+  it('a description being edited marks its part, whose head stays in sight and whose box grows with its text (Q278)', async () => {
+    await start();
+    select({ kind: 'node', id: 'hold' });
+    const desc = q<HTMLElement>('.sidebar > .desc')!;
+    expect(desc.classList.contains('editing')).toBe(false);
+    button('Edit')!.click();
+    expect(desc.classList.contains('editing')).toBe(true);
+    button('Cancel')!.click();
+    expect(desc.classList.contains('editing')).toBe(false);
+    const css = (await import('node:fs')).readFileSync('src/style.css', 'utf8');
+    expect(css).toMatch(/\n\.desc\.editing > \.desc-head \{[^}]*position: sticky/);
+    expect(/\n\.desc-edit \{([^}]*)\}/.exec(css)![1]).toMatch(/field-sizing: content;[^}]*overflow: hidden/);
   });
 
   it('a group: Class right under the title', async () => {

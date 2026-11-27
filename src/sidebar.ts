@@ -798,6 +798,7 @@ export class Sidebar {
     let latest: string | null = null; // what the last Done pressed wrote or is writing
     const paint = () => {
       const editing = this.editingDescription;
+      el.classList.toggle('editing', editing);
       body.hidden = editing;
       area.hidden = !editing;
       editBtn.hidden = editing;
@@ -848,9 +849,12 @@ export class Sidebar {
       if (this.editingDescription && area.value === started && current !== started) area.value = started = current;
       paint();
     });
-    return h('div', { class: 'desc' },
+    // While it is edited, its head (Done, Cancel) stays at the panel's top as the panel
+    // scrolls, and its box grows with the text: one scroll bar, the panel's (Q278).
+    const el = h('div', { class: 'desc' },
       h('div', { class: 'desc-head' }, h('span', {}, 'Description'), editBtn, cancelBtn, doneBtn),
       body, area);
+    return el;
   }
 
   private buildNode(view: NodeView): HTMLElement[] {
@@ -864,18 +868,19 @@ export class Sidebar {
       (v) => [option('', 'None'), ...(v as NodeView).groups.map((g) => option(g.id, g.title)), option(NEW_GROUP, 'New group…')],
       (v) => (v as NodeView).group, (value) => a.setGroup(id, value));
 
-    // Class and Group first, as what kind of step it is and where it sits; then the
-    // description; then Shape and Colour, which a class can set (Q272).
+    // Class and Group first, as what kind of step it is and where it sits; then Shape and
+    // Colour, which a class can set (Q272); then the description, last, so a long one
+    // moves no row (Q277).
     return [
       this.header('Node', id),
       title,
       h('div', { class: 'props' },
         ...this.classRow(id, (v) => v as NodeView),
         this.row('Group', group)),
-      this.description(id, (v) => (v as NodeView).description, 'Describe this step. Markdown works: **bold**, lists, `code`, links.'),
       h('div', { class: 'props' },
         this.row('Shape', shape),
         this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as NodeView).classPaint))),
+      this.description(id, (v) => (v as NodeView).description, 'Describe this step. Markdown works: **bold**, lists, `code`, links.'),
       h('div', { class: 'side-foot' },
         h('span', { class: 'hint' }, 'Drag the dot beside the node onto another node to connect them.'),
         h('button', { class: 'danger', click: () => a.deleteNode(id) }, iconEl('trash'), 'Delete node')),

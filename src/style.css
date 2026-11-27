@@ -823,6 +823,10 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .ends > * { min-width: 0; overflow-wrap: anywhere; }
 
 .desc { display: flex; flex-direction: column; gap: 8px; }
+/* A node's description comes after Shape and Colour (Q277), set off as they are. */
+.props + .desc { padding-top: 16px; border-top: 1px solid var(--line); }
+/* While a description is edited its head stays in sight as the panel scrolls (Q278). */
+.desc.editing > .desc-head { position: sticky; top: -18px; z-index: 2; margin: 0 -22px; padding: 6px 22px; background: var(--panel); }
 .desc-head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
 .desc-head span { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .desc-head button { height: 28px; padding: 0 12px; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 600; }
@@ -842,7 +846,8 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .desc-body img { max-width: 100%; }
 .desc-body .empty, p.hint, .hint { position: static; display: block; text-align: left; color: var(--muted); font-size: 12.5px; margin: 0; }
 .desc-edit {
-  width: 100%; min-height: 200px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 14px; outline: 0; resize: vertical;
+  width: 100%; min-height: 120px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 14px; outline: 0;
+  field-sizing: content; resize: none; overflow: hidden; overflow-wrap: anywhere;
   background: var(--field); font: 12.5px/1.6 var(--mono); font-variant-ligatures: none; font-variation-settings: var(--mono-fvs, normal);
 }
 
