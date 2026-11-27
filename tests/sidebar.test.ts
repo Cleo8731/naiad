@@ -205,3 +205,23 @@ describe('the panel\'s height (the user, 2026-11-26)', () => {
     for (const m of rules) expect(m[2], m[1]).not.toMatch(/min-height: 0/);
   });
 });
+
+describe('long text in the panel (the user, 2026-11-26)', () => {
+  it('a list cut off in its box shows its whole choice when pointed at, and the id pill its whole id', () => {
+    const { root, side } = sidebar();
+    const long = 'Preparation of every raw export before the model is trained';
+    side.show({ ...VIEW, id: 'collect_customer_feedback_for_review', groups: [{ id: 'prep', title: long }, { id: 'model', title: 'Model' }] });
+    expect(groupBox(root).title).toBe(long);
+    expect(root.querySelector<HTMLElement>('.side-head .id')!.title).toBe('The id used in the file: collect_customer_feedback_for_review');
+    side.show({ ...VIEW, group: '' });
+    expect(groupBox(root).title).toBe('None');
+  });
+
+  it('one long word wraps in the arrow\'s ends, a class\'s problem line and the toast; a wide table scrolls itself', () => {
+    const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = (sel: string) => { const at = css.indexOf(`\n${sel} {`); return at < 0 ? '' : css.slice(at, css.indexOf('}', at)); };
+    for (const sel of ['.ends > *', '.class-item > .problem', '.new-class .problem', '.toast']) expect(rule(sel), sel).toContain('overflow-wrap: anywhere');
+    expect(rule('.toast')).toContain('overflow-y: auto');
+    expect(rule('.desc-body table')).toContain('overflow-x: auto');
+  });
+});

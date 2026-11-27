@@ -343,7 +343,7 @@ export class Sidebar {
   private header(kindLabel: string, idText: string): HTMLElement {
     return h('div', { class: 'side-head' },
       h('span', { class: 'kind' }, kindLabel),
-      h('code', { class: 'id', title: 'The id used in the file' }, idText),
+      h('code', { class: 'id', title: `The id used in the file: ${idText}` }, idText),
       h('button', { class: 'ghost close', title: 'Close (Esc)', 'aria-label': 'Close', click: () => this.actions.close() }, '×'));
   }
 
@@ -446,6 +446,8 @@ export class Sidebar {
         sel.replaceChildren(...opts);
       }
       sel.value = value;
+      // A long title is cut off in the box: pointing at it shows the whole (the user, 2026-11-26).
+      sel.title = sel.selectedOptions[0]?.textContent ?? '';
     });
     return sel;
   }
@@ -672,6 +674,8 @@ export class Sidebar {
     const openMenu = () => {
       opened(item);
       menu.hidden = false;
+      // The last lines' menus open below what the panel shows: scroll them into sight.
+      menu.scrollIntoView?.({ block: 'nearest' });
       el.classList.add('menu-open');
       more.setAttribute('aria-expanded', 'true');
       document.addEventListener('pointerdown', outside, true);

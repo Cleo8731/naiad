@@ -819,6 +819,8 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .sidebar textarea.title:focus { border-color: var(--accent); outline: 0; background: var(--field); }
 .ends { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; font-weight: 600; }
 .ends .arrow { color: var(--accent); }
+/* A title of one long word (a web address) wraps instead of widening the panel. */
+.ends > * { min-width: 0; overflow-wrap: anywhere; }
 
 .desc { display: flex; flex-direction: column; gap: 8px; }
 .desc-head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
@@ -835,7 +837,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .desc-body pre { background: var(--field); padding: 10px 12px; border-radius: var(--radius-control); overflow-x: auto; }
 .desc-body pre code { padding: 0; background: none; }
 .desc-body blockquote { padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
-.desc-body table { border-collapse: collapse; margin-bottom: 10px; }
+.desc-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin-bottom: 10px; }
 .desc-body th, .desc-body td { border: 1px solid var(--line); padding: 3px 8px; }
 .desc-body img { max-width: 100%; }
 .desc-body .empty, p.hint, .hint { position: static; display: block; text-align: left; color: var(--muted); font-size: 12.5px; margin: 0; }
@@ -897,7 +899,7 @@ input.class-rename {
 }
 .class-more svg { width: 16px; height: 16px; display: block; }
 .class-line:hover .class-more, .class-item.menu-open .class-more, .class-more:focus-visible { opacity: 1; }
-.class-item > .problem { padding: 2px 8px 4px; color: var(--bad); }
+.class-item > .problem { padding: 2px 8px 4px; color: var(--bad); overflow-wrap: anywhere; }
 .class-item > .problem:empty { display: none; }
 .class-menu {
   position: absolute; z-index: 5; top: calc(100% + 2px); right: 0; width: min(270px, 100%);
@@ -923,7 +925,7 @@ button.add-class svg { width: 16px; height: 16px; display: block; }
 .new-class input.new-class-name { height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); font-weight: 400; }
 .new-class input.new-class-name:focus { border-color: var(--accent); outline: 0; }
 .new-class .select-wrap select { background: var(--panel); }
-.new-class .problem { color: var(--bad); }
+.new-class .problem { color: var(--bad); overflow-wrap: anywhere; }
 .new-class .problem:empty { display: none; }
 .new-class-buttons { display: flex; gap: 8px; }
 .new-class-buttons button { height: 30px; padding: 0 14px; border-radius: var(--radius-pill); font-weight: 600; }
@@ -1037,6 +1039,7 @@ input.switch:checked::before { transform: translateX(14px); }
 
 .toast {
   position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); max-width: min(620px, 90vw); padding: 10px 16px;
+  max-height: 40vh; overflow-y: auto; overflow-wrap: anywhere;
   background: var(--text); color: var(--bg); border-radius: var(--radius-control); box-shadow: 0 8px 28px -8px var(--shadow); z-index: 10;
 }
 
