@@ -36,6 +36,18 @@ describe('class colours in the window', () => {
     expect(svg.querySelector('g.label')!.hasAttribute('data-was-important')).toBe(false);
   });
 
+  test('a class\'s rule loses !important on the shapes\' colours, so a node\'s own colour beats its class (1.0.2, the user: "Picking another swatch doesn\'t even change its color")', () => {
+    const { svg } = drawing();
+    const style = document.createElementNS(SVG_NS, 'style');
+    // As Mermaid writes a classDef, on one line: the shapes' rule and the text's.
+    style.textContent = '#chart1 .node rect{fill:#ECECFF;}#chart1 .process>*{fill:#e7f0ff!important;stroke:#385b8c!important;color:#142942!important;stroke-width:2px !important;}'
+      + '#chart1 .process span{fill:#e7f0ff!important;color:#142942!important;}#chart1 .sel>*{stroke:red!important;}';
+    svg.prepend(style);
+    unlockColours(svg);
+    expect(style.textContent).toBe('#chart1 .node rect{fill:#ECECFF;}#chart1 .process>*{fill:#e7f0ff;stroke:#385b8c;color:#142942!important;stroke-width:2px;}'
+      + '#chart1 .process span{fill:#e7f0ff!important;color:#142942!important;}#chart1 .sel>*{stroke:red;}');
+  });
+
   test('a saved picture gets !important back, and no trace of the window', () => {
     const { svg } = drawing();
     unlockColours(svg);

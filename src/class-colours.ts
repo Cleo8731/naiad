@@ -5,16 +5,33 @@
 // fill and a drop's dashed border never showed. In the window the mark is taken off the
 // colours of the shapes (the colours themselves stay, and still beat every ordinary rule);
 // a saved picture puts it back (`Chart.picture`). The chart's own class rules
-// (`#chart3 .cls>*{…!important}`) are beaten by the weight of the window's rules instead
-// (`style.css`, `.canvas:not(#_)`).
+// (`#chart3 .cls>*{…!important}`) lose the mark on the shapes' colours as well, so a
+// node's own `style` colour beats its class's (1.0.2); the shapes' inline styles already
+// hold the class's colours, so nothing else changes.
 
 /** The colours a shape's inline style may hold that Naiad's window rules change. */
 const PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray'];
 /** Names the properties whose `!important` was taken off, so a picture can put it back. */
 const MARK = 'data-was-important';
 
-/** Takes `!important` off the shapes' colours in a drawing shown in the window. Text keeps its own. */
+/** A rule of the drawing's own stylesheet for a node's shapes: Mermaid's rule for a `classDef`, `.process>*{…}`. */
+const SHAPE_RULE = /[^{}]*>\s*\*\s*\{[^}]*\}/g;
+/** A shape colour in such a rule, with its `!important`. */
+const IMPORTANT = /([{;]\s*)(fill|stroke|stroke-width|stroke-dasharray)(\s*:\s*[^;!}]*?)\s*!important/gi;
+
+/**
+ * Takes `!important` off the shapes' colours in a drawing shown in the window. Text keeps
+ * its own. The drawing's class rules lose it too: Mermaid also writes a class's colours
+ * into each shape's inline style, under the node's own `style` colours, so without the
+ * mark on the shape a class rule that kept it would beat the node's own colour (1.0.2,
+ * the user: "Picking another swatch doesn't even change its color").
+ */
 export function unlockColours(svg: SVGSVGElement): void {
+  for (const style of svg.querySelectorAll('style')) {
+    const text = style.textContent ?? '';
+    const next = text.replace(SHAPE_RULE, (rule) => rule.replace(IMPORTANT, '$1$2$3'));
+    if (next !== text) style.textContent = next;
+  }
   for (const el of svg.querySelectorAll<SVGElement>('[style]')) {
     if (el.closest('.label, foreignObject')) continue;
     const props = PROPS.filter((p) => el.style.getPropertyPriority(p) === 'important');
