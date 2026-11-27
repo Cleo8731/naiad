@@ -55,6 +55,8 @@ async function opsFor(text: string): Promise<Op[]> {
   for (const id of nodes) {
     ops.push(
       { kind: 'setTitle', id, title: 'Renamed' }, { kind: 'setTitle', id, title: 'Say "hi" (now) [x] {y} | end' },
+      // Text Mermaid reads as HTML or Markdown (Q280).
+      { kind: 'setTitle', id, title: '`Code` < 5, <x> Promise<void> & <b>bold</b>' },
       { kind: 'setShape', id, shape: 'diamond' }, { kind: 'setShape', id, shape: 'stadium' }, { kind: 'setShape', id, shape: 'lean_right' },
       { kind: 'setShape', id, shape: 'square' },
       { kind: 'deleteNode', id },
@@ -69,6 +71,7 @@ async function opsFor(text: string): Promise<Op[]> {
     for (const id of targets) for (const end of ['start', 'end'] as const) ops.push({ kind: 'setEdgeEnd', index, end, id });
     ops.push(
       { kind: 'deleteEdge', index }, { kind: 'setEdgeLabel', index, label: 'label' }, { kind: 'setEdgeLabel', index, label: 'a "b" (c) | d' },
+      { kind: 'setEdgeLabel', index, label: '`Code` < 5, <x> Promise<void> & <b>bold</b>' },
       { kind: 'setEdgeLabel', index, label: '' }, { kind: 'setEdgeStyle', index, stroke: 'dotted' }, { kind: 'setEdgeStyle', index, stroke: 'thick' },
       { kind: 'setEdgeStyle', index, stroke: 'normal' }, { kind: 'setEdgeStyle', index, arrow: 'none' }, { kind: 'setEdgeStyle', index, arrow: 'both' },
       { kind: 'setEdgeStyle', index, arrow: 'circle' }, { kind: 'setEdgeStyle', index, arrow: 'cross' }, { kind: 'setEdgeStyle', index, arrow: 'arrow' },
@@ -78,6 +81,7 @@ async function opsFor(text: string): Promise<Op[]> {
   for (const id of subs) {
     ops.push(
       { kind: 'renameSubgraph', id, title: 'Renamed group' }, { kind: 'renameSubgraph', id, title: 'One' },
+      { kind: 'renameSubgraph', id, title: '`Code` < 5, <x> Promise<void> & <b>bold</b>' },
       { kind: 'setSubgraphDirection', id, dir: 'LR' }, { kind: 'setSubgraphDirection', id, dir: null },
       { kind: 'ungroup', id }, { kind: 'addNode', title: 'Inside', parent: id },
       { kind: 'setStyle', id, changes: { fill: '#eeeeee' } }, { kind: 'setStyle', id, changes: { fill: null } },

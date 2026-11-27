@@ -15,11 +15,42 @@ const ID_OK = /^(?:[\p{L}\p{N}_.]|-(?![>\-.\s]|$))+$/u;
 const SAFE_LABEL = /^[\p{L}\p{N}_][\p{L}\p{N}_ .,?!]*$/u;
 const KEYWORDS = /\b(end|subgraph|graph|flowchart|style|class|classDef|click|linkStyle|direction|default|call|href)\b/i;
 
+/**
+ * The HTML tags Mermaid keeps in a label and that labels use for formatting (`<br>`,
+ * `<b>`...). Mermaid reads a label as HTML: any other `<` before a letter, `/`, `!` or
+ * `?` starts a tag it drops, with the text after it (`x<y` draws "x").
+ */
+const KEPT_TAGS = new Set(['a', 'b', 'br', 'code', 'del', 'em', 'font', 'hr', 'i', 'img', 'ins', 'kbd', 'mark', 's', 'small', 'span', 'strong', 'sub', 'sup', 'u', 'wbr']);
+const TAG_AT = /<\/?([A-Za-z][A-Za-z0-9]*)\b[^<>]*>/y;
+
+/**
+ * A title or label's text as it is written inside quotes, so Mermaid draws it as typed
+ * (the user, 2026-11-26, Q280): a line break as `<br/>`; `"` as `#quot;`; a `<` that
+ * would start a tag Mermaid drops as `#lt;`, which Mermaid draws as `<`; and a backtick
+ * that would make the text a Markdown string (`"\`...`) as `#96;`. A `<` before a space
+ * or a digit (`count < 5`) stays: Mermaid draws it as typed. In a Markdown string
+ * (`markdown`), every backtick is written `#96;`, as one would end the string.
+ */
+export function escapeText(title: string, markdown = false): string {
+  const t = title.replace(/\r?\n/g, '<br/>').trim().replace(/"/g, '#quot;');
+  let out = '';
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '`' && (markdown || i === 0)) { out += '#96;'; continue; }
+    if (c !== '<' || !/[A-Za-z/!?]/.test(t[i + 1] ?? '')) { out += c; continue; }
+    TAG_AT.lastIndex = i;
+    const tag = TAG_AT.exec(t);
+    if (tag && KEPT_TAGS.has(tag[1].toLowerCase())) { out += tag[0]; i += tag[0].length - 1; continue; }
+    out += '#lt;';
+  }
+  return out;
+}
+
 /** A label as it must be written inside brackets or pipes. */
 export function encodeLabel(title: string, forceQuotes = false): string {
   const t = title.replace(/\r?\n/g, '<br/>').trim();
   if (!forceQuotes && SAFE_LABEL.test(t) && !KEYWORDS.test(t)) return t;
-  return `"${t.replace(/"/g, '#quot;')}"`;
+  return `"${escapeText(t)}"`;
 }
 
 function load(text: string): Doc {
@@ -287,14 +318,14 @@ export function setTitle(text: string, id: string, title: string): string {
   if (ref.shape) {
     const inner = line.slice(ref.shape.innerStart, ref.shape.innerEnd).trim();
     const markdown = /^"`.*`"$/.test(inner);
-    const enc = markdown ? `"\`${title.trim().replace(/"/g, '#quot;')}\`"` : encodeLabel(title);
+    const enc = markdown ? `"\`${escapeText(title, true)}\`"` : encodeLabel(title);
     next = line.slice(0, ref.shape.innerStart) + enc + line.slice(ref.shape.innerEnd);
   } else if (ref.attrs) {
     const raw = line.slice(ref.attrs.start, ref.attrs.end);
     if (!/label:\s*"[^"]*"/.test(raw)) {
       throw new EditError('This node is written in the @{ … } form without a quoted label; change its title in the Syntax pane.');
     }
-    const safe = title.trim().replace(/"/g, '#quot;');
+    const safe = escapeText(title);
     next = line.slice(0, ref.attrs.start) + raw.replace(/label:\s*"[^"]*"/, () => `label: "${safe}"`) + line.slice(ref.attrs.end);
   } else {
     next = `${line.slice(0, ref.idEnd)}[${encodeLabel(title)}]${line.slice(ref.idEnd)}`;
@@ -437,7 +468,7 @@ export function buildLink(p: Omit<LinkParts, 'form'>): string {
     const ch = p.stroke === 'thick' ? '=' : '-';
     arrow = p.left + ch.repeat(p.length + (p.right ? 1 : 2)) + p.right;
   }
-  const md = (t: string) => `"\`${t.replace(/\r?\n/g, '<br/>').trim().replace(/"/g, '#quot;')}\``;
+  const md = (t: string) => `"\`${escapeText(t, true)}\``;
   const label = p.stroke !== 'invisible' && p.label.trim() ? `|${p.markdown ? `${md(p.label)}"` : encodeLabel(p.label)}|` : '';
   return `${p.edgeId ? `${p.edgeId}@` : ''}${arrow}${label}`;
 }

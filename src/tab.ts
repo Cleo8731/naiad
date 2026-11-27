@@ -12,7 +12,7 @@ import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { ICONS } from './icons';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
-import { paintOf, snapshot, type Snap } from './semantics';
+import { paintOf, shown, snapshot, type Snap } from './semantics';
 import { NEW_GROUP, Sidebar, type ClassBorder, type ClassInfo, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
 import { choicesFrom, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
@@ -91,10 +91,10 @@ function followEdge(before: Snap | null, now: Snap, index: number): number | nul
 
 /** How a message names an item, as `snap` shows it: “Collect data”, the group “Review”, the arrow from “a” to “b”. */
 function itemName(target: Target, snap: Snap | null): string {
-  if (target.kind === 'node') return `“${snap?.nodes[target.id]?.text ?? target.id}”`;
-  if (target.kind === 'sub') return `the group “${snap?.subs[target.id]?.title || target.id}”`;
+  if (target.kind === 'node') return `“${shown(snap?.nodes[target.id]?.text ?? target.id)}”`;
+  if (target.kind === 'sub') return `the group “${shown(snap?.subs[target.id]?.title || target.id)}”`;
   const e = snap?.edges[target.index];
-  const end = (id: string) => snap?.nodes[id]?.text ?? snap?.subs[id]?.title ?? id;
+  const end = (id: string) => shown(snap?.nodes[id]?.text ?? snap?.subs[id]?.title ?? id);
   return e ? `the arrow from “${end(e.start)}” to “${end(e.end)}”` : 'the arrow';
 }
 
@@ -1173,7 +1173,7 @@ export class Tab {
     if (s.kind === 'node') {
       const n = snap.nodes[s.id];
       if (!n) return null;
-      const groups = Object.entries(snap.subs).map(([id, g]) => ({ id, title: g.title || id }));
+      const groups = Object.entries(snap.subs).map(([id, g]) => ({ id, title: shown(g.title) || id }));
       return {
         kind: 'node', id: s.id, title: nodeLabel(this.doc, s.id)?.title ?? n.text,
         description: getDescriptions(this.text).get(s.id) ?? '', shape: n.type, fill: fillOf(n.styles), classPaint: snap.paint?.[s.id] ?? null,
@@ -1185,13 +1185,13 @@ export class Tab {
       const g = snap.subs[s.id];
       if (!g) return null;
       return {
-        kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), classPaint: snap.paint?.[s.id] ?? null, count: g.nodes.length,
+        kind: 'sub', id: s.id, title: shown(g.title), dir: g.dir, fill: fillOf(g.styles), classPaint: snap.paint?.[s.id] ?? null, count: g.nodes.length,
         classes: this.classesOf(g.classes), classList: this.classList(),
       };
     }
     const e = snap.edges[s.index];
     if (!e) return null;
-    const title = (id: string) => snap.subs[id]?.title ?? nodeLabel(this.doc, id)?.title ?? id;
+    const title = (id: string) => (snap.subs[id] ? shown(snap.subs[id].title) : null) ?? nodeLabel(this.doc, id)?.title ?? id;
     const locations = [...allRefs(this.doc).map(({ line, ref }) => ({ id: ref.id, line, offset: ref.start })),
       ...this.doc.subs.filter((g) => g.explicitId).map((g) => ({ id: g.id, line: g.line, offset: 0 }))]
       .sort ( (a, b) => a.line - b.line || a.offset - b.offset);
@@ -1209,7 +1209,7 @@ export class Tab {
     for (const item of ends) counts.set(item.title, (counts.get(item.title) ?? 0) + 1);
     for (const item of ends) if (counts.get(item.title)! > 1) item.title += ` [${item.id}]`;
     const arrow = ({ arrow_point: 'arrow', arrow_open: 'none', double_arrow_point: 'both', arrow_circle: 'circle', arrow_cross: 'cross' } as const)[e.type] ?? 'arrow';
-    let label = e.text;
+    let label = shown(e.text);
     const ref = this.doc.edges[s.index];
     if (ref) {
       try { label = parseLink(this.doc.info[ref.line].chains![ref.chain].links[ref.link].raw).label; } catch { /* keep Mermaid's text */ }

@@ -306,13 +306,18 @@ export function parseSubgraphLine(line: string): { id: string | null; title: str
   return { id: null, title: rest };
 }
 
+/** Mermaid's codes that Naiad writes in a title (`escapeText`), as the characters they draw. */
+function codes(t: string): string {
+  return t.replace(/#quot;/g, '"').replace(/#lt;/g, '<').replace(/#96;/g, '`');
+}
+
 export function unquote(raw: string): string {
   let t = raw.trim();
   if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
     t = t.slice(1, -1);
     if (t.length >= 2 && t.startsWith('`') && t.endsWith('`')) t = t.slice(1, -1);
   }
-  return t.replace(/#quot;/g, '"');
+  return codes(t);
 }
 
 /**
@@ -611,7 +616,7 @@ export function nodeLabel(doc: Doc, id: string): { title: string; type: string |
       type = SHAPES.find((s) => s.open === r.ref.shape!.open && s.close === r.ref.shape!.close)?.type ?? null;
     } else if (r.ref.attrs) {
       const m = /label:\s*"([^"]*)"/.exec(line.slice(r.ref.attrs.start, r.ref.attrs.end));
-      if (m) title = m[1].replace(/#quot;/g, '"');
+      if (m) title = codes(m[1]);
       type = 'attrs';
     }
   }

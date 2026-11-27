@@ -92,7 +92,9 @@ flowchart TD
 - A title that holds parentheses, brackets, braces or a double quote is written in
   double quotes, in any shape: `id["Title with (punctuation)"]`,
   `id{"Sure (really)?"}`. Other punctuation needs no quotes. Inside a quoted title, a
-  double quote is written `#quot;`.
+  double quote is written `#quot;`, and a `<` before a letter is written `#lt;`
+  (`"Promise#lt;void>"`), unless it starts a formatting tag such as `<b>` or `<br>`:
+  Mermaid reads a title as HTML and would drop the text after it.
 - A node can have a description, and so can the whole flowchart (`@flowchart`, under
   Description blocks). A group has a title, an arrow a label, and neither has a
   description block. Not every node needs one.

@@ -59,6 +59,20 @@ because of the colon. A
 group's title, and the title of a node whose shape Naiad changes, are always quoted.
 Mermaid reads the quoted and the unquoted forms the same way.
 
+Mermaid reads a title as a piece of a web page (HTML), so a few characters would change
+what it draws. Inside the quotes Naiad writes each of them as Mermaid's own code, which
+draws as the character typed:
+- a double quote as `#quot;`;
+- a `<` that Mermaid would take as the start of a tag, and then drop with the text after
+  it (`a <x> b`, `Promise<void>`), as `#lt;` (`"Promise#lt;void>"`);
+- a backtick at the start of a title, and every backtick in a Markdown title
+  (`` "`...`" ``), as `#96;`: Mermaid reads a quoted title that starts and ends with a
+  backtick as Markdown.
+
+A `<` before a space, a digit or another sign (`count < 5?`, `a <= b`) is written as
+typed, and so are the formatting tags Mermaid keeps, such as `<b>bold</b>`, `<i>`,
+`<sub>` and `<br>`. Naiad's sidebar shows each code as the character it draws.
+
 The word `end` in lower case cannot be a node's id: Mermaid reads it as the end of a
 group.
 
@@ -441,7 +455,8 @@ but must be edited as text:
 - Classes: `classDef name fill:#...,stroke:#...`, with a border as
   `stroke-width:2px` and `stroke-dasharray:5 3`, `class id1,id2 name`, `id:::name`
   written on a node, and a class's shape as `%% @class name shape: diamond`.
-- Inside a quoted title, a double quote is written `#quot;`.
+- Inside a quoted title, a double quote is written `#quot;`, and a `<` that would start
+  a tag `#lt;` ([Titles](#titles)).
 
 An accessible title or description (`accTitle: text`, `accDescr: text`, `accDescr {`
 ... `}`) is plain text, never a node or an arrow, even when it reads like one

@@ -150,20 +150,49 @@ function sortKeys<T>(rec: Record<string, T>): Record<string, T> {
 }
 
 /**
+ * A text in one form for each way Mermaid draws it (Q280; the user, 2026-11-26, "extrapolate
+ * this to the wider class"). Mermaid reads a label as HTML: it keeps a `<` that starts no
+ * tag as `&lt;` (and a `>` after one as `&gt;`); when the text holds a tag it keeps, it
+ * writes the whole text again as HTML, `&` as `&amp;` and a no-break space as `&nbsp;`;
+ * it writes a tag's name in lower case and `<br/>` as `<br>`, and draws `#96;` as a
+ * backtick. Each is drawn the same as the form
+ * the edits write, so the check takes them as equal; `#lt;` stays apart from `<`, which
+ * may start a tag.
+ */
+function drawn(t: string): string {
+  return t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/#96;/g, '`')
+    .replace(/<(\/?)([A-Za-z][A-Za-z0-9]*)/g, (_m, slash: string, tag: string) => `<${slash}${tag.toLowerCase()}`)
+    .replace(/<br\s*\/?>/g, '<br>');
+}
+
+/**
+ * What a title or label of Mermaid's reading, or as written in a file, shows as text in
+ * the window's own lists, boxes and messages: Mermaid's codes for `"`, `<` and a backtick,
+ * and its `&lt;`, `&gt;`, `&nbsp;` and `&amp;`, as the characters they draw (Q280). The title boxes write it
+ * back through `escapeText`, which writes each again as it was.
+ */
+export function shown(t: string): string {
+  return t.replace(/#quot;/g, '"').replace(/#lt;/g, '<').replace(/#96;/g, '`').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+}
+
+/**
  * A form two snapshots share exactly when they mean the same chart. A group written
  * with only a title gets a numbered id from Mermaid (`subGraph2`) that shifts whenever
  * a group is added or removed, so those ids are replaced by the group's title here.
  */
 export function canon(s: Snap): string {
   const alias = new Map<string, string>();
-  for (const [id, sub] of Object.entries(s.subs)) if (/^subGraph\d+$/.test(id)) alias.set(id, `~untitled-id:${sub.title}`);
+  for (const [id, sub] of Object.entries(s.subs)) if (/^subGraph\d+$/.test(id)) alias.set(id, `~untitled-id:${drawn(sub.title)}`);
   const name = (id: string) => alias.get(id) ?? id;
   const subs: Record<string, SnapSub> = {};
-  for (const [id, sub] of Object.entries(s.subs)) subs[name(id)] = { ...sub, nodes: sub.nodes.map(name).sort() };
+  for (const [id, sub] of Object.entries(s.subs)) subs[name(id)] = { ...sub, title: drawn(sub.title), nodes: sub.nodes.map(name).sort() };
+  const nodes: Snap['nodes'] = {};
+  for (const [id, n] of Object.entries(s.nodes)) nodes[id] = { ...n, text: drawn(n.text) };
   return JSON.stringify({
     direction: s.direction,
-    nodes: sortKeys(s.nodes),
-    edges: s.edges.map((e) => JSON.stringify(e)).sort(),
+    nodes: sortKeys(nodes),
+    edges: s.edges.map((e) => JSON.stringify({ ...e, text: drawn(e.text) })).sort(),
     subs: sortKeys(subs),
     accTitle: s.accTitle,
     accDescr: s.accDescr,

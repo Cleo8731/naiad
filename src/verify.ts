@@ -78,7 +78,8 @@ export function runOp(text: string, op: Op): OpResult {
   }
 }
 
-const enc = (t: string): string => t.replace(/\r?\n/g, '<br/>').trim().replace(/"/g, '#quot;');
+// As the edits write a text (Q280); `canon` reads Mermaid's own forms of it the same.
+const enc = (t: string): string => E.escapeText(t);
 const dirOf = (d: string | null): string => (d === 'TD' ? 'TB' : d ?? '');
 
 function styleAfter(styles: string[], changes: Record<string, string | null>): string[] {

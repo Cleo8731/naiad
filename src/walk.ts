@@ -2,7 +2,7 @@
 // through the flowchart, node by node, choosing an arrow at each step. What a walk is
 // and where it can go; nothing here draws (the chart shows it, `Chart.setWalk`) and
 // nothing is written to the file.
-import type { Snap } from './semantics';
+import { shown, type Snap } from './semantics';
 
 /** One step of a walk: the node (or group) reached, and the arrow taken to it (none for the first). */
 export interface Step { id: string; via: number | null }
@@ -37,7 +37,7 @@ export type WalkAction =
 
 /** An item's title as the chart shows it: a node's text, a group's title, or its id. */
 export function titleOf(snap: Pick<Snap, 'nodes' | 'subs'>, id: string): string {
-  return snap.nodes[id]?.text || snap.subs[id]?.title || id;
+  return shown(snap.nodes[id]?.text || snap.subs[id]?.title || id);
 }
 
 /** Whether an arrow can be walked: an invisible link (`~~~`) only places nodes, so it is no step. */
@@ -67,7 +67,7 @@ export function choicesFrom(snap: Pick<Snap, 'nodes' | 'subs' | 'edges'>, id: st
   snap.edges.forEach((e, i) => {
     if (!walkable(e)) return;
     const to = e.start === id ? e.end : e.end === id && e.type.startsWith('double_arrow') ? e.start : null;
-    if (to !== null) out.push({ edge: i, to, label: e.text, title: titleOf(snap, to) });
+    if (to !== null) out.push({ edge: i, to, label: shown(e.text), title: titleOf(snap, to) });
   });
   return out;
 }
