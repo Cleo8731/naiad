@@ -9,7 +9,7 @@ import type { Snap } from '../src/semantics';
 const snap: Snap = {
   direction: 'TD',
   nodes: { A: { text: 'A', type: 'square', styles: [], classes: [] } },
-  edges: [], edgeIds: [], subs: {}, accTitle: '', accDescr: '',
+  edges: [], edgeIds: [], subs: {}, accTitle: '', accDescr: '', classDefs: {},
 };
 
 describe('a chart hidden and shown again (T1.16, tabs)', () => {

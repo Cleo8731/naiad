@@ -7,13 +7,13 @@
 import type { Backend, MovedTab } from './backend';
 import { Chart, drawForPaper, type Target } from './chart';
 import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
-import { EditError, parseLink } from './core/edits';
+import { classNameProblem, EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { ICONS } from './icons';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
-import { snapshot, type Snap } from './semantics';
-import { NEW_GROUP, Sidebar, type Typed, type View } from './sidebar';
+import { paintOf, snapshot, type Snap } from './semantics';
+import { NEW_GROUP, Sidebar, type ClassInfo, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
 import { choicesFrom, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
 
@@ -233,6 +233,12 @@ export class Tab {
       addNodeIn: (id) => { void this.addNode(id); },
       ungroup: (id) => { void this.edit({ kind: 'ungroup', id }); },
       openLink: (url) => this.backend.openLink(url),
+      // Classes (T1.26). A class's text is dark, as a swatch's is on a node.
+      setClass: (id, cls) => { void this.edit({ kind: 'setClass', id, cls }); },
+      addClass: async (name, s, node) => (await this.edit({ kind: 'addClass', name, styles: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT }, node })) !== null,
+      setClassColour: (name, s) => { void this.edit({ kind: 'setClassStyle', name, changes: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT } }); },
+      deleteClass: (name) => { void this.edit({ kind: 'deleteClass', name }); },
+      classNameProblem: (name) => classNameProblem(this.text, name),
     });
     this.bindArea();
   }
@@ -1100,8 +1106,27 @@ export class Tab {
     if (!this.win.about() || this.path === null) return null;
     return {
       kind: 'about', file: this.path, name: frontMatterTitle(this.text) || basename(this.path),
-      description: getDescriptions(this.text).get(FLOWCHART_ID) ?? '',
+      description: getDescriptions(this.text).get(FLOWCHART_ID) ?? '', classList: this.classList(),
     };
+  }
+
+  /**
+   * The classes the file defines, `default` left out (it colours every node), each with
+   * its colour and how many nodes and groups are in it (T1.26).
+   */
+  private classList(): ClassInfo[] {
+    const snap = this.snap;
+    if (!snap) return [];
+    const count = (items: { classes: string[] }[], name: string) => items.filter((x) => x.classes.includes(name)).length;
+    return Object.entries(snap.classDefs).filter(([name]) => name !== 'default').map(([name, styles]) => {
+      const p = paintOf(new Map([[name, { styles }]]), [name]);
+      return { name, fill: p?.fill ?? '', stroke: p?.stroke ?? '', nodes: count(Object.values(snap.nodes), name), groups: count(Object.values(snap.subs), name) };
+    });
+  }
+
+  /** The classes an item is in, as the Class row shows them: Mermaid's own `clickable` (a `click` line) left out unless the file defines it. */
+  private classesOf(classes: string[]): string[] {
+    return [...new Set(classes)].filter((c) => c !== 'clickable' || c in (this.snap?.classDefs ?? {}));
   }
 
   private itemView(): View | null {
@@ -1116,13 +1141,17 @@ export class Tab {
       return {
         kind: 'node', id: s.id, title: nodeLabel(this.doc, s.id)?.title ?? n.text,
         description: getDescriptions(this.text).get(s.id) ?? '', shape: n.type, fill: fillOf(n.styles), classPaint: snap.paint?.[s.id] ?? null,
+        classes: this.classesOf(n.classes), classList: this.classList(),
         group: Object.keys(snap.subs).find((id) => snap.subs[id].nodes.includes(s.id)) ?? '', groups,
       };
     }
     if (s.kind === 'sub') {
       const g = snap.subs[s.id];
       if (!g) return null;
-      return { kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), classPaint: snap.paint?.[s.id] ?? null, count: g.nodes.length };
+      return {
+        kind: 'sub', id: s.id, title: g.title, dir: g.dir, fill: fillOf(g.styles), classPaint: snap.paint?.[s.id] ?? null, count: g.nodes.length,
+        classes: this.classesOf(g.classes), classList: this.classList(),
+      };
     }
     const e = snap.edges[s.index];
     if (!e) return null;

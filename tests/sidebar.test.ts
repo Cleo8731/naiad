@@ -32,7 +32,7 @@ describe('a description being written is kept while the file changes (bug hunt S
     const now = root.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!;
     expect(now.hidden).toBe(false);
     expect(now.value).toBe('A draft the person is still writing.');
-    const group = root.querySelectorAll<HTMLSelectElement>('select')[1];
+    const group = root.querySelectorAll<HTMLSelectElement>('select')[2];
     expect([...group.options].map((o) => o.textContent)).toEqual(['None', 'Getting ready', 'Model', 'New group…']);
     expect(group.value).toBe('prep');
 
@@ -44,7 +44,7 @@ describe('a description being written is kept while the file changes (bug hunt S
     const { root, side } = sidebar();
     side.show(VIEW);
     side.show({ ...VIEW, group: 'model', groups: [{ id: 'model', title: 'Model' }, { id: 'ship', title: 'Ship' }] });
-    const group = root.querySelectorAll<HTMLSelectElement>('select')[1];
+    const group = root.querySelectorAll<HTMLSelectElement>('select')[2];
     expect([...group.options].map((o) => o.value)).toEqual(['', 'model', 'ship', '\u0000new']);
     expect(group.value).toBe('model');
   });
@@ -184,7 +184,7 @@ describe("the Shape and Group boxes take the row's width (seen 2026-11-25)", () 
       .flatMap(([, selectors]) => selectors.split(',').map((s) => s.trim()));
     expect(narrow.length).toBeGreaterThan(0);
     const boxes = [...root.querySelectorAll('.row .select-wrap, .row select')];
-    expect(boxes.length).toBe(4); // Shape and Group, each a wrapper and its list
+    expect(boxes.length).toBe(6); // Shape, Class (T1.26) and Group, each a wrapper and its list
     for (const box of boxes) for (const s of narrow) expect(box.matches(s), s).toBe(false);
     expect(root.querySelector('.row > .row-label')!.textContent).toBe('Shape');
   });

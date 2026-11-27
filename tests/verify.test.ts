@@ -25,6 +25,17 @@ async function opsFor(text: string): Promise<Op[]> {
     { kind: 'setDescription', id: FLOWCHART_ID, description: 'The whole flowchart.\n\nIn two paragraphs.' },
     { kind: 'setDescription', id: FLOWCHART_ID, description: '' },
   ];
+  // Classes (T1.26): a new one, each one's colour, deleting each, and each node and
+  // group (with an id written in the file) put in each class, a new one, or none.
+  const classes = Object.keys(snap.classDefs).filter((c) => c !== 'default');
+  const colour = { fill: '#d3f9d8', stroke: '#2f9e44', color: '#1c2026' };
+  ops.push({ kind: 'addClass', name: 'fresh', styles: colour, node: null });
+  for (const name of classes) ops.push({ kind: 'setClassStyle', name, changes: colour }, { kind: 'deleteClass', name });
+  const named = parseDoc(text).subs.filter((s) => s.explicitId).map((s) => s.id);
+  for (const id of [...nodes, ...named]) {
+    ops.push({ kind: 'setClass', id, cls: null }, { kind: 'addClass', name: 'fresh', styles: colour, node: id });
+    for (const cls of classes) ops.push({ kind: 'setClass', id, cls });
+  }
   if (nodes.length > 1) ops.push({ kind: 'addEdge', from: nodes[0], to: nodes[nodes.length - 1] }, { kind: 'addEdge', from: nodes[1], to: nodes[1] });
   for (const id of nodes) {
     ops.push(

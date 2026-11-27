@@ -16,6 +16,8 @@ export interface NodeView {
   fill: string; group: string; groups: { id: string; title: string }[];
   /** The colour the node's classes give it, shown in the Colour row's first swatch; null for none. */
   classPaint?: ClassPaint | null;
+  /** The classes the node is in, and those the file defines, for the Class row (T1.26). */
+  classes?: string[]; classList?: ClassInfo[];
 }
 export interface EdgeView {
   kind: 'edge'; index: number; from: string; to: string; label: string;
@@ -28,13 +30,16 @@ export interface SubView {
   kind: 'sub'; id: string; title: string; dir: string; fill: string; count: number;
   /** As a node's. */
   classPaint?: ClassPaint | null;
+  classes?: string[]; classList?: ClassInfo[];
 }
 /**
  * The flowchart's description, under any item (T1.13): `file` is the file's path, so
  * another file gets a panel of its own; `name` is the front matter's title, else the
  * file's name.
  */
-export interface AboutView { kind: 'about'; file: string; name: string; description: string }
+export interface AboutView { kind: 'about'; file: string; name: string; description: string; classList?: ClassInfo[] }
+/** A class the file defines (`classDef`; T1.26): its name, its colour, and how many nodes and groups are in it. */
+export interface ClassInfo { name: string; fill: string; stroke: string; nodes: number; groups: number }
 export type View = NodeView | EdgeView | SubView | AboutView;
 
 /**
@@ -63,6 +68,15 @@ export interface SidebarActions {
   addNodeIn(id: string): void;
   ungroup(id: string): void;
   openLink(url: string): void;
+  /** Puts a node or group in one class, or (null) in none (T1.26). */
+  setClass(id: string, cls: string | null): void;
+  /** Makes a class of the swatch's colour, with `node` in it when given; true once it is in the file. */
+  addClass(name: string, swatch: Swatch, node: string | null): Promise<boolean>;
+  setClassColour(name: string, swatch: Swatch): void;
+  /** Deletes a class; its nodes stay, without its colour. */
+  deleteClass(name: string): void;
+  /** Why a new class cannot be called `name`, or null when it can. */
+  classNameProblem(name: string): string | null;
 }
 
 export interface Swatch { name: string; fill: string; stroke: string }
@@ -90,6 +104,7 @@ export interface Draft { id: string; text: string; written(): void }
 export interface Typed { what: string; text: string; write(): Promise<boolean> }
 
 export const NEW_GROUP = '\u0000new';
+const NEW_CLASS = '\u0000new-class';
 
 const PICKABLE_SHAPES = ['square', 'round', 'stadium', 'diamond', 'hexagon', 'circle', 'cylinder', 'subroutine', 'lean_right', 'trapezoid'];
 
@@ -421,7 +436,133 @@ export class Sidebar {
       this.aboutName(),
       this.description(FLOWCHART_ID, (v) => (v as AboutView).description,
         'Describe the whole flowchart: what it shows and how to read it. Markdown works: **bold**, lists, `code`, links.'),
+      this.classesSection(),
     ];
+  }
+
+  /**
+   * The form that makes a class (T1.26): a name, one of the swatches, Create and Cancel.
+   * Create writes the class, with `create`; a name that cannot be used says why.
+   */
+  private newClassForm(create: (name: string, s: Swatch) => Promise<boolean>, closed: () => void): { el: HTMLElement; open(): void; isOpen(): boolean } {
+    let picked = SWATCHES[0];
+    const name = h('input', {
+      class: 'new-class-name', type: 'text', placeholder: 'Name, such as review', spellcheck: 'false', 'aria-label': "The new class's name",
+      keydown: (e) => {
+        const k = (e as KeyboardEvent).key;
+        if (k === 'Enter') { e.preventDefault(); void done(); }
+        if (k === 'Escape') { e.stopPropagation(); close(); }
+      },
+      input: () => { problem.textContent = ''; },
+    });
+    const buttons = SWATCHES.map((s) => {
+      const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => { picked = s; mark(); } });
+      b.style.background = s.fill;
+      b.style.borderColor = s.stroke;
+      return b;
+    });
+    const mark = () => buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i] === picked));
+    const problem = h('p', { class: 'hint problem', role: 'alert' });
+    const el = h('div', { class: 'new-class', hidden: true },
+      h('span', { class: 'new-class-head' }, 'New class'),
+      name, h('div', { class: 'swatches' }, ...buttons), problem,
+      h('div', { class: 'new-class-buttons' },
+        h('button', { class: 'primary', click: () => { void done(); } }, 'Create'),
+        h('button', { class: 'ghost', click: () => close() }, 'Cancel')));
+    const close = () => { el.hidden = true; closed(); };
+    const done = async () => {
+      const text = name.value.trim();
+      const why = this.actions.classNameProblem(text);
+      if (why) { problem.textContent = why; name.focus(); return; }
+      if (await create(text, picked)) close();
+    };
+    return {
+      el,
+      open: () => {
+        name.value = '';
+        problem.textContent = '';
+        picked = SWATCHES[0];
+        mark();
+        el.hidden = false;
+        name.focus();
+      },
+      isOpen: () => !el.hidden,
+    };
+  }
+
+  /** How many nodes and groups a class holds, in words. */
+  private static count(c: ClassInfo): string {
+    const part = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    if (!c.nodes && !c.groups) return 'Not used';
+    return [c.nodes ? part(c.nodes, 'node') : '', c.groups ? part(c.groups, 'group') : ''].filter(Boolean).join(', ');
+  }
+
+  /**
+   * The About panel's Classes (T1.26, Q264): each class the file defines, with its colour,
+   * its name, how many nodes use it, swatches that change its colour, and Delete; then
+   * New class.
+   */
+  private classesSection(): HTMLElement {
+    const a = this.actions;
+    const list = h('div', { class: 'class-list' });
+    const empty = h('p', { class: 'hint' }, 'No classes yet. A class gives every node in it the same colour, and names the kind of step they are.');
+    const add = h('button', { class: 'add-class', click: () => { add.hidden = true; form.open(); } }, 'New class');
+    const form = this.newClassForm((name, s) => a.addClass(name, s, null), () => { add.hidden = false; });
+    let listed: string | null = null;
+    this.sync.push((v) => {
+      const classes = (v as AboutView).classList ?? [];
+      empty.hidden = classes.length > 0;
+      const key = JSON.stringify(classes);
+      if (key === listed) return;
+      listed = key;
+      list.replaceChildren(...classes.map((c) => {
+        const chip = h('span', { class: 'class-chip' });
+        chip.style.background = c.fill || 'transparent';
+        if (c.stroke) chip.style.borderColor = c.stroke;
+        const swatches = SWATCHES.map((s) => {
+          const b = h('button', { class: 'swatch', title: `${s.name}: colour "${c.name}"`, 'aria-label': `${s.name} for the class ${c.name}`, click: () => a.setClassColour(c.name, s) });
+          b.style.background = s.fill;
+          b.style.borderColor = s.stroke;
+          b.classList.toggle('on', s.fill === c.fill.toLowerCase());
+          return b;
+        });
+        return h('div', { class: 'class-item' },
+          h('div', { class: 'class-line' }, chip, h('span', { class: 'class-name' }, c.name), h('span', { class: 'class-count' }, Sidebar.count(c)),
+            h('button', {
+              class: 'ghost danger', title: `Delete the class "${c.name}": its nodes stay, without its colour (Undo brings it back)`,
+              'aria-label': `Delete the class ${c.name}`, click: () => a.deleteClass(c.name),
+            }, iconEl('trash'))),
+          h('div', { class: 'swatches' }, ...swatches));
+      }));
+    });
+    return h('div', { class: 'classes' }, h('div', { class: 'desc-head' }, h('span', {}, 'Classes')), empty, list, form.el, add);
+  }
+
+  /**
+   * The Class row of a node or group (T1.26): None, the file's classes and New class….
+   * Shown while the file defines a class, or while one is being made here.
+   */
+  private classRow(id: string, read: (v: View) => NodeView | SubView): HTMLElement[] {
+    const a = this.actions;
+    let current = '';
+    let defined = false;
+    const form = this.newClassForm((name, s) => a.addClass(name, s, id), () => { sel.value = current; show(); });
+    const sel = this.select(
+      (v) => [option('', 'None'), ...(read(v).classList ?? []).map((c) => option(c.name, c.name)), option(NEW_CLASS, 'New class…')],
+      (v) => (read(v).classes ?? []).join(', '),
+      (value) => {
+        if (value === NEW_CLASS) { form.open(); show(); return; }
+        a.setClass(id, value || null);
+      });
+    const row = this.row('Class', sel);
+    const show = () => { row.hidden = !defined && !form.isOpen(); };
+    this.sync.push((v) => {
+      current = (read(v).classes ?? []).join(', ');
+      defined = (read(v).classList ?? []).length > 0;
+      if (form.isOpen()) sel.value = NEW_CLASS;
+      show();
+    });
+    return [row, form.el];
   }
 
   /**
@@ -522,6 +663,7 @@ export class Sidebar {
       h('div', { class: 'props' },
         this.row('Shape', shape),
         this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as NodeView).classPaint)),
+        ...this.classRow(id, (v) => v as NodeView),
         this.row('Group', group)),
       h('div', { class: 'side-foot' },
         h('span', { class: 'hint' }, 'Drag the dot beside the node onto another node to connect them.'),
@@ -578,7 +720,8 @@ export class Sidebar {
       count,
       h('div', { class: 'props' },
         this.row('Direction', dir),
-        this.row('Colour', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as SubView).classPaint))),
+        this.row('Colour', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as SubView).classPaint)),
+        ...this.classRow(id, (v) => v as SubView)),
       h('div', { class: 'side-foot' },
         h('button', { click: () => a.addNodeIn(id) }, 'Add node inside'),
         h('button', { class: 'danger', title: 'Removes the frame; the nodes stay', click: () => a.ungroup(id) }, 'Ungroup')),

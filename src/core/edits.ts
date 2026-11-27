@@ -637,6 +637,171 @@ export function setStyle(text: string, id: string, changes: Record<string, strin
   return rw.finish();
 }
 
+// ---------------------------------------------------------------- classes (T1.26)
+
+/** A class name Naiad writes: letters, digits, `-` and `_` (the scanner's `:::` names). */
+const CLASS_NAME = /^[\p{L}\p{N}_-]+$/u;
+/** Words Mermaid reads as its own, which no new class may be called. */
+const RESERVED = /^(end|subgraph|graph|flowchart|style|class|classDef|click|linkStyle|direction|default|call|href)$/i;
+const COLOUR = /^#[0-9a-fA-F]{3,8}$/;
+
+interface DefLine { line: number; head: string; names: string[]; sep: string; pieces: string[] }
+
+/** The `classDef` lines, read: `classDef a,b fill:#f00,stroke:#000`. */
+function defLines(doc: Doc): DefLine[] {
+  const out: DefLine[] = [];
+  doc.info.forEach((li, i) => {
+    if (li.kind !== 'classDef') return;
+    const m = /^(\s*classDef\s+)(\S+)(\s+)(.*?)\s*;?\s*$/.exec(doc.lines[i])!;
+    out.push({ line: i, head: m[1], names: m[2].split(','), sep: m[3], pieces: m[4].split(/[,;]/) });
+  });
+  return out;
+}
+
+/** The class a `class` line names: `class a,b held` names `held`. */
+function classOfLine(line: string): string {
+  return /^\s*class\s+\S+\s+(\S+?)\s*;?\s*$/.exec(line)?.[1] ?? '';
+}
+
+/** The line from which Mermaid's reading still holds `line`'s item: a line inside a group goes to the outermost group's `end`. */
+function topLevelLine(doc: Doc, line: number): number {
+  let at = line;
+  while (doc.info[at].parent !== -1) {
+    const parent = doc.info[at].parent;
+    at = doc.subs.find((s) => s.line === parent)!.endLine;
+  }
+  return at;
+}
+
+/**
+ * Rewrites the `:::` marks on nodes: `keep` gives the classes a node's marks keep, or null
+ * to leave them as written.
+ */
+function rewriteMarks(doc: Doc, rw: Rewriter, keep: (ref: NodeRef) => string[] | null): void {
+  doc.info.forEach((li, i) => {
+    if (!li.chains) return;
+    const cuts: { from: number; to: number; text: string }[] = [];
+    for (const ch of li.chains) for (const g of ch.groups) for (const r of g) {
+      if (!r.classes.length) continue;
+      const kept = keep(r);
+      if (kept === null) continue;
+      cuts.push({ from: r.shape?.closeEnd ?? r.attrs?.end ?? r.idEnd, to: r.end, text: kept.map((k) => `:::${k}`).join('') });
+    }
+    if (!cuts.length) return;
+    let next = doc.lines[i];
+    for (const c of cuts.sort((a, b) => b.from - a.from)) next = next.slice(0, c.from) + c.text + next.slice(c.to);
+    rw.setLine(i, next);
+  });
+}
+
+/**
+ * Puts a node or group in one class, its only one, or (cls null) in none. Its id leaves
+ * every `class` line and `:::` mark that names it, and joins the last `class` line of
+ * `cls` written after the item (Mermaid gives a class only to an item it has read
+ * already), or a new `class` line after the last `classDef` or `class` line.
+ */
+export function setClass(text: string, id: string, cls: string | null): string {
+  const doc = load(text);
+  if (!ID_OK.test(id)) throw new EditError(`The id "${id}" has characters the chart cannot write safely; change its class in the Syntax pane.`);
+  const sub = findSub(doc, id);
+  if (sub && !sub.explicitId) throw new EditError('This group has no id written in the file, so a class line cannot name it; give it one in the Syntax pane (subgraph id [Title]).');
+  const refs = sub ? [] : requireNode(doc, id);
+  if (cls !== null && !defLines(doc).some((d) => d.names.includes(cls))) throw new EditError(`There is no class "${cls}" in this file.`);
+  const known = sub ? sub.endLine : Math.min(...refs.map((r) => r.line));
+  const rw = new Rewriter(doc);
+  rewriteMarks(doc, rw, (r) => (r.id === id ? [] : null));
+  let target = -1;
+  if (cls !== null) doc.info.forEach((li, i) => { if (li.kind === 'class' && i > known && classOfLine(doc.lines[i]) === cls) target = i; });
+  doc.info.forEach((li, i) => {
+    if (li.kind !== 'class' || (!li.ids!.includes(id) && i !== target)) return;
+    const ids = li.ids!.filter((x) => x !== id);
+    if (i === target) ids.push(id);
+    if (ids.length) rw.setLine(i, doc.lines[i].replace(/^(\s*class\s+)\S+/, `$1${ids.join(',')}`));
+    else rw.remove(i);
+  });
+  if (cls !== null && target < 0) {
+    let at = topLevelLine(doc, known);
+    doc.info.forEach((li, i) => { if (li.kind === 'class' || li.kind === 'classDef') at = Math.max(at, topLevelLine(doc, i)); });
+    rw.insertAfter(at, [{ text: `${topIndent(doc)}class ${id} ${cls}`, ids: [] }], -1);
+  }
+  return rw.finish();
+}
+
+/** Why a new class cannot have this name, or null when it can. */
+export function classNameProblem(text: string, name: string): string | null {
+  if (!name) return 'A class needs a name.';
+  if (!CLASS_NAME.test(name)) return 'A class name has only letters, digits, "-" and "_".';
+  if (RESERVED.test(name)) return `"${name}" is a word Mermaid keeps for itself.`;
+  if (defLines(parseDoc(text)).some((d) => d.names.includes(name))) return `There is already a class "${name}".`;
+  return null;
+}
+
+/** Adds a class: `classDef <name> fill:…,stroke:…`, after the last `classDef` line, else at the end. */
+export function addClass(text: string, name: string, styles: Record<string, string>): string {
+  const doc = load(text);
+  const problem = classNameProblem(text, name);
+  if (problem) throw new EditError(problem);
+  if (Object.values(styles).some((v) => !COLOUR.test(v))) throw new EditError('That is not a colour the chart can write.');
+  const defs = defLines(doc);
+  const at = defs.length ? topLevelLine(doc, defs[defs.length - 1].line) : lastStructuralLine(doc);
+  const body = Object.entries(styles).map(([k, v]) => `${k}:${v}`).join(',');
+  const rw = new Rewriter(doc);
+  rw.insertAfter(at, [{ text: `${topIndent(doc)}classDef ${name} ${body}`, ids: [] }], -1);
+  return rw.finish();
+}
+
+/**
+ * Sets properties of a class (its fill, border and text colour): each one is changed
+ * where the class's `classDef` lines set it, or added to the last of them. A class
+ * defined on a line with other classes is left to the Syntax pane.
+ */
+export function setClassStyle(text: string, name: string, changes: Record<string, string>): string {
+  const doc = load(text);
+  const mine = defLines(doc).filter((d) => d.names.includes(name));
+  if (!mine.length) throw new EditError(`There is no class "${name}" in this file.`);
+  if (Object.values(changes).some((v) => !COLOUR.test(v))) throw new EditError('That is not a colour the chart can write.');
+  for (const d of mine) {
+    if (d.names.length > 1) throw new EditError(`Line ${d.line + 1}: the class "${name}" is defined together with other classes; change its colour in the Syntax pane.`);
+    if (d.pieces.some((p) => !p.includes(':') || p.includes('(') || p.includes('\\'))) {
+      throw new EditError(`Line ${d.line + 1}: this classDef line is too involved for the chart to edit; change it in the Syntax pane.`);
+    }
+  }
+  const keyOf = (p: string) => p.slice(0, p.indexOf(':')).trim();
+  for (const [key, value] of Object.entries(changes)) {
+    let found = false;
+    for (const d of mine) {
+      d.pieces = d.pieces.map((p) => {
+        if (keyOf(p) !== key) return p;
+        found = true;
+        return `${key}:${value}`;
+      });
+    }
+    if (!found) mine[mine.length - 1].pieces.push(`${key}:${value}`);
+  }
+  const rw = new Rewriter(doc);
+  for (const d of mine) rw.setLine(d.line, `${d.head}${d.names.join(',')}${d.sep}${d.pieces.join(',').trimStart()}`);
+  return rw.finish();
+}
+
+/**
+ * Deletes a class: its `classDef` lines (its name only, on a line shared with other
+ * classes), its `class` lines, and its name in every `:::` mark. The nodes stay.
+ */
+export function deleteClass(text: string, name: string): string {
+  const doc = load(text);
+  const mine = defLines(doc).filter((d) => d.names.includes(name));
+  if (!mine.length) throw new EditError(`There is no class "${name}" in this file.`);
+  const rw = new Rewriter(doc);
+  for (const d of mine) {
+    const rest = d.names.filter((n) => n !== name);
+    if (rest.length) rw.setLine(d.line, doc.lines[d.line].replace(/^(\s*classDef\s+)\S+/, `$1${rest.join(',')}`));
+    else rw.remove(d.line);
+  }
+  doc.info.forEach((li, i) => { if (li.kind === 'class' && classOfLine(doc.lines[i]) === name) rw.remove(i); });
+  rewriteMarks(doc, rw, (r) => (r.classes.includes(name) ? r.classes.filter((c) => c !== name) : null));
+  return rw.finish();
+}
+
 const isStroke = (piece: string): boolean => piece.slice(0, piece.indexOf(':')).trim() === 'stroke';
 
 /**

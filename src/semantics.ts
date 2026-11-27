@@ -17,7 +17,7 @@ export interface SnapEdge {
   /** The arrow's own id (`e1@-->`); '' for the id Mermaid makes up, which shifts. */
   id: string;
 }
-export interface SnapSub { title: string; nodes: string[]; dir: string; styles: string[] }
+export interface SnapSub { title: string; nodes: string[]; dir: string; styles: string[]; classes: string[] }
 /** The colour a node's or group's classes give it (`classDef`), and the class that gives it. */
 export interface ClassPaint { name: string; fill: string; stroke: string }
 
@@ -32,6 +32,12 @@ export interface Snap {
   /** The accessible title and description, which no edit changes (bug hunt round 5, A38). */
   accTitle: string;
   accDescr: string;
+  /**
+   * Each class the file defines (`classDef`), with its properties in Mermaid's order, the
+   * later winning (T1.26). The checks compare them, so an edit that changed a class it was
+   * not meant to is refused.
+   */
+  classDefs: Record<string, string[]>;
   /**
    * Each node's and group's colour from its classes, when they give one (T1.6, Q259). Only
    * the sidebar reads it; the checks compare a chart without it (`canon`).
@@ -86,7 +92,7 @@ export async function snapshot(text: string, asIs = false): Promise<Snap> {
   const db = diagram.db;
   const snap: Snap = {
     direction: normDir(db.getDirection()), nodes: {}, edges: [], edgeIds: [], subs: {},
-    accTitle: String(db.getAccTitle?.() ?? ''), accDescr: String(db.getAccDescription?.() ?? ''),
+    accTitle: String(db.getAccTitle?.() ?? ''), accDescr: String(db.getAccDescription?.() ?? ''), classDefs: {},
   };
   for (const v of db.getVertices().values()) {
     snap.nodes[v.id] = {
@@ -107,7 +113,7 @@ export async function snapshot(text: string, asIs = false): Promise<Snap> {
     snap.edgeIds.push(e.id);
   }
   for (const s of db.getSubGraphs()) {
-    snap.subs[s.id] = { title: normText(s.title), nodes: [...s.nodes].sort(), dir: normDir(s.dir), styles: [] };
+    snap.subs[s.id] = { title: normText(s.title), nodes: [...s.nodes].sort(), dir: normDir(s.dir), styles: [], classes: [...(s.classes ?? [])].sort() };
   }
   // A group that is styled, or is an arrow's end, also shows up as a node; fold it back.
   for (const id of Object.keys(snap.subs)) {
@@ -119,6 +125,7 @@ export async function snapshot(text: string, asIs = false): Promise<Snap> {
   // Mermaid gives every node the classes `default` and `node` before its own; a group,
   // only its own (its `getCompiledStyles`).
   const classes: Map<string, { styles?: string[] }> = db.getClasses?.() ?? new Map();
+  for (const [name, c] of classes) snap.classDefs[name] = (c.styles ?? []).map((s) => s.trim()).filter(Boolean);
   const paint: Record<string, ClassPaint> = {};
   for (const v of db.getVertices().values()) {
     const p = snap.nodes[v.id] && paintOf(classes, ['default', 'node', ...(v.classes ?? [])]);
@@ -160,5 +167,6 @@ export function canon(s: Snap): string {
     subs: sortKeys(subs),
     accTitle: s.accTitle,
     accDescr: s.accDescr,
+    classDefs: sortKeys(s.classDefs),
   });
 }

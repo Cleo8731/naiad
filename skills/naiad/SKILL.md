@@ -183,6 +183,11 @@ as text):
   (`a & b --> c`).
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
 - Colours: `style id fill:#...,stroke:#...,color:#...`.
+- Classes, for colouring nodes by the kind of step they are: `classDef name fill:#...,stroke:#...`
+  once per kind, on a line of its own, then `class id1,id2 name` after the nodes (Mermaid
+  skips a class line written above the node's first mention), or `id:::name` written
+  on a node. The user can then move nodes between kinds, recolour a kind or delete one
+  in the sidebar.
 
 ### Changing a file that exists
 

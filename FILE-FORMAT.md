@@ -197,6 +197,22 @@ flowchart TD
   `linkStyle default` lines and lines that set only the curve (`interpolate`) are left
   alone; a line that sets the curve and a style at once, or one with a property Naiad
   cannot read, is changed in the Syntax pane.
+- Classes, set in the sidebar. A node or group is put in one class, its only one: its
+  id is taken out of every `class` line and every `:::` mark that names it, and added
+  to the last `class` line of that class written below the node's first mention (for a
+  group, below its `end`), since Mermaid gives a class only to an item it has already
+  read. With no such line, a new `class id name` line goes after the last `classDef` or
+  `class` line (and below the item). Choosing no class takes the id out of them all.
+  A new class is a `classDef name fill:#…,stroke:#…,color:#1c2026` line after the last
+  `classDef` line, or after the last line of the flowchart. Changing a class's colour
+  changes its `fill`, `stroke` and `color` where its `classDef` lines set them (Mermaid
+  reads every `classDef` line of a name, the later winning), or adds them to the last
+  of those lines; its other properties stay as written. A class defined on one line
+  with others (`classDef a,b fill:#…`) is changed in the Syntax pane. Deleting a class
+  removes its `classDef` lines (only its name, on a line shared with other classes), its
+  `class` lines and its name in every `:::` mark; the nodes stay, without its colour. A
+  group whose id Mermaid made up (one written with only a title) is put in a class in
+  the Syntax pane: its id changes as groups are added.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
   them stays mixed. A line Naiad changes keeps the ending it had; a line it adds takes
   the ending of the line above it. A byte-order mark is kept. Whether the file ends with
@@ -375,6 +391,8 @@ but must be edited as text:
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
 - Styling: `style id fill:#...,stroke:#...,color:#...`; an arrow's colour as
   `linkStyle 3 stroke:#...` (the arrow's place among the arrows, counted from 0).
+- Classes: `classDef name fill:#...,stroke:#...`, `class id1,id2 name`, and `id:::name`
+  written on a node.
 - Inside a quoted title, a double quote is written `#quot;`.
 
 An accessible title or description (`accTitle: text`, `accDescr: text`, `accDescr {`

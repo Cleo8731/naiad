@@ -25,7 +25,11 @@ export type Op =
   | { kind: 'groupNode'; id: string; title: string }
   | { kind: 'renameSubgraph'; id: string; title: string }
   | { kind: 'setSubgraphDirection'; id: string; dir: string | null }
-  | { kind: 'ungroup'; id: string };
+  | { kind: 'ungroup'; id: string }
+  | { kind: 'setClass'; id: string; cls: string | null }
+  | { kind: 'addClass'; name: string; styles: Record<string, string>; node: string | null }
+  | { kind: 'setClassStyle'; name: string; changes: Record<string, string> }
+  | { kind: 'deleteClass'; name: string };
 
 export interface OpResult { text: string; created?: string; edgeIndex?: number }
 
@@ -59,6 +63,13 @@ export function runOp(text: string, op: Op): OpResult {
     }
     case 'setSubgraphDirection': return { text: E.setSubgraphDirection(text, op.id, op.dir) };
     case 'ungroup': return { text: E.ungroup(text, op.id) };
+    case 'setClass': return { text: E.setClass(text, op.id, op.cls) };
+    case 'addClass': {
+      const added = E.addClass(text, op.name, op.styles);
+      return { text: op.node === null ? added : E.setClass(added, op.node, op.name) };
+    }
+    case 'setClassStyle': return { text: E.setClassStyle(text, op.name, op.changes) };
+    case 'deleteClass': return { text: E.deleteClass(text, op.name) };
   }
 }
 
@@ -81,6 +92,12 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
   const s: Snap = structuredClone(before);
   const outOfGroups = (id: string) => {
     for (const g of Object.values(s.subs)) g.nodes = g.nodes.filter((n) => n !== id);
+  };
+  // A node or group in one class, or none. Mermaid gives a node with a `click` line the
+  // class `clickable` itself, which no class line writes, so it stays.
+  const onlyClass = (id: string, cls: string | null) => {
+    const item = s.subs[id] ?? s.nodes[id];
+    item.classes = [...item.classes.filter((c) => c === 'clickable'), ...(cls === null ? [] : [cls])].sort();
   };
   switch (op.kind) {
     case 'setDescription': break;
@@ -145,7 +162,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
       break;
     case 'groupNode':
       outOfGroups(op.id);
-      s.subs[res.created!] = { title: enc(op.title), nodes: [op.id], dir: '', styles: [] };
+      s.subs[res.created!] = { title: enc(op.title), nodes: [op.id], dir: '', styles: [], classes: [] };
       break;
     case 'renameSubgraph': {
       const sub = s.subs[op.id];
@@ -165,6 +182,30 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
         if (!g.nodes.includes(op.id)) continue;
         g.nodes = [...g.nodes.filter((n) => n !== op.id), ...inside].sort();
       }
+      break;
+    }
+    case 'setClass': onlyClass(op.id, op.cls); break;
+    case 'addClass':
+      s.classDefs[op.name] = Object.entries(op.styles).map(([k, v]) => `${k}:${v}`);
+      if (op.node !== null) onlyClass(op.node, op.name);
+      break;
+    case 'setClassStyle': {
+      // Each property changes where the class sets it, or is added after the rest.
+      const keyOf = (x: string) => x.slice(0, x.indexOf(':')).trim();
+      let styles = s.classDefs[op.name];
+      for (const [k, v] of Object.entries(op.changes)) {
+        if (styles.some((x) => keyOf(x) === k)) styles = styles.map((x) => (keyOf(x) === k ? `${k}:${v}` : x));
+        else styles = [...styles, `${k}:${v}`];
+      }
+      s.classDefs[op.name] = styles;
+      break;
+    }
+    case 'deleteClass': {
+      delete s.classDefs[op.name];
+      const out = (item: { classes: string[] }) => { item.classes = item.classes.filter((c) => c !== op.name); };
+      Object.values(s.nodes).forEach(out);
+      Object.values(s.subs).forEach(out);
+      s.edges.forEach(out);
       break;
     }
   }
