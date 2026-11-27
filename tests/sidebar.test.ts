@@ -14,6 +14,9 @@ function sidebar() {
   return { root, actions, side: new Sidebar(root, actions as unknown as SidebarActions) };
 }
 
+/** The Group row's list (the Class row and its New class form come before it, Q272). */
+const groupBox = (root: HTMLElement) => [...root.querySelectorAll('.row')].find((r) => r.querySelector('.row-label')?.textContent === 'Group')!.querySelector<HTMLSelectElement>('select')!;
+
 const VIEW: NodeView = {
   kind: 'node', id: 'collect', title: 'Collect data', description: 'Pull the raw exports.',
   shape: 'square', fill: '', group: 'prep', groups: [{ id: 'prep', title: 'Preparation' }, { id: 'model', title: 'Model' }],
@@ -32,11 +35,11 @@ describe('a description being written is kept while the file changes (bug hunt S
     const now = root.querySelector<HTMLTextAreaElement>('textarea.desc-edit')!;
     expect(now.hidden).toBe(false);
     expect(now.value).toBe('A draft the person is still writing.');
-    const group = root.querySelectorAll<HTMLSelectElement>('select')[2];
+    const group = groupBox(root);
     expect([...group.options].map((o) => o.textContent)).toEqual(['None', 'Getting ready', 'Model', 'New group…']);
     expect(group.value).toBe('prep');
 
-    root.querySelector<HTMLButtonElement>('button.primary')!.click(); // Done
+    root.querySelector<HTMLButtonElement>('.desc button.primary')!.click(); // Done
     expect(actions.setDescription).toHaveBeenCalledWith('collect', 'A draft the person is still writing.');
   });
 
@@ -44,7 +47,7 @@ describe('a description being written is kept while the file changes (bug hunt S
     const { root, side } = sidebar();
     side.show(VIEW);
     side.show({ ...VIEW, group: 'model', groups: [{ id: 'model', title: 'Model' }, { id: 'ship', title: 'Ship' }] });
-    const group = root.querySelectorAll<HTMLSelectElement>('select')[2];
+    const group = groupBox(root);
     expect([...group.options].map((o) => o.value)).toEqual(['', 'model', 'ship', '\u0000new']);
     expect(group.value).toBe('model');
   });
@@ -184,8 +187,10 @@ describe("the Shape and Group boxes take the row's width (seen 2026-11-25)", () 
       .flatMap(([, selectors]) => selectors.split(',').map((s) => s.trim()));
     expect(narrow.length).toBeGreaterThan(0);
     const boxes = [...root.querySelectorAll('.row .select-wrap, .row select')];
-    expect(boxes.length).toBe(6); // Shape, Class (T1.26) and Group, each a wrapper and its list
+    // Class (T1.26), the New class form's Border and Shape, Group, and Shape, each a
+    // wrapper and its list.
+    expect(boxes.length).toBe(10);
     for (const box of boxes) for (const s of narrow) expect(box.matches(s), s).toBe(false);
-    expect(root.querySelector('.row > .row-label')!.textContent).toBe('Shape');
+    expect(root.querySelector('.row > .row-label')!.textContent).toBe('Class');
   });
 });

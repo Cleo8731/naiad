@@ -7,13 +7,13 @@
 import type { Backend, MovedTab } from './backend';
 import { Chart, drawForPaper, type Target } from './chart';
 import { FLOWCHART_ID, getDescriptions } from './core/descriptions';
-import { classNameProblem, EditError, parseLink } from './core/edits';
+import { classNameProblem, classShapes, EditError, parseLink } from './core/edits';
 import { plainText, withEndingsOf } from './core/endings';
 import { itemOf, parseHighlights, resolveHighlights, toggleInFile } from './core/highlights';
 import { ICONS } from './icons';
 import { allRefs, FRONT_MATTER_RE, nodeLabel, parseDoc, type Doc } from './core/scan';
 import { paintOf, snapshot, type Snap } from './semantics';
-import { NEW_GROUP, Sidebar, type ClassInfo, type Typed, type View } from './sidebar';
+import { NEW_GROUP, Sidebar, type ClassBorder, type ClassInfo, type Typed, type View } from './sidebar';
 import { applyChecked, expectOp, type Op, type OpResult } from './verify';
 import { choicesFrom, stillThere, walkView, type Step as WalkStep, type WalkAction } from './walk';
 
@@ -23,6 +23,26 @@ interface Step { text: string; disk: boolean }
 /** How long the file must have been quiet after a change from outside before a save (`saveNow`). */
 const SETTLE_MS = 1000;
 const NODE_TEXT = '#1c2026';
+
+/** What each of a class's borders writes (Q274): a thick one `stroke-width:2px`, a dashed one `stroke-dasharray:5 3`; null takes it out. */
+function borderStyles(border: ClassBorder): Record<string, string | null> {
+  return {
+    'stroke-width': border === 'thick' || border === 'thickdashed' ? '2px' : null,
+    'stroke-dasharray': border === 'dashed' || border === 'thickdashed' ? '5 3' : null,
+  };
+}
+
+/** The border choice nearest to a class's styles: wider than 1px is thick; a dash pattern other than none or 0 is dashed. */
+function borderOf(styles: string[]): ClassBorder {
+  const value = (key: string) => {
+    const piece = styles.filter((x) => x.slice(0, x.indexOf(':')).trim() === key).pop();
+    return piece ? piece.slice(piece.indexOf(':') + 1).trim() : '';
+  };
+  const thick = parseFloat(value('stroke-width')) > 1;
+  const dash = value('stroke-dasharray');
+  const dashed = dash !== '' && dash !== 'none' && !/^0(px)?$/.test(dash);
+  return thick && dashed ? 'thickdashed' : thick ? 'thick' : dashed ? 'dashed' : 'normal';
+}
 
 /**
  * One reading and drawing at a time for the whole page (T1.16): every tab's chart is
@@ -235,8 +255,19 @@ export class Tab {
       openLink: (url) => this.backend.openLink(url),
       // Classes (T1.26). A class's text is dark, as a swatch's is on a node.
       setClass: (id, cls) => { void this.edit({ kind: 'setClass', id, cls }); },
-      addClass: async (name, s, node) => (await this.edit({ kind: 'addClass', name, styles: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT }, node })) !== null,
+      addClass: async (name, look, node) => {
+        const styles: Record<string, string> = { fill: look.swatch.fill, stroke: look.swatch.stroke, color: NODE_TEXT };
+        for (const [k, v] of Object.entries(borderStyles(look.border))) if (v !== null) styles[k] = v;
+        return (await this.edit({ kind: 'addClass', name, styles, node, shape: look.shape })) !== null;
+      },
       setClassColour: (name, s) => { void this.edit({ kind: 'setClassStyle', name, changes: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT } }); },
+      setClassBorder: (name, border) => { void this.edit({ kind: 'setClassStyle', name, changes: borderStyles(border) }); },
+      // The class's nodes take the shape (Q271).
+      setClassShape: (name, shape) => {
+        const nodes = Object.entries(this.snap?.nodes ?? {}).filter(([, n]) => n.classes.includes(name)).map(([id]) => id);
+        void this.edit({ kind: 'setClassShape', name, shape, nodes });
+      },
+      renameClass: async (name, next) => (await this.edit({ kind: 'renameClass', name, next })) !== null,
       deleteClass: (name) => { void this.edit({ kind: 'deleteClass', name }); },
       classNameProblem: (name) => classNameProblem(this.text, name),
     });
@@ -1112,15 +1143,20 @@ export class Tab {
 
   /**
    * The classes the file defines, `default` left out (it colours every node), each with
-   * its colour and how many nodes and groups are in it (T1.26).
+   * its colour, how many nodes and groups are in it (T1.26), its shape (Q267) and the
+   * border choice nearest to what it writes (Q274).
    */
   private classList(): ClassInfo[] {
     const snap = this.snap;
     if (!snap) return [];
     const count = (items: { classes: string[] }[], name: string) => items.filter((x) => x.classes.includes(name)).length;
+    const shapes = classShapes(this.text);
     return Object.entries(snap.classDefs).filter(([name]) => name !== 'default').map(([name, styles]) => {
       const p = paintOf(new Map([[name, { styles }]]), [name]);
-      return { name, fill: p?.fill ?? '', stroke: p?.stroke ?? '', nodes: count(Object.values(snap.nodes), name), groups: count(Object.values(snap.subs), name) };
+      return {
+        name, fill: p?.fill ?? '', stroke: p?.stroke ?? '', nodes: count(Object.values(snap.nodes), name), groups: count(Object.values(snap.subs), name),
+        shape: shapes.get(name) ?? null, border: borderOf(styles),
+      };
     });
   }
 

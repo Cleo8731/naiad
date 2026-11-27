@@ -7,7 +7,8 @@
  * Two more, Maximize 2 and Minimize 2, the Syntax pane's full-window button (2026-11-25),
  * were written out by hand from Lucide's drawings, in the same form as the others; so was
  * Share, the rail's Export button, and Printer, its Print button (T6.3, 2026-11-25),
- * and Footprints, the pill's Walk button (T6.4, 2026-11-26).
+ * and Footprints, the pill's Walk button (T6.4, 2026-11-26), and Ellipsis Vertical, a
+ * class's menu button in the About panel (T1.26, 2026-11-26).
  * Naiad's own mark is not an icon: `brand/naiad-mark.svg`, drawn through a mask.
  */
 import undo from './icons/undo-2.svg?raw';
@@ -40,6 +41,7 @@ import minimize2 from './icons/minimize-2.svg?raw';
 import share from './icons/share.svg?raw';
 import printer from './icons/printer.svg?raw';
 import footprints from './icons/footprints.svg?raw';
+import ellipsisVertical from './icons/ellipsis-vertical.svg?raw';
 
 /**
  * The window's own buttons (T4.10, Q171): Naiad's drawings, not Lucide's, thin and
@@ -59,6 +61,10 @@ function icon(name: string, svg: string): string {
 
 export const ICONS = {
   undo: icon('undo', undo),
+  /** Three dots, one above another: opens a class's menu in the About panel (T1.26, Q275). */
+  more: icon('more', ellipsisVertical),
+  /** The pencil with a line: Rename, in a class's menu. */
+  rename: icon('rename', pencilLine),
   redo: icon('redo', redo),
   /** The open book: the mode button in View mode (it shows the mode Naiad is in, T4.9). */
   read: icon('read', bookOpen),

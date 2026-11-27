@@ -27,7 +27,7 @@ const select = (target: unknown) => chartEvents.last!.onSelect(target as never);
 const row = (label: string) => [...document.querySelectorAll<HTMLElement>('.sidebar .row')].find((r) => r.querySelector('.row-label')?.textContent === label)!;
 const classBox = () => row('Class').querySelector<HTMLSelectElement>('select')!;
 const pick = (value: string) => { const s = classBox(); s.value = value; s.dispatchEvent(new Event('change')); };
-const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.sidebar button')].find((b) => b.textContent === label && !b.closest('[hidden]')) ?? null;
+const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.sidebar button')].find((b) => b.textContent?.trim() === label && !b.closest('[hidden]')) ?? null;
 const form = () => q<HTMLElement>('.sidebar .new-class:not([hidden])');
 
 beforeEach(() => localStorage.clear());
@@ -89,6 +89,10 @@ describe('a new node', () => {
 
 describe('the About panel\'s Classes (Q264)', () => {
   const items = () => [...document.querySelectorAll<HTMLElement>('.sidebar .class-item')];
+  const menuOf = (i: number) => items()[i].querySelector<HTMLElement>('.class-menu')!;
+  const openMenu = (i: number) => { items()[i].querySelector<HTMLButtonElement>('.class-more')!.click(); return menuOf(i); };
+  const listIn = (menu: HTMLElement, label: string) => [...menu.querySelectorAll('.row')].find((r) => r.querySelector('.row-label')?.textContent === label)!.querySelector<HTMLSelectElement>('select')!;
+  const choose = (sel: HTMLSelectElement, value: string) => { sel.value = value; sel.dispatchEvent(new Event('change')); };
 
   it('lists each class with its name and how many nodes use it', async () => {
     await start();
@@ -96,11 +100,12 @@ describe('the About panel\'s Classes (Q264)', () => {
       .toEqual([['held', '1 node'], ['stop', '1 node']]);
   });
 
-  it('a swatch changes the class\'s colour; Delete takes the class away and leaves its nodes', async () => {
+  it('a swatch in a class\'s menu changes its colour; Delete class takes the class away and leaves its nodes', async () => {
     const { ui } = await start();
-    items()[0].querySelectorAll<HTMLButtonElement>('.swatch')[0].click(); // Blue
+    openMenu(0).querySelectorAll<HTMLButtonElement>('.swatch')[0].click(); // Blue
     expect(await ui.until((t) => t.includes('classDef held fill:#d0ebff,stroke:#1c7ed6,color:#1c2026'))).toBe(true);
-    items()[1].querySelector<HTMLButtonElement>('button.danger')!.click();
+    openMenu(1);
+    button('Delete class')!.click();
     expect(await ui.until((t) => !t.includes('stop fill'))).toBe(true);
     expect(ui.area().value).toContain('hold --> stop[Stop]');
     expect(ui.area().value).not.toContain('class stop stop');
@@ -114,5 +119,110 @@ describe('the About panel\'s Classes (Q264)', () => {
     button('Create')!.click();
     expect(await ui.until((t) => t === 'flowchart TD\n    a --> b\n    classDef calm fill:#d0ebff,stroke:#1c7ed6,color:#1c2026\n')).toBe(true);
     expect(items().map((i) => i.querySelector('.class-count')!.textContent)).toEqual(['Not used']);
+  });
+
+  it('each line has a picture of its shape and border; the menu opens from the three-dot button, one at a time (Q275)', async () => {
+    await start(BASE.replace('classDef stop fill:#ffe3e3,stroke:#e03131', 'classDef stop fill:#ffe3e3,stroke:#e03131,stroke-width:3px\n    %% @class stop shape: stadium'));
+    const pics = items().map((i) => i.querySelector<HTMLElement>('.class-pic')!.dataset);
+    expect(pics.map((d) => [d.shape, d.border])).toEqual([['', 'normal'], ['stadium', 'thick']]);
+    expect(menuOf(0).hidden).toBe(true);
+    openMenu(0);
+    expect(menuOf(0).hidden).toBe(false);
+    expect(listIn(menuOf(0), 'Shape').value).toBe('');
+    expect(listIn(menuOf(0), 'Shape').options[0].textContent).toBe('Any shape');
+    openMenu(1);
+    expect(menuOf(0).hidden).toBe(true);
+    expect(listIn(menuOf(1), 'Border').value).toBe('thick'); // 3px: the nearest choice, kept until one is picked
+    expect(listIn(menuOf(1), 'Shape').value).toBe('stadium');
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(menuOf(1).hidden).toBe(true);
+  });
+
+  it('Border writes a thick or dashed border, and Normal takes it off (Q274)', async () => {
+    const { ui } = await start();
+    choose(listIn(openMenu(0), 'Border'), 'thickdashed');
+    expect(await ui.until((t) => t.includes('classDef held fill:#fff0cd,stroke:#996300,stroke-width:2px,stroke-dasharray:5 3'))).toBe(true);
+    expect(menuOf(0).hidden).toBe(false); // the menu stays open while the file changes
+    choose(listIn(menuOf(0), 'Border'), 'normal');
+    expect(await ui.until((t) => t === BASE)).toBe(true);
+  });
+
+  it('Shape gives the class a shape and its nodes take it; Any shape takes the line away (Q267, Q271)', async () => {
+    const { ui } = await start();
+    choose(listIn(openMenu(0), 'Shape'), 'diamond');
+    expect(await ui.until((t) => t.includes('    classDef held fill:#fff0cd,stroke:#996300\n    %% @class held shape: diamond\n') && /hold\{"?Hold"?\}/.test(t))).toBe(true);
+    choose(listIn(menuOf(0), 'Shape'), '');
+    expect(await ui.until((t) => !t.includes('@class held'))).toBe(true);
+    expect(ui.area().value).toMatch(/hold\{"?Hold"?\}/); // the nodes keep the shape they have
+  });
+
+  it('double-clicking a name renames the class everywhere the file names it; one Undo takes it back (Q276)', async () => {
+    const { ui } = await start();
+    items()[1].querySelector('.class-name')!.dispatchEvent(new MouseEvent('dblclick'));
+    const input = q<HTMLInputElement>('.sidebar input.class-rename')!;
+    expect(input.value).toBe('stop');
+    input.value = 'held';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(items()[1].querySelector('.problem')!.textContent).toBe('There is already a class "held".');
+    input.value = 'halt';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(await ui.until((t) => t.includes('classDef halt fill:#ffe3e3') && t.includes('class stop halt') && !t.includes('stop stop'))).toBe(true);
+    expect(q('.sidebar input.class-rename')).toBeNull();
+    expect(items().map((i) => i.querySelector('.class-name')!.textContent)).toEqual(['held', 'halt']);
+    ui.undo();
+    expect(await ui.until((t) => t === BASE)).toBe(true);
+  });
+
+  it('Rename in the menu opens the same box; Escape keeps the old name', async () => {
+    const { disk } = await start();
+    openMenu(0);
+    button('Rename')!.click();
+    expect(menuOf(0).hidden).toBe(true);
+    const input = q<HTMLInputElement>('.sidebar input.class-rename')!;
+    input.value = 'other';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(q('.sidebar input.class-rename')).toBeNull();
+    expect(items()[0].querySelector('.class-name')!.textContent).toBe('held');
+    expect(disk.files.get(FILE)).toBe(BASE);
+  });
+
+  it('New class sets a border and a shape too', async () => {
+    const { ui } = await start('flowchart TD\n    a --> b\n');
+    button('New class')!.click();
+    const f = form()!;
+    f.querySelector<HTMLInputElement>('input')!.value = 'calm';
+    choose(listIn(f, 'Border'), 'thick');
+    choose(listIn(f, 'Shape'), 'hexagon');
+    button('Create')!.click();
+    expect(await ui.until((t) => t === 'flowchart TD\n    a --> b\n    classDef calm fill:#d0ebff,stroke:#1c7ed6,color:#1c2026,stroke-width:2px\n    %% @class calm shape: hexagon\n')).toBe(true);
+  });
+});
+
+describe('putting a node in a class from its panel (Q267, Q270)', () => {
+  it('the node takes the class\'s shape, and loses its own colour so the class\'s shows; Undo puts both back', async () => {
+    const text = BASE.replace('classDef stop fill:#ffe3e3,stroke:#e03131', 'classDef stop fill:#ffe3e3,stroke:#e03131\n    %% @class stop shape: stadium') + '    style ask fill:#d3f9d8,stroke:#2f9e44\n';
+    const { ui } = await start(text);
+    select({ kind: 'node', id: 'ask' });
+    pick('stop');
+    expect(await ui.until((t) => /ask\(\["?Ask"?\]\)/.test(t) && t.includes('class stop,ask stop') && !t.includes('style ask'))).toBe(true);
+    ui.undo();
+    expect(await ui.until((t) => t === text)).toBe(true);
+  });
+});
+
+describe('the panels\' order (Q272)', () => {
+  const order = () => [...document.querySelectorAll<HTMLElement>('.sidebar > .props, .sidebar > .desc, .sidebar > .hint')]
+    .map((el) => (el.classList.contains('props') ? [...el.querySelectorAll(':scope > .row .row-label')].map((l) => l.textContent).join('+') : el.className));
+
+  it('a node: Class and Group, then the description, then Shape and Colour', async () => {
+    await start();
+    select({ kind: 'node', id: 'hold' });
+    expect(order()).toEqual(['Class+Group', 'desc', 'Shape+Colour']);
+  });
+
+  it('a group: Class right under the title', async () => {
+    await start('flowchart TD\n    subgraph g [Work]\n        a\n    end\n    classDef held fill:#fff0cd\n');
+    select({ kind: 'sub', id: 'g' });
+    expect(order()).toEqual(['Class', 'hint', 'Direction+Colour']);
   });
 });

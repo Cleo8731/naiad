@@ -30,10 +30,25 @@ async function opsFor(text: string): Promise<Op[]> {
   const classes = Object.keys(snap.classDefs).filter((c) => c !== 'default');
   const colour = { fill: '#d3f9d8', stroke: '#2f9e44', color: '#1c2026' };
   ops.push({ kind: 'addClass', name: 'fresh', styles: colour, node: null });
-  for (const name of classes) ops.push({ kind: 'setClassStyle', name, changes: colour }, { kind: 'deleteClass', name });
+  ops.push({ kind: 'addClass', name: 'shaped', styles: colour, node: null, shape: 'hexagon' });
+  // Each class's colour, its border on and off, its shape on (its nodes reshaped) and
+  // off, a new name, and deleting it (T1.26, Q267, Q271, Q274, Q276).
+  for (const name of classes) {
+    const members = Object.entries(snap.nodes).filter(([, n]) => n.classes.includes(name)).map(([id]) => id);
+    ops.push(
+      { kind: 'setClassStyle', name, changes: colour },
+      { kind: 'setClassStyle', name, changes: { 'stroke-width': '2px', 'stroke-dasharray': '5 3' } },
+      { kind: 'setClassStyle', name, changes: { 'stroke-width': null, 'stroke-dasharray': null } },
+      { kind: 'setClassShape', name, shape: 'diamond', nodes: members },
+      { kind: 'setClassShape', name, shape: null, nodes: members },
+      { kind: 'renameClass', name, next: 'renamed' },
+      { kind: 'deleteClass', name },
+    );
+  }
   const named = parseDoc(text).subs.filter((s) => s.explicitId).map((s) => s.id);
   for (const id of [...nodes, ...named]) {
-    ops.push({ kind: 'setClass', id, cls: null }, { kind: 'addClass', name: 'fresh', styles: colour, node: id });
+    ops.push({ kind: 'setClass', id, cls: null }, { kind: 'addClass', name: 'fresh', styles: colour, node: id },
+      { kind: 'addClass', name: 'shaped', styles: colour, node: id, shape: 'hexagon' });
     for (const cls of classes) ops.push({ kind: 'setClass', id, cls });
   }
   if (nodes.length > 1) ops.push({ kind: 'addEdge', from: nodes[0], to: nodes[nodes.length - 1] }, { kind: 'addEdge', from: nodes[1], to: nodes[1] });

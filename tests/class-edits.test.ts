@@ -5,7 +5,7 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import mermaid from 'mermaid';
 import { applyChecked, type Op } from '../src/verify';
-import { classNameProblem, EditError } from '../src/core/edits';
+import { classNameProblem, classShapes, EditError } from '../src/core/edits';
 import { snapshot } from '../src/semantics';
 
 beforeAll(() => mermaid.initialize({ startOnLoad: false }));
@@ -116,4 +116,50 @@ test('Mermaid\'s reading holds the classes the file defines, in its order, and a
   expect(a.classDefs.held).toEqual(['fill:#fff0cd', 'stroke:#996300']);
   const grouped = await snapshot('flowchart TD\n  subgraph g [G]\n    a\n  end\n  classDef k fill:#fff\n  class g k\n');
   expect(grouped.subs.g.classes).toEqual(['k']);
+});
+
+// The classes round after 1.0.4 (the user, 2026-11-26): a class's shape (Q267, Q271),
+// its own colour taken off a node put in it (Q270), a border (Q274), a new name (Q276).
+describe('a class\'s shape', () => {
+  const SHAPED = FILE.replace('    classDef held fill:#fff0cd,stroke:#996300\n', '    classDef held fill:#fff0cd,stroke:#996300\n    %% @class held shape: stadium\n');
+
+  test('is a %% line under its classDef, which Mermaid skips; setting it reshapes the class\'s nodes', async () => {
+    expect(await edit(FILE, { kind: 'setClassShape', name: 'held', shape: 'stadium', nodes: ['b'] }))
+      .toBe(SHAPED.replace('b[B]:::held', 'b(["B"]):::held'));
+    expect(classShapes(SHAPED).get('held')).toBe('stadium');
+    expect(await edit(SHAPED, { kind: 'setClassShape', name: 'held', shape: 'diamond', nodes: [] }))
+      .toBe(SHAPED.replace('shape: stadium', 'shape: diamond'));
+    expect(await edit(SHAPED, { kind: 'setClassShape', name: 'held', shape: null, nodes: ['b'] })).toBe(FILE);
+  });
+
+  test('a node put in the class takes it, and loses its own colour', async () => {
+    const own = SHAPED.replace('    class a,c stop\n', '    class a,c stop\n    style c fill:#f00,stroke-width:3px\n');
+    expect(await edit(own, { kind: 'setClass', id: 'c', cls: 'held' }))
+      .toBe(SHAPED.replace('c[C]', 'c(["C"])').replace('    class a,c stop\n', '    class a stop\n    class c held\n    style c stroke-width:3px\n'));
+    // Out of a class, or into one with no shape, the shape stays.
+    expect(await edit(SHAPED, { kind: 'setClass', id: 'b', cls: 'stop' })).toBe(SHAPED.replace('b[B]:::held', 'b[B]').replace('class a,c stop', 'class a,c,b stop'));
+  });
+
+  test('a line under a description is part of its text, not a shape', () => {
+    expect(classShapes('flowchart TD\n  a\n%% @a\n%% @class held shape: diamond\n').size).toBe(0);
+    expect(classShapes('flowchart TD\n  a\n  %% @class held shape: blob\n').size).toBe(0);
+  });
+
+  test('goes with its class, and follows a new name', async () => {
+    expect(await edit(SHAPED, { kind: 'deleteClass', name: 'held' })).toBe(await edit(FILE, { kind: 'deleteClass', name: 'held' }));
+    expect(await edit(SHAPED, { kind: 'renameClass', name: 'held', next: 'waiting' })).toBe(SHAPED.replace(/held/g, 'waiting'));
+  });
+});
+
+describe('a class\'s border and name', () => {
+  test('a border is set and taken off; its other properties stay', async () => {
+    const thick = await edit(FILE, { kind: 'setClassStyle', name: 'held', changes: { 'stroke-width': '2px', 'stroke-dasharray': '5 3' } });
+    expect(thick).toBe(FILE.replace('stroke:#996300', 'stroke:#996300,stroke-width:2px,stroke-dasharray:5 3'));
+    expect(await edit(thick, { kind: 'setClassStyle', name: 'held', changes: { 'stroke-width': null, 'stroke-dasharray': null } })).toBe(FILE);
+  });
+
+  test('a new name reaches every line and mark; a name in use is refused', async () => {
+    expect(await edit(FILE, { kind: 'renameClass', name: 'stop', next: 'halt' })).toBe(FILE.replace('classDef stop', 'classDef halt').replace('class a,c stop', 'class a,c halt'));
+    await expect(applyChecked(FILE, { kind: 'renameClass', name: 'stop', next: 'held' })).rejects.toThrow('There is already a class "held".');
+  });
 });

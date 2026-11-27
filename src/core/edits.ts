@@ -4,7 +4,7 @@
 // (src/verify.ts), so an edit that would change anything else is refused.
 
 import {
-  allRefs, findSub, isDecorated, parseDoc, SHAPES, unquote, usedIds,
+  allRefs, findSub, frontMatterLines, isDecorated, parseDoc, SHAPES, unquote, usedIds,
   type Chain, type Doc, type LinkTok, type NodeRef, type Sub,
 } from './scan';
 import { joinsBlock, parseDescriptions, removeDescription } from './descriptions';
@@ -644,6 +644,43 @@ const CLASS_NAME = /^[\p{L}\p{N}_-]+$/u;
 /** Words Mermaid reads as its own, which no new class may be called. */
 const RESERVED = /^(end|subgraph|graph|flowchart|style|class|classDef|click|linkStyle|direction|default|call|href)$/i;
 const COLOUR = /^#[0-9a-fA-F]{3,8}$/;
+/** The class properties the window writes, and the values it writes for each. */
+const CLASS_VALUE: Record<string, RegExp> = {
+  fill: COLOUR, stroke: COLOUR, color: COLOUR, 'stroke-width': /^\d+(?:\.\d+)?px$/, 'stroke-dasharray': /^\d+(?: \d+)*$/,
+};
+function checkClassValues(changes: Record<string, string | null>): void {
+  for (const [k, v] of Object.entries(changes)) {
+    if (!(k in CLASS_VALUE) || (v !== null && !CLASS_VALUE[k].test(v))) throw new EditError(`"${k}:${v}" is not a class style the chart can write.`);
+  }
+}
+
+/**
+ * A class's shape (Q267): a comment line of Naiad's own, `%% @class decision shape: diamond`,
+ * which Mermaid skips (a `classDef` cannot hold a shape). Read outside the front matter
+ * and outside description blocks (a `%%` line under a block is part of its text); the
+ * shape is Mermaid's name for it, as in SHAPES. The first line for a class wins.
+ */
+const CLASS_SHAPE_RE = /^(\s*%%\s*@class\s+)(\S+)(\s+shape:\s*)(\S+)\s*$/;
+/** The shapes a class can give its nodes: every shape but the Ellipse, which Mermaid cannot draw. */
+export const CLASS_SHAPE_TYPES = SHAPES.map((x) => x.type).filter((t) => t !== 'ellipse');
+
+function classShapeLines(lines: string[]): { line: number; name: string; shape: string }[] {
+  const inBlock = new Set<number>();
+  for (const b of parseDescriptions(lines)) for (let i = b.start; i < b.end; i++) inBlock.add(i);
+  const out: { line: number; name: string; shape: string }[] = [];
+  for (let i = frontMatterLines(lines.join('\n')); i < lines.length; i++) {
+    const m = CLASS_SHAPE_RE.exec(lines[i]);
+    if (m && !inBlock.has(i)) out.push({ line: i, name: m[2], shape: m[4] });
+  }
+  return out;
+}
+
+/** Each class's shape, by class name, as the file sets it. */
+export function classShapes(text: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const c of classShapeLines(text.split('\n'))) if (!map.has(c.name) && CLASS_SHAPE_TYPES.includes(c.shape)) map.set(c.name, c.shape);
+  return map;
+}
 
 interface DefLine { line: number; head: string; names: string[]; sep: string; pieces: string[] }
 
@@ -737,16 +774,19 @@ export function classNameProblem(text: string, name: string): string | null {
 }
 
 /** Adds a class: `classDef <name> fill:…,stroke:…`, after the last `classDef` line, else at the end. */
-export function addClass(text: string, name: string, styles: Record<string, string>): string {
+export function addClass(text: string, name: string, styles: Record<string, string>, shape: string | null = null): string {
   const doc = load(text);
   const problem = classNameProblem(text, name);
   if (problem) throw new EditError(problem);
-  if (Object.values(styles).some((v) => !COLOUR.test(v))) throw new EditError('That is not a colour the chart can write.');
+  checkClassValues(styles);
+  if (shape !== null && !CLASS_SHAPE_TYPES.includes(shape)) throw new EditError(`Unknown shape "${shape}".`);
   const defs = defLines(doc);
   const at = defs.length ? topLevelLine(doc, defs[defs.length - 1].line) : lastStructuralLine(doc);
   const body = Object.entries(styles).map(([k, v]) => `${k}:${v}`).join(',');
   const rw = new Rewriter(doc);
-  rw.insertAfter(at, [{ text: `${topIndent(doc)}classDef ${name} ${body}`, ids: [] }], -1);
+  const pieces = [{ text: `${topIndent(doc)}classDef ${name} ${body}`, ids: [] as string[] }];
+  if (shape !== null) pieces.push({ text: `${topIndent(doc)}%% @class ${name} shape: ${shape}`, ids: [] });
+  rw.insertAfter(at, pieces, -1);
   return rw.finish();
 }
 
@@ -755,11 +795,11 @@ export function addClass(text: string, name: string, styles: Record<string, stri
  * where the class's `classDef` lines set it, or added to the last of them. A class
  * defined on a line with other classes is left to the Syntax pane.
  */
-export function setClassStyle(text: string, name: string, changes: Record<string, string>): string {
+export function setClassStyle(text: string, name: string, changes: Record<string, string | null>): string {
   const doc = load(text);
   const mine = defLines(doc).filter((d) => d.names.includes(name));
   if (!mine.length) throw new EditError(`There is no class "${name}" in this file.`);
-  if (Object.values(changes).some((v) => !COLOUR.test(v))) throw new EditError('That is not a colour the chart can write.');
+  checkClassValues(changes);
   for (const d of mine) {
     if (d.names.length > 1) throw new EditError(`Line ${d.line + 1}: the class "${name}" is defined together with other classes; change its colour in the Syntax pane.`);
     if (d.pieces.some((p) => !p.includes(':') || p.includes('(') || p.includes('\\'))) {
@@ -770,16 +810,23 @@ export function setClassStyle(text: string, name: string, changes: Record<string
   for (const [key, value] of Object.entries(changes)) {
     let found = false;
     for (const d of mine) {
+      if (value === null) { d.pieces = d.pieces.filter((p) => keyOf(p) !== key); continue; }
       d.pieces = d.pieces.map((p) => {
         if (keyOf(p) !== key) return p;
         found = true;
         return `${key}:${value}`;
       });
     }
-    if (!found) mine[mine.length - 1].pieces.push(`${key}:${value}`);
+    if (value !== null && !found) mine[mine.length - 1].pieces.push(`${key}:${value}`);
   }
   const rw = new Rewriter(doc);
-  for (const d of mine) rw.setLine(d.line, `${d.head}${d.names.join(',')}${d.sep}${d.pieces.join(',').trimStart()}`);
+  // A `classDef` line left with nothing goes; the class keeps at least one line.
+  const kept = mine.filter((d) => d.pieces.some((p) => p.trim()));
+  if (!kept.length) throw new EditError(`That would leave the class "${name}" with no style at all; change it in the Syntax pane.`);
+  for (const d of mine) {
+    if (kept.includes(d)) rw.setLine(d.line, `${d.head}${d.names.join(',')}${d.sep}${d.pieces.join(',').trimStart()}`);
+    else rw.remove(d.line);
+  }
   return rw.finish();
 }
 
@@ -798,7 +845,80 @@ export function deleteClass(text: string, name: string): string {
     else rw.remove(d.line);
   }
   doc.info.forEach((li, i) => { if (li.kind === 'class' && classOfLine(doc.lines[i]) === name) rw.remove(i); });
+  for (const c of classShapeLines(doc.lines)) if (c.name === name) rw.remove(c.line);
   rewriteMarks(doc, rw, (r) => (r.classes.includes(name) ? r.classes.filter((c) => c !== name) : null));
+  return rw.finish();
+}
+
+/**
+ * Sets a class's shape, or (null) takes it away (Q267), and gives that shape to the
+ * nodes named in `nodes`, the class's nodes (Q271). The shape line is the first one the
+ * class has, or a new one under the class's last `classDef` line; any later ones go.
+ */
+export function setClassShape(text: string, name: string, shape: string | null, nodes: string[]): string {
+  const doc = load(text);
+  const defs = defLines(doc).filter((d) => d.names.includes(name));
+  if (!defs.length) throw new EditError(`There is no class "${name}" in this file.`);
+  if (shape !== null && !CLASS_SHAPE_TYPES.includes(shape)) throw new EditError(`Unknown shape "${shape}".`);
+  const rw = new Rewriter(doc);
+  const lines = classShapeLines(doc.lines).filter((c) => c.name === name);
+  lines.forEach((c, k) => {
+    if (k === 0 && shape !== null) rw.setLine(c.line, doc.lines[c.line].replace(CLASS_SHAPE_RE, `$1$2$3${shape}`));
+    else rw.remove(c.line);
+  });
+  if (shape !== null && !lines.length) {
+    const last = defs[defs.length - 1].line;
+    rw.insertAfter(last, [{ text: `${doc.info[last].indent}%% @class ${name} shape: ${shape}`, ids: [] }], doc.info[last].parent);
+  }
+  let out = rw.finish();
+  if (shape !== null) for (const id of nodes) if (shapeOf(out, id) !== shape) out = setShape(out, id, shape);
+  return out;
+}
+
+/** The shape a node is drawn with, as written (Mermaid takes the last shape written); 'square' for none. */
+function shapeOf(text: string, id: string): string {
+  const doc = load(text);
+  const shaped = requireNode(doc, id).filter((r) => r.ref.shape);
+  if (!shaped.length) return 'square';
+  const { open, close } = shaped[shaped.length - 1].ref.shape!;
+  return SHAPES.find((x) => x.open === open && x.close === close)?.type ?? '';
+}
+
+/**
+ * Puts a node or group in a class as the window does (Q267, Q270): `setClass`, then the
+ * item's own fill, border and text colour come off, so the class's show, and a node
+ * takes the class's shape when the class has one. Returns the shape given, or null.
+ */
+export function putInClass(text: string, id: string, cls: string | null): { text: string; shape: string | null } {
+  let out = setClass(text, id, cls);
+  if (cls === null) return { text: out, shape: null };
+  const doc = load(out);
+  const own = doc.info.some((li, i) => li.kind === 'style' && li.ids!.includes(id) && /\b(fill|stroke|color)\s*:/.test(doc.lines[i]));
+  if (own) out = setStyle(out, id, { fill: null, stroke: null, color: null });
+  const shape = classShapes(out).get(cls) ?? null;
+  if (shape === null || findSub(load(out), id)) return { text: out, shape: null };
+  if (shapeOf(out, id) !== shape) out = setShape(out, id, shape);
+  return { text: out, shape };
+}
+
+/**
+ * Renames a class (Q276) everywhere the file names it: its `classDef` lines, its `class`
+ * lines, its `:::` marks and its shape lines. The new name follows the rules of a new one.
+ */
+export function renameClass(text: string, name: string, next: string): string {
+  const doc = load(text);
+  const defs = defLines(doc).filter((d) => d.names.includes(name));
+  if (!defs.length) throw new EditError(`There is no class "${name}" in this file.`);
+  if (name === 'default') throw new EditError('The class "default" colours every node; Mermaid knows it by that name, so it keeps it.');
+  const problem = classNameProblem(text, next);
+  if (problem) throw new EditError(problem);
+  const rw = new Rewriter(doc);
+  for (const d of defs) rw.setLine(d.line, doc.lines[d.line].replace(/^(\s*classDef\s+)\S+/, `$1${d.names.map((n) => (n === name ? next : n)).join(',')}`));
+  doc.info.forEach((li, i) => {
+    if (li.kind === 'class' && classOfLine(doc.lines[i]) === name) rw.setLine(i, doc.lines[i].replace(/^(\s*class\s+\S+\s+)\S+?(\s*;?\s*)$/, `$1${next}$2`));
+  });
+  for (const c of classShapeLines(doc.lines)) if (c.name === name) rw.setLine(c.line, doc.lines[c.line].replace(CLASS_SHAPE_RE, `$1${next}$3$4`));
+  rewriteMarks(doc, rw, (r) => (r.classes.includes(name) ? r.classes.map((c) => (c === name ? next : c)) : null));
   return rw.finish();
 }
 

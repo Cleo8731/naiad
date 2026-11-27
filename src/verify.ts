@@ -27,11 +27,14 @@ export type Op =
   | { kind: 'setSubgraphDirection'; id: string; dir: string | null }
   | { kind: 'ungroup'; id: string }
   | { kind: 'setClass'; id: string; cls: string | null }
-  | { kind: 'addClass'; name: string; styles: Record<string, string>; node: string | null }
-  | { kind: 'setClassStyle'; name: string; changes: Record<string, string> }
+  | { kind: 'addClass'; name: string; styles: Record<string, string>; node: string | null; shape?: string | null }
+  | { kind: 'setClassStyle'; name: string; changes: Record<string, string | null> }
+  | { kind: 'setClassShape'; name: string; shape: string | null; nodes: string[] }
+  | { kind: 'renameClass'; name: string; next: string }
   | { kind: 'deleteClass'; name: string };
 
-export interface OpResult { text: string; created?: string; edgeIndex?: number }
+/** `shape`: the shape a node put in a class was given (Q267), or null. */
+export interface OpResult { text: string; created?: string; edgeIndex?: number; shape?: string | null }
 
 /** The edit itself: text in, text out, no checking. */
 export function runOp(text: string, op: Op): OpResult {
@@ -63,12 +66,14 @@ export function runOp(text: string, op: Op): OpResult {
     }
     case 'setSubgraphDirection': return { text: E.setSubgraphDirection(text, op.id, op.dir) };
     case 'ungroup': return { text: E.ungroup(text, op.id) };
-    case 'setClass': return { text: E.setClass(text, op.id, op.cls) };
+    case 'setClass': return E.putInClass(text, op.id, op.cls);
     case 'addClass': {
-      const added = E.addClass(text, op.name, op.styles);
-      return { text: op.node === null ? added : E.setClass(added, op.node, op.name) };
+      const added = E.addClass(text, op.name, op.styles, op.shape ?? null);
+      return op.node === null ? { text: added } : E.putInClass(added, op.node, op.name);
     }
     case 'setClassStyle': return { text: E.setClassStyle(text, op.name, op.changes) };
+    case 'setClassShape': return { text: E.setClassShape(text, op.name, op.shape, op.nodes) };
+    case 'renameClass': return { text: E.renameClass(text, op.name, op.next) };
     case 'deleteClass': return { text: E.deleteClass(text, op.name) };
   }
 }
@@ -98,6 +103,15 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
   const onlyClass = (id: string, cls: string | null) => {
     const item = s.subs[id] ?? s.nodes[id];
     item.classes = [...item.classes.filter((c) => c === 'clickable'), ...(cls === null ? [] : [cls])].sort();
+  };
+  // Put in a class from the window (Q267, Q270): its own colours go, and a node takes
+  // the class's shape when it has one.
+  const putInClass = (id: string, cls: string | null) => {
+    onlyClass(id, cls);
+    if (cls === null) return;
+    const item = s.subs[id] ?? s.nodes[id];
+    item.styles = styleAfter(item.styles, { fill: null, stroke: null, color: null });
+    if (res.shape && s.nodes[id]) s.nodes[id].type = res.shape;
   };
   switch (op.kind) {
     case 'setDescription': break;
@@ -184,20 +198,34 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
       }
       break;
     }
-    case 'setClass': onlyClass(op.id, op.cls); break;
+    case 'setClass': putInClass(op.id, op.cls); break;
     case 'addClass':
       s.classDefs[op.name] = Object.entries(op.styles).map(([k, v]) => `${k}:${v}`);
-      if (op.node !== null) onlyClass(op.node, op.name);
+      if (op.node !== null) putInClass(op.node, op.name);
       break;
     case 'setClassStyle': {
-      // Each property changes where the class sets it, or is added after the rest.
+      // Each property changes where the class sets it, or is added after the rest; null
+      // takes it out.
       const keyOf = (x: string) => x.slice(0, x.indexOf(':')).trim();
       let styles = s.classDefs[op.name];
       for (const [k, v] of Object.entries(op.changes)) {
-        if (styles.some((x) => keyOf(x) === k)) styles = styles.map((x) => (keyOf(x) === k ? `${k}:${v}` : x));
+        if (v === null) styles = styles.filter((x) => keyOf(x) !== k);
+        else if (styles.some((x) => keyOf(x) === k)) styles = styles.map((x) => (keyOf(x) === k ? `${k}:${v}` : x));
         else styles = [...styles, `${k}:${v}`];
       }
       s.classDefs[op.name] = styles;
+      break;
+    }
+    case 'setClassShape':
+      if (op.shape !== null) for (const id of op.nodes) s.nodes[id].type = op.shape;
+      break;
+    case 'renameClass': {
+      s.classDefs[op.next] = s.classDefs[op.name];
+      delete s.classDefs[op.name];
+      const swap = (item: { classes: string[] }) => { item.classes = item.classes.map((c) => (c === op.name ? op.next : c)).sort(); };
+      Object.values(s.nodes).forEach(swap);
+      Object.values(s.subs).forEach(swap);
+      s.edges.forEach(swap);
       break;
     }
     case 'deleteClass': {

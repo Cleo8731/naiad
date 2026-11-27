@@ -94,6 +94,14 @@ describe('what the skill repeats from other files', () => {
     expect(inSkill).toBe(flat(section(format, 'Choosing shapes')));
   });
 
+  test('the advice on choosing classes is the same in FILE-FORMAT.md (T1.26, Q269)', () => {
+    const flat = (text: string): string => text.replace(/\s+/g, ' ').trim();
+    const inSkill = flat(section(skill, 'Choosing classes'));
+    expect(inSkill).toContain('`%% @class check shape: diamond`');
+    expect(inSkill).toContain('`stroke-width:2px` (thick) and `stroke-dasharray:5 3` (dashed)');
+    expect(inSkill).toBe(flat(section(format, 'Choosing classes')));
+  });
+
   test('the skill\'s examples and starter template draw their steps as Rounded nodes', () => {
     const blocks = [...skill.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
     for (const text of [template, ...blocks]) expect(text).not.toMatch(/\w\[[^\]([(/\\]/);

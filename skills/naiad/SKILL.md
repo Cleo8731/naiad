@@ -183,11 +183,38 @@ as text):
   (`a & b --> c`).
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
 - Colours: `style id fill:#...,stroke:#...,color:#...`.
-- Classes, for colouring nodes by the kind of step they are: `classDef name fill:#...,stroke:#...`
-  once per kind, on a line of its own, then `class id1,id2 name` after the nodes (Mermaid
-  skips a class line written above the node's first mention), or `id:::name` written
-  on a node. The user can then move nodes between kinds, recolour a kind or delete one
-  in the sidebar.
+- Classes, for giving nodes the look of the kind of step they are: `classDef name fill:#...,stroke:#...`
+  once per kind, on a line of its own, with a border as `stroke-width:2px` and
+  `stroke-dasharray:5 3`, then `class id1,id2 name` after the nodes (Mermaid skips a
+  class line written above the node's first mention), or `id:::name` written on a
+  node. A class's shape is a line of Naiad's own, `%% @class name shape: diamond`
+  (Choosing classes, below). The user can then move nodes between kinds, and change a
+  kind's colour, border, shape or name, or delete it, in the sidebar.
+
+### Choosing classes
+
+These are recommendations, not rules, as for shapes. A class names a kind of node and
+gives every node of that kind the same look, which the user can then change in one
+place, in the sidebar:
+
+- Give a class to each kind of node the chart has more than one of, such as the
+  checks, the steps a person does by hand, or the outside services. A chart with one
+  kind of node needs no class.
+- Name a class after its kind (`check`, `manual_step`), never after its look
+  (`yellow`). A name has only letters, digits, `-` and `_`.
+- When every node of a kind has one shape, give its class a shape line,
+  `%% @class check shape: diamond`, under its `classDef` line, and write that shape on
+  each of its nodes too: the line does not draw them. Leave the shape line out of a
+  class that marks a state, such as `done` or `blocked`, which nodes of any shape can
+  be in.
+- A class sets a colour with `fill`, `stroke` and `color`, and a border with
+  `stroke-width:2px` (thick) and `stroke-dasharray:5 3` (dashed). Those are the values
+  the sidebar writes; other values still work.
+- In a file that has classes, put a new node of a kind in that kind's class; do not
+  make a new class that looks the same. Colour nodes with a class rather than with
+  `style` lines: a node's own colour beats its class's.
+- Say in the flowchart's description what each class means, when a reader needs to
+  know it.
 
 ### Changing a file that exists
 

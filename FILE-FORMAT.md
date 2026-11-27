@@ -157,6 +157,36 @@ flowchart TD
 - Naiad 0.2 and earlier keep the block as it is and show it nowhere; their `naiad check`
   reports it as naming no node.
 
+## A class's shape
+
+A Mermaid class (`classDef`) sets colours and borders, but no shape. Naiad adds a line
+for a class's shape: a `%%` comment, which Mermaid skips.
+
+```mermaid
+flowchart TD
+    ready{Ready?} --> ship([Ship])
+    classDef check fill:#fff3bf,stroke:#f08c00,color:#1c2026
+    %% @class check shape: diamond
+    class ready check
+```
+
+- The line is `%% @class name shape: type`. The name is the class's, as its `classDef`
+  line writes it. The type is Mermaid's name for the shape: `square`, `round`,
+  `stadium`, `subroutine`, `cylinder`, `circle`, `doublecircle`, `lean_right`,
+  `lean_left`, `trapezoid`, `inv_trapezoid`, `hexagon`, `diamond` or `odd`.
+- The line says which shape the class's nodes have; it does not draw them. Each node is
+  still written with its own shape (`ready{Ready?}`), so the file draws the same in
+  every Mermaid tool. When Naiad puts a node in the class, or sets the class's shape,
+  it writes that shape on the class's nodes.
+- A class with no shape line takes any shape: a node put in it keeps the shape it has.
+  That suits a class that marks a state, such as `done` or `blocked`.
+- Write the line on its own, under the class's `classDef` line. Naiad reads it anywhere
+  outside the front matter and outside description blocks. A `%%` line directly under
+  a description block is part of that block (rule 3 of
+  [Description blocks](#description-blocks)), so leave an empty line between them. The
+  first shape line of a class is used; one whose type is not in the list is ignored.
+- Naiad 1.0 keeps the line as an ordinary comment and does nothing with it.
+
 ## What Naiad changes in a file, and what it never does
 
 - An edit made in the chart or the sidebar changes only the lines that edit needs. Every
@@ -203,14 +233,31 @@ flowchart TD
   group, below its `end`), since Mermaid gives a class only to an item it has already
   read. With no such line, a new `class id name` line goes after the last `classDef` or
   `class` line (and below the item). Choosing no class takes the id out of them all.
+  Putting an item in a class also takes the item's own `fill`, `stroke` and `color` out
+  of its `style` lines (a line left with nothing goes), so the class's colour shows,
+  and gives a node the class's shape, when the class has one
+  ([A class's shape](#a-classs-shape)). Taking an item out of every class changes
+  nothing else.
   A new class is a `classDef name fill:#…,stroke:#…,color:#1c2026` line after the last
-  `classDef` line, or after the last line of the flowchart. Changing a class's colour
+  `classDef` line, or after the last line of the flowchart, with its border (below)
+  after the colour and its shape line under it. Changing a class's colour
   changes its `fill`, `stroke` and `color` where its `classDef` lines set them (Mermaid
   reads every `classDef` line of a name, the later winning), or adds them to the last
-  of those lines; its other properties stay as written. A class defined on one line
-  with others (`classDef a,b fill:#…`) is changed in the Syntax pane. Deleting a class
-  removes its `classDef` lines (only its name, on a line shared with other classes), its
-  `class` lines and its name in every `:::` mark; the nodes stay, without its colour. A
+  of those lines; its other properties stay as written. Its border is changed the same
+  way: Thick is `stroke-width:2px`, Dashed is `stroke-dasharray:5 3`, Thick dashed is
+  both, and Normal takes both out. A `classDef` line left with nothing goes; one that
+  would leave the class with no line at all is refused. A border the file writes
+  otherwise (`stroke-width:3px`) shows in the sidebar as the nearest choice and stays
+  until another is picked. A class defined on one line
+  with others (`classDef a,b fill:#…`) is changed in the Syntax pane. Setting a class's
+  shape changes its first shape line, removes any later ones, or adds one under its
+  last `classDef` line, and writes the shape on each node in the class; Any shape
+  removes its shape lines, and the nodes keep their shapes. Renaming a class changes
+  its name in its `classDef` lines, its `class` lines, every `:::` mark and its shape
+  lines; the new name follows the rules of a new class, and `default` keeps its name.
+  Deleting a class removes its `classDef` lines (only its name, on a line shared with
+  other classes), its `class` lines, its shape lines and its name in every `:::` mark;
+  the nodes stay, without its colour. A
   group whose id Mermaid made up (one written with only a title) is put in a class in
   the Syntax pane: its id changes as groups are added.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
@@ -391,8 +438,9 @@ but must be edited as text:
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
 - Styling: `style id fill:#...,stroke:#...,color:#...`; an arrow's colour as
   `linkStyle 3 stroke:#...` (the arrow's place among the arrows, counted from 0).
-- Classes: `classDef name fill:#...,stroke:#...`, `class id1,id2 name`, and `id:::name`
-  written on a node.
+- Classes: `classDef name fill:#...,stroke:#...`, with a border as
+  `stroke-width:2px` and `stroke-dasharray:5 3`, `class id1,id2 name`, `id:::name`
+  written on a node, and a class's shape as `%% @class name shape: diamond`.
 - Inside a quoted title, a double quote is written `#quot;`.
 
 An accessible title or description (`accTitle: text`, `accDescr: text`, `accDescr {`
@@ -433,6 +481,31 @@ one thing:
   shape means in the flowchart's description.
 - In a file that exists, keep the shapes it has. Change a node's shape only when the
   user asks, or when what the node stands for changes.
+
+## Choosing classes
+
+These are recommendations, not rules, as for shapes. A class names a kind of node and
+gives every node of that kind the same look, which the user can then change in one
+place, in the sidebar:
+
+- Give a class to each kind of node the chart has more than one of, such as the
+  checks, the steps a person does by hand, or the outside services. A chart with one
+  kind of node needs no class.
+- Name a class after its kind (`check`, `manual_step`), never after its look
+  (`yellow`). A name has only letters, digits, `-` and `_`.
+- When every node of a kind has one shape, give its class a shape line,
+  `%% @class check shape: diamond`, under its `classDef` line, and write that shape on
+  each of its nodes too: the line does not draw them. Leave the shape line out of a
+  class that marks a state, such as `done` or `blocked`, which nodes of any shape can
+  be in.
+- A class sets a colour with `fill`, `stroke` and `color`, and a border with
+  `stroke-width:2px` (thick) and `stroke-dasharray:5 3` (dashed). Those are the values
+  the sidebar writes; other values still work.
+- In a file that has classes, put a new node of a kind in that kind's class; do not
+  make a new class that looks the same. Colour nodes with a class rather than with
+  `style` lines: a node's own colour beats its class's.
+- Say in the flowchart's description what each class means, when a reader needs to
+  know it.
 
 ## Checking a file from a terminal
 

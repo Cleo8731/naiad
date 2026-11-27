@@ -68,7 +68,8 @@ const NODE: NodeView = {
 };
 
 describe('the Colour row shows the class\'s colour as the first swatch (Q259)', () => {
-  const colourRow = (root: HTMLElement) => [...root.querySelectorAll('.row')].find((r) => r.textContent?.startsWith('Colour'))!;
+  // The panel's own Colour row, not the New class form's (Q272 put the form above it).
+  const colourRow = (root: HTMLElement) => [...root.querySelectorAll('.props > .row')].find((r) => r.textContent?.startsWith('Colour'))!;
   const on = (root: HTMLElement) => [...colourRow(root).querySelectorAll<HTMLButtonElement>('.swatch.on')].map((b) => b.title);
 
   it('a node coloured by its class: the class\'s swatch is marked, in its colours, named by the class', () => {

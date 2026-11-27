@@ -79,6 +79,7 @@ export const fixtures: Record<string, string> = {
     '    class wait,inner held',
     '    class box stop',
     '    classDef stop fill:#ffe3e3,stroke:#e03131',
+    '    %% @class stop shape: stadium',
     '    classDef held stroke-dasharray:4',
     '',
   ].join('\n'),
