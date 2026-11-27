@@ -797,6 +797,9 @@ code { font-family: var(--mono); font-size: 0.92em; }
   width: var(--side-w, 340px); flex: none; display: flex; flex-direction: column; gap: 16px; padding: 18px 22px 20px;
   background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
 }
+/* No part of the panel shrinks to fit it, which drew a long description over the rows
+   under it (the user, 2026-11-26): the panel scrolls instead. */
+.sidebar > * { flex-shrink: 0; }
 .side-head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .side-head .kind { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .side-head .id {
@@ -817,7 +820,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .ends { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; font-weight: 600; }
 .ends .arrow { color: var(--accent); }
 
-.desc { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.desc { display: flex; flex-direction: column; gap: 8px; }
 .desc-head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
 .desc-head span { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .desc-head button { height: 28px; padding: 0 12px; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 600; }
@@ -851,9 +854,16 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .select-wrap select { flex: 1; min-width: 0; padding-right: 34px; appearance: none; background: var(--field); }
 .select-wrap svg { position: absolute; top: 50%; right: 11px; width: 16px; height: 16px; margin-top: -8px; pointer-events: none; color: var(--muted); }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
-.swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border-width: 2px; }
-.swatch.none { background: linear-gradient(135deg, transparent 44%, var(--bad) 44%, var(--bad) 56%, transparent 56%); }
+.swatch { position: relative; width: 22px; height: 22px; padding: 0; border-radius: 50%; border-width: 2px; }
+.swatch.none { background: linear-gradient(135deg, transparent 44%, var(--bad) 44%, var(--bad) 56%, transparent 56%); color: var(--text); }
+/* The picked colour has a ring and a check mark in its own darker colour (the user,
+   2026-11-26: the ring alone was too faint to tell). */
 .swatch.on { outline: 2px solid var(--select); outline-offset: 2px; }
+.swatch.on::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 5px; height: 10px;
+  border: solid currentColor; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg);
+}
+.swatch.own { cursor: default; }
 .side-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
 .side-foot .hint { flex: 1 1 100%; }
 .side-foot button { height: 34px; padding: 0 14px; border-radius: var(--radius-pill); font-weight: 600; }

@@ -194,3 +194,14 @@ describe("the Shape and Group boxes take the row's width (seen 2026-11-25)", () 
     expect(root.querySelector('.row > .row-label')!.textContent).toBe('Class');
   });
 });
+
+describe('the panel\'s height (the user, 2026-11-26)', () => {
+  it('no part shrinks to fit the panel, so a long description pushes the rows under it down and the panel scrolls', () => {
+    const css = readFileSync('src/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(css).toMatch(/\n\.sidebar > \* \{ flex-shrink: 0; \}/);
+    expect(css).toMatch(/\n\.sidebar \{[^}]*overflow-y: auto/);
+    // A part that may shrink below its text (min-height: 0) drew that text over the rows under it.
+    const rules = [...css.matchAll(/\n([^{}\n]*)\{([^}]*)\}/g)].filter((m) => /(^|[\s,])\.(desc|props|classes|side-foot)\b/.test(m[1]));
+    for (const m of rules) expect(m[2], m[1]).not.toMatch(/min-height: 0/);
+  });
+});

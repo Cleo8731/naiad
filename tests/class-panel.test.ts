@@ -102,7 +102,7 @@ describe('the About panel\'s Classes (Q264)', () => {
 
   it('a swatch in a class\'s menu changes its colour; Delete class takes the class away and leaves its nodes', async () => {
     const { ui } = await start();
-    openMenu(0).querySelectorAll<HTMLButtonElement>('.swatch')[0].click(); // Blue
+    openMenu(0).querySelectorAll<HTMLButtonElement>('.swatch:not(.own)')[0].click(); // Blue
     expect(await ui.until((t) => t.includes('classDef held fill:#d0ebff,stroke:#1c7ed6,color:#1c2026'))).toBe(true);
     openMenu(1);
     button('Delete class')!.click();
@@ -136,6 +136,17 @@ describe('the About panel\'s Classes (Q264)', () => {
     expect(listIn(menuOf(1), 'Shape').value).toBe('stadium');
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     expect(menuOf(1).hidden).toBe(true);
+  });
+
+  it('the picture names the colour, shape and border; the menu marks the colour, its own one too (the user, 2026-11-26)', async () => {
+    await start(BASE.replace('classDef stop fill:#ffe3e3,stroke:#e03131', 'classDef stop fill:#ffe3e3,stroke:#e03131,stroke-dasharray:5 3\n    %% @class stop shape: stadium'));
+    const pic = (i: number) => items()[i].querySelector<HTMLElement>('.class-pic')!.title;
+    expect(pic(0)).toBe('Colour: its own, #fff0cd\nShape: Any shape\nBorder: Normal');
+    expect(pic(1)).toBe('Colour: Red\nShape: Stadium\nBorder: Dashed');
+    const marked = (i: number) => [...menuOf(i).querySelectorAll<HTMLButtonElement>('.swatch.on:not([hidden])')].map((b) => b.title);
+    expect(marked(0)).toEqual(['Its own colour, #fff0cd']); // none of the six: shown first, marked
+    expect(marked(1)).toEqual(['Red']);
+    expect(menuOf(1).querySelector<HTMLElement>('.swatch.own')!.hidden).toBe(true);
   });
 
   it('Border writes a thick or dashed border, and Normal takes it off (Q274)', async () => {

@@ -463,6 +463,7 @@ export class Sidebar {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => commit(s) });
       b.style.background = s.fill;
       b.style.borderColor = s.stroke;
+      b.style.color = s.stroke;
       return b;
     });
     this.sync.push((v) => {
@@ -474,6 +475,7 @@ export class Sidebar {
       none.classList.toggle('from-class', !!p);
       none.style.background = p ? p.fill || 'transparent' : '';
       none.style.borderColor = p?.stroke ?? '';
+      none.style.color = p?.stroke ?? '';
       none.classList.toggle('on', value === '');
       buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i][by] === value));
     });
@@ -534,6 +536,7 @@ export class Sidebar {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => { picked = s; mark(); } });
       b.style.background = s.fill;
       b.style.borderColor = s.stroke;
+      b.style.color = s.stroke;
       return b;
     });
     const mark = () => buttons.forEach((b, i) => b.classList.toggle('on', SWATCHES[i] === picked));
@@ -636,8 +639,12 @@ export class Sidebar {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': `${s.name} for the class ${name}`, click: () => a.setClassColour(name, s) });
       b.style.background = s.fill;
       b.style.borderColor = s.stroke;
+      b.style.color = s.stroke;
       return b;
     });
+    // A colour the file gives that is none of the six shows first, marked, so the menu
+    // always shows which colour the class has (the user, 2026-11-26).
+    const own = h('button', { class: 'swatch on own', hidden: true, tabindex: '-1' });
     const border = pickList(CLASS_BORDERS.map((b): [string, string] => [b.value, b.label]), (v) => a.setClassBorder(name, v as ClassBorder));
     const shape = pickList(classShapeOptions(), (v) => a.setClassShape(name, v || null));
     const menu = h('div', {
@@ -649,7 +656,7 @@ export class Sidebar {
         more.focus();
       },
     },
-      this.row('Colour', h('div', { class: 'swatches' }, ...swatches)),
+      this.row('Colour', h('div', { class: 'swatches' }, own, ...swatches)),
       this.row('Border', border),
       this.row('Shape', shape),
       h('div', { class: 'class-menu-acts' },
@@ -714,9 +721,18 @@ export class Sidebar {
       closeMenu,
       update: (c) => {
         drawPicture(pic, c);
-        pic.title = `${c.shape ? shapeLabel(c.shape) : 'Any shape'}, ${CLASS_BORDERS.find((b) => b.value === c.border)!.label.toLowerCase()} border`;
+        const fill = c.fill.toLowerCase();
+        const at = SWATCHES.findIndex((s) => s.fill === fill);
+        const colour = at >= 0 ? SWATCHES[at].name : fill ? `its own, ${fill}` : 'none';
+        pic.title = `Colour: ${colour}\nShape: ${c.shape ? shapeLabel(c.shape) : 'Any shape'}\nBorder: ${CLASS_BORDERS.find((b) => b.value === c.border)!.label}`;
         count.textContent = Sidebar.count(c);
-        swatches.forEach((b, i) => b.classList.toggle('on', SWATCHES[i].fill === c.fill.toLowerCase()));
+        swatches.forEach((b, i) => b.classList.toggle('on', i === at));
+        own.hidden = at >= 0 || !fill;
+        own.title = `Its own colour, ${fill}`;
+        own.setAttribute('aria-label', `Its own colour, ${fill}, for the class ${name}`);
+        own.style.background = fill;
+        own.style.borderColor = c.stroke;
+        own.style.color = c.stroke;
         border.value = c.border;
         // A shape the file gives that the list does not offer is shown, as a list shows any value.
         if (c.shape && ![...shape.options].some((o) => o.value === c.shape)) shape.append(option(c.shape, shapeLabel(c.shape)));
