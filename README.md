@@ -74,7 +74,7 @@ and for agents: [FILE-FORMAT.md](FILE-FORMAT.md).
    with the SHA-256 shown beside the file on the release page:
 
    ```powershell
-   Get-FileHash .\Naiad_1.2.1_x64-setup.exe
+   Get-FileHash .\Naiad_1.2.2_x64-setup.exe
    ```
 
 3. Run the installer. It is not signed, so Windows may show "Windows protected your
