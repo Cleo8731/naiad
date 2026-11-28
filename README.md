@@ -282,6 +282,8 @@ runs the tests on each push; run `npm test` before sending a change.
 Report a problem or ask for a change in the
 [issues](https://github.com/Cleo8731/naiad/issues).
 
+If Naiad is useful to you, you can support it on [Ko-fi](https://ko-fi.com/jamesding).
+
 Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 
 ## Licence
