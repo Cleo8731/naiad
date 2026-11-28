@@ -1,18 +1,18 @@
 /**
- * The Syntax pane's text box (the user, 2026-11-25): coloured text, line numbers, and
+ * The Syntax pane's text box (the user, 2026-11-25): colored text, line numbers, and
  * long lines wrapped, a bar beside the numbers marking a line's wrapped rows (a text
  * area cannot indent only those rows: `style.css`, the text box). The text area stays the one
  * place the text is typed, selected and undone; its own letters are see-through, and a
- * copy of the text, coloured line by line (`syntax-colours.ts`), is drawn under it with
+ * copy of the text, colored line by line (`syntax-colors.ts`), is drawn under it with
  * the same font, width and wrapping, so each letter of the copy sits under its own.
  * The text area grows with its text, and the box around both scrolls them together.
  */
-import { colouredHtml } from './syntax-colours';
+import { coloredHtml } from './syntax-colors';
 
 const VALUE = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!;
 
 export class SyntaxBox {
-  /** The scrolling box, holding the coloured copy and the text area. */
+  /** The scrolling box, holding the colored copy and the text area. */
   readonly el: HTMLElement;
   private readonly copy: HTMLElement;
 
@@ -43,10 +43,10 @@ export class SyntaxBox {
   get hidden(): boolean { return this.el.hidden === true; }
   set hidden(on: boolean) { this.el.hidden = on; this.area.hidden = on; }
 
-  /** Draws the coloured copy of the text area's text, and sizes the line numbers' column. */
+  /** Draws the colored copy of the text area's text, and sizes the line numbers' column. */
   draw(): void {
     const text = VALUE.get!.call(this.area) as string;
-    this.copy.innerHTML = colouredHtml(text);
+    this.copy.innerHTML = coloredHtml(text);
     const lines = text.split('\n').length;
     this.el.style.setProperty('--digits', String(Math.max(2, String(lines).length)));
     this.markWraps();

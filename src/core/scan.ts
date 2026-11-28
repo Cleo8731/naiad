@@ -603,7 +603,7 @@ export function findSub(doc: Doc, id: string): Sub | undefined {
   return doc.subs.find((s) => s.id === id);
 }
 
-/** The raw label of a node as written (its last labelled mention wins, as in Mermaid). */
+/** The raw label of a node as written (its last labeled mention wins, as in Mermaid). */
 export function nodeLabel(doc: Doc, id: string): { title: string; type: string | null } | null {
   const refs = allRefs(doc).filter((r) => r.ref.id === id);
   if (!refs.length) return null;

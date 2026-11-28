@@ -70,7 +70,7 @@ const WHEEL_LABEL: Record<WheelMode, string> = { touchpad: 'Touchpad mode', mous
  * knob can slide. On pointing (T4.13, the user's answer to Q172, 2026-11-17) the track
  * widens into two lines, each icon with its mode's name, and the knob stretches over the
  * line in use to the track's end, even on the shorter name (the user, 2026-11-18); the
- * other name stays grey. The names are
+ * other name stays gray. The names are
  * drawn by the style sheet from `data-name`, so the button's own name, `.rlabel`, heard
  * and not seen, stays the mode in use.
  */
@@ -206,7 +206,7 @@ interface TabParts {
   /** The chart area: the stage, the notices, the sidebar's grip, and the island and the pill while shown. */
   chartarea: HTMLElement;
   area: HTMLTextAreaElement;
-  /** The Syntax pane's box around the text area: its colours and line numbers. */
+  /** The Syntax pane's box around the text area: its colors and line numbers. */
   code: SyntaxBox;
 }
 
@@ -1581,7 +1581,7 @@ export class App {
     }
   }
 
-  /** Opens a file from the recent list (Q142); one that cannot be read stays listed, greyed (Q137). */
+  /** Opens a file from the recent list (Q142); one that cannot be read stays listed, grayed (Q137). */
   private async openRecent(path: string): Promise<void> {
     try {
       await this.open(await this.backend.choose(path));
@@ -1853,9 +1853,9 @@ export class App {
 
   /**
    * Draws the window, the title bar and the chart as Appearance and the palette say: the
-   * page's colours through `data-theme` and `data-palette` on the page's root (none: the
+   * page's colors through `data-theme` and `data-palette` on the page's root (none: the
    * computer's setting, and Naiad Default; `style.css`), and, when light turns to dark or
-   * back or the palette changes, Mermaid set up again in the page's colours and every tab
+   * back or the palette changes, Mermaid set up again in the page's colors and every tab
    * drawn again (a hidden tab draws when it is shown).
    */
   private applyAppearance(): void {

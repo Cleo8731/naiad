@@ -1,8 +1,8 @@
 /**
  * The window's icons: Lucide's (lucide.dev, release 1.73.0), the set Obsidian uses,
- * copied unchanged into `icons/` with Lucide's licence, `icons/LICENSE` (Q131 and Q132,
+ * copied unchanged into `icons/` with Lucide's license, `icons/LICENSE` (Q131 and Q132,
  * 2026-11-14; twelve more with the design handoff, T4.9, 2026-11-15). Each is drawn
- * inline in its button, so its lines take the button's text colour in every theme; the
+ * inline in its button, so its lines take the button's text color in every theme; the
  * button's name says what it does, so the drawing itself is hidden from screen readers.
  * Two more, Maximize 2 and Minimize 2, the Syntax pane's full-window button (2026-11-25),
  * were written out by hand from Lucide's drawings, in the same form as the others; so was

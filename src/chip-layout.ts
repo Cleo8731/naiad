@@ -1,5 +1,5 @@
 // Where a walkthrough's edge chips sit (Q232; the overlap the user found, 2026-11-26).
-// Each chip wants to be centred where its arrow leaves the view, on one edge of it. Chips on
+// Each chip wants to be centered where its arrow leaves the view, on one edge of it. Chips on
 // the same edge go side by side in the order of where they want to be, each as near its
 // spot as the others let it; those that don't fit start a new row, further in (on the top
 // and foot edges). A chip on a side goes, in the order of the spots, to the free place
@@ -8,7 +8,7 @@
 // oW1). No two chips overlap while there is room for them.
 
 export type Edge = 'top' | 'bottom' | 'left' | 'right';
-/** A chip: its edge, the point it wants to be centred on, and its measured size. */
+/** A chip: its edge, the point it wants to be centered on, and its measured size. */
 export interface ChipWish { edge: Edge; x: number; y: number; w: number; h: number }
 /** The room the chips are kept inside, in px from the stage's top left. */
 export interface ChipArea { left: number; top: number; right: number; bottom: number }

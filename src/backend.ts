@@ -96,7 +96,7 @@ export interface Backend {
   setWindowTitle(title: string): void;
   /**
    * The desktop window's light or dark, as Appearance says (T4.8); null follows the
-   * computer's setting. It coloured Windows' title bar until T4.10 put Naiad's own in its
+   * computer's setting. It colored Windows' title bar until T4.10 put Naiad's own in its
    * place; it is kept so any part of the window Windows still draws matches.
    */
   setTheme(theme: 'light' | 'dark' | null): void;

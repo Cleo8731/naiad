@@ -246,7 +246,7 @@ export class Tab {
       setEdgeLabel: async (index, label) => (await this.edit({ kind: 'setEdgeLabel', index, label })) !== null,
       setEdgeStroke: (index, stroke) => { void this.edit({ kind: 'setEdgeStyle', index, stroke }); },
       setEdgeArrow: (index, arrow) => { void this.edit({ kind: 'setEdgeStyle', index, arrow }); },
-      setEdgeColour: (index, s) => { void this.edit({ kind: 'setEdgeColour', index, stroke: s ? s.stroke : null }); },
+      setEdgeColor: (index, s) => { void this.edit({ kind: 'setEdgeColor', index, stroke: s ? s.stroke : null }); },
       deleteEdge: (index) => { void this.edit({ kind: 'deleteEdge', index }); },
       renameGroup: async (id, title) => (await this.edit({ kind: 'renameSubgraph', id, title })) !== null,
       setGroupDirection: (id, dir) => { void this.edit({ kind: 'setSubgraphDirection', id, dir: dir || null }); },
@@ -260,7 +260,7 @@ export class Tab {
         for (const [k, v] of Object.entries(borderStyles(look.border))) if (v !== null) styles[k] = v;
         return (await this.edit({ kind: 'addClass', name, styles, node, shape: look.shape })) !== null;
       },
-      setClassColour: (name, s) => { void this.edit({ kind: 'setClassStyle', name, changes: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT } }); },
+      setClassColor: (name, s) => { void this.edit({ kind: 'setClassStyle', name, changes: { fill: s.fill, stroke: s.stroke, color: NODE_TEXT } }); },
       setClassBorder: (name, border) => { void this.edit({ kind: 'setClassStyle', name, changes: borderStyles(border) }); },
       // The class's nodes take the shape (Q271).
       setClassShape: (name, shape) => {
@@ -1142,8 +1142,8 @@ export class Tab {
   }
 
   /**
-   * The classes the file defines, `default` left out (it colours every node), each with
-   * its colour, how many nodes and groups are in it (T1.26), its shape (Q267) and the
+   * The classes the file defines, `default` left out (it colors every node), each with
+   * its color, how many nodes and groups are in it (T1.26), its shape (Q267) and the
    * border choice nearest to what it writes (Q274).
    */
   private classList(): ClassInfo[] {
@@ -1214,9 +1214,9 @@ export class Tab {
     if (ref) {
       try { label = parseLink(this.doc.info[ref.line].chains![ref.chain].links[ref.link].raw).label; } catch { /* keep Mermaid's text */ }
     }
-    // Its own colour: the last `stroke` in its own style, which is the one drawn.
-    const colour = e.style.filter((x) => x.slice(0, x.indexOf(':')).trim() === 'stroke').pop()?.split(':')[1].trim() ?? '';
-    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), fromId: e.start, toId: e.end, ends, label, stroke: e.stroke as never, arrow, colour };
+    // Its own color: the last `stroke` in its own style, which is the one drawn.
+    const color = e.style.filter((x) => x.slice(0, x.indexOf(':')).trim() === 'stroke').pop()?.split(':')[1].trim() ?? '';
+    return { kind: 'edge', index: s.index, from: title(e.start), to: title(e.end), fromId: e.start, toId: e.end, ends, label, stroke: e.stroke as never, arrow, color };
   }
 
   paint(): void {

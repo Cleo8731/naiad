@@ -1,5 +1,5 @@
 /* The fonts (the design handoff, T4.9, 2026-11-15), bundled so nothing is fetched; their
-   licences: `fonts/OFL.txt`. Lexend for the window and the chart's labels; Newsreader
+   licenses: `fonts/OFL.txt`. Lexend for the window and the chart's labels; Newsreader
    italic for window titles, the blank tab's heading and the sidebar's titles; JetBrains
    Mono for the Syntax pane, or DM Mono or Recursive Casual (Customize, Syntax font). */
 @font-face {
@@ -25,8 +25,8 @@
 
 /* ---- the palettes: the design handoff's `themes.css`, taken in whole (T4.9). The
    palette is `data-palette` on the page's root (none: Naiad Default); Appearance (T4.8)
-   is `data-theme` (none: the computer's setting). Every colour is light-dark(light,
-   dark). A Customize window's theme card is drawn in its palette's colours, so each
+   is `data-theme` (none: the computer's setting). Every color is light-dark(light,
+   dark). A Customize window's theme card is drawn in its palette's colors, so each
    palette's rule also names `.theme-preview[data-palette]`. */
 :root {
   color-scheme: light dark;
@@ -168,7 +168,7 @@
   --warn-text: light-dark(#664700, #f0d48a);
   --shadow: light-dark(color-mix(in srgb, var(--text) 24%, transparent), rgb(0 0 0 / .6));
   --scrim: light-dark(color-mix(in srgb, var(--text) 32%, transparent), rgb(0 0 0 / .56));
-  /* the Syntax pane's colours (2026-11-25), from each palette's own */
+  /* the Syntax pane's colors (2026-11-25), from each palette's own */
   --syn-keyword: var(--accent);
   --syn-id: color-mix(in oklab, var(--accent) 55%, var(--text));
   --syn-title: var(--text);
@@ -268,7 +268,7 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
    use, whose icon takes the accent. On pointing (T4.13, the user's answer to Q172,
    2026-11-17) the track widens into two lines, each icon with its mode's name (drawn from
    `data-name`); the knob stretches over the line in use to the track's end, even on the
-   shorter name (the user, 2026-11-18), and the other name stays grey. The track is as
+   shorter name (the user, 2026-11-18), and the other name stays gray. The track is as
    wide as the longer line, and the knob follows it as it widens. The button's own name
    is heard, not seen. */
 .rail button.slide, .rail button.slide:hover { height: auto; padding: 4px; }
@@ -495,7 +495,7 @@ body.dragging-tab #app { pointer-events: none; }
 .body.split > .textpane.full { grid-area: auto; }
 .textpane.full > .grip { display: none; }
 
-/* The text box (`syntax-box.ts`): a coloured copy of the text under the text area, whose
+/* The text box (`syntax-box.ts`): a colored copy of the text under the text area, whose
    own letters are see-through. Both have the same font, padding and wrapping, so every
    letter of the copy sits under its own. A long line wraps at the left edge: a text area
    cannot indent only the wrapped parts (Chromium 156 ignores `each-line` in one, tried
@@ -593,7 +593,7 @@ body.dragging-tab #app { pointer-events: none; }
 .clear svg { width: 18px; height: 18px; display: block; }
 .clear:hover:not(:disabled) { border-color: var(--highlight-ink); }
 
-/* The pill: centred at the chart's foot. In a chart narrower than the pill it wraps onto
+/* The pill: centered at the chart's foot. In a chart narrower than the pill it wraps onto
    a second row, so no control is cut off (Q158's fallback, kept). */
 .pill {
   position: absolute; left: 14px; right: 14px; bottom: 18px; z-index: 7; width: fit-content; margin: 0 auto;
@@ -687,7 +687,7 @@ body.dragging-tab #app { pointer-events: none; }
 .canvas [data-node], .canvas [data-edge], .canvas [data-sub] { cursor: pointer; }
 .canvas .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
 /* Direction marks (D1.8, the user, 2026-11-14): small arrowheads along a long arrow, in its
-   colour (`direction-marks.ts`). Each arrow's marks are one path just after it, so the
+   color (`direction-marks.ts`). Each arrow's marks are one path just after it, so the
    rules below give them its look under the pointer, selected, highlighted and traced. */
 .canvas path.dir-mark {
   fill: none !important; stroke-width: 1.75px !important; stroke-dasharray: none !important; animation: none !important;
@@ -701,10 +701,10 @@ body.dragging-tab #app { pointer-events: none; }
 .canvas .node :is(polygon, path) { stroke-linejoin: round; }
 /* The rules for the window's marks on nodes and groups start `.canvas:not(#_)`: the
    `:not(#_)` matches every canvas but weighs as an id, so they beat the chart's own class
-   rules (`#chart3 .cls>*{…!important}`). The inline class colours lose their `!important`
-   in the window (`class-colours.ts`). */
+   rules (`#chart3 .cls>*{…!important}`). The inline class colors lose their `!important`
+   in the window (`class-colors.ts`). */
 /* A node under the pointer grows and lifts (the user, 2026-11-26, Q240): 5% bigger, text
-   and all, about its centre (set by `readyToLift`), with a soft shadow under its shape
+   and all, about its center (set by `readyToLift`), with a soft shadow under its shape
    and its own fill (`--own-fill`) a little lighter. Its own border stays. */
 .canvas g.node[data-node] { transform-box: view-box; }
 .canvas g.node[data-node] > *, .canvas g.node[data-node] .label-container path { transition: filter 120ms ease, fill 120ms ease; }
@@ -823,7 +823,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .ends > * { min-width: 0; overflow-wrap: anywhere; }
 
 .desc { display: flex; flex-direction: column; gap: 8px; }
-/* A node's description comes after Shape and Colour (Q277), set off as they are. */
+/* A node's description comes after Shape and Color (Q277), set off as they are. */
 .props + .desc { padding-top: 16px; border-top: 1px solid var(--line); }
 /* While a description is edited its head stays in sight as the panel scrolls (Q278). */
 .desc.editing > .desc-head { position: sticky; top: -18px; z-index: 2; margin: 0 -22px; padding: 6px 22px; background: var(--panel); }
@@ -863,7 +863,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { position: relative; width: 22px; height: 22px; padding: 0; border-radius: 50%; border-width: 2px; }
 .swatch.none { background: linear-gradient(135deg, transparent 44%, var(--bad) 44%, var(--bad) 56%, transparent 56%); color: var(--text); }
-/* The picked colour has a ring and a check mark in its own darker colour (the user,
+/* The picked color has a ring and a check mark in its own darker color (the user,
    2026-11-26: the ring alone was too faint to tell). */
 .swatch.on { outline: 2px solid var(--select); outline-offset: 2px; }
 .swatch.on::after {
@@ -912,7 +912,7 @@ input.class-rename {
   background: var(--panel); box-shadow: 0 10px 28px rgb(0 0 0 / 0.16);
 }
 .class-menu .row > .row-label { width: 56px; }
-/* The colours stay on one row (the user, 2026-11-26), the class's own colour first when it
+/* The colors stay on one row (the user, 2026-11-26), the class's own color first when it
    is none of the six: the swatches shrink a little in a narrow panel instead of wrapping. */
 .class-menu .swatches { flex: 1; min-width: 0; flex-wrap: nowrap; gap: 5px; }
 .class-menu .swatch { flex: 0 1 22px; min-width: 14px; height: auto; aspect-ratio: 1; }
@@ -986,7 +986,7 @@ dialog.overlay-window[data-window="print"] { width: min(420px, calc(100vw - 32px
 .ow-note { margin: -10px 0 0; color: var(--muted); font-size: 12.5px; }
 .ow-section { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
 /* An on-off switch (T1.23): a checkbox drawn as a track with a white knob, which moves
-   right and turns the track the accent colour when on. */
+   right and turns the track the accent color when on. */
 input.switch {
   appearance: none; position: relative; flex: none; width: 34px; height: 20px; margin: 0;
   border-radius: 10px; background: color-mix(in srgb, var(--muted) 50%, transparent);
@@ -1006,7 +1006,7 @@ input.switch:checked::before { transform: translateX(14px); }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .segmented label:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 4px var(--shadow); }
 .segmented label:has(input:focus-visible) { outline: 2px solid var(--select); outline-offset: 1px; }
-/* Theme: a card per palette, drawn in its own colours (its preview takes the palette's
+/* Theme: a card per palette, drawn in its own colors (its preview takes the palette's
    rule); the chosen one has the accent's ring. */
 .theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .theme-card {
@@ -1129,7 +1129,7 @@ input.switch:checked::before { transform: translateX(14px); }
 .walk-bar button.walk-leave:hover:not(:disabled) { border-color: var(--bad); }
 .walk-note { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
 /* Edge chips (Q232, the user, 2026-11-26): a next place out of view, named in full at the
-   chart's edge, centred where its arrow leaves the view; its name wraps and the chip grows
+   chart's edge, centered where its arrow leaves the view; its name wraps and the chip grows
    to hold it. A click takes that choice. Placed by `placeChips` in `chart.ts`. */
 .walk-chips { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .walk-chip {

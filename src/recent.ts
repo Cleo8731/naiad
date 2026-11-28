@@ -2,7 +2,7 @@
 // the app between runs (never in a flowchart file), and the pane on the window's far
 // left that shows them. A click on an entry opens it (T1.16: in the shown tab when that
 // tab is blank, otherwise in a new tab; a file already open shows its tab); × takes it
-// off the list; a file that cannot be found stays, greyed, until it is taken off.
+// off the list; a file that cannot be found stays, grayed, until it is taken off.
 
 import { ICONS } from './icons';
 
@@ -68,7 +68,7 @@ export interface RecentHooks {
 }
 
 /**
- * The pane: the list, the shown tab's file marked, the files not found greyed. The list
+ * The pane: the list, the shown tab's file marked, the files not found grayed. The list
  * is drawn in its own part of the pane (`el`), which scrolls alone; the pane's foot,
  * under it, is the window's (T1.21).
  */

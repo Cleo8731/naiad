@@ -562,7 +562,7 @@ fn mark_window() {
     let _ = OTHER_WINDOW.set(other);
 }
 
-/// Which of these paths name a flowchart file that is there: the recent list greys out
+/// Which of these paths name a flowchart file that is there: the recent list grays out
 /// the ones that are not (T1.15). A path `check` refuses counts as not there, and is
 /// never looked at.
 #[tauri::command]

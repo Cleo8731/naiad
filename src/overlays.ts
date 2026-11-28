@@ -104,7 +104,7 @@ function section(name: string, ...rows: HTMLElement[]): HTMLElement {
 
 /**
  * The Customize window (T4.8, T4.9): Appearance (Light, Dark, System); Theme, a card for
- * each palette, drawn in its own colours; and the Syntax font, each shown in its letters.
+ * each palette, drawn in its own colors; and the Syntax font, each shown in its letters.
  */
 export function customizeWindow(hooks: CustomizeHooks): HTMLDialogElement {
   const label = document.createElement('span');

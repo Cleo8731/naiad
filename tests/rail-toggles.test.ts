@@ -78,7 +78,7 @@ describe('the rail\'s switches slide (the user, 2026-11-17)', () => {
 
 // On pointing (the user, 2026-11-17, answering Q172: "Yes, build it"): the switch widens
 // into two lines, both modes' names always shown; the knob stretches right over the mode
-// in use and its name, in the accent, and the other name stays grey outside it. The knob
+// in use and its name, in the accent, and the other name stays gray outside it. The knob
 // reaches the end of the widened track, even on the shorter name (the user, 2026-11-18:
 // "Make sure the highlight reaches the end of the extended tab, even if the word is
 // shorter").
@@ -117,7 +117,7 @@ describe('the rail\'s switches on pointing (T4.13, Q172)', () => {
     expect(toggle('view').textContent!.trim()).toBe('Edit mode');
   });
 
-  it('the names show only on pointing; the knob then stretches; the other name is grey', () => {
+  it('the names show only on pointing; the knob then stretches; the other name is gray', () => {
     expect(rule('.slide .opt::after')).toMatch(/content:\s*attr\(data-name\)/);
     expect(rule('.slide .opt::after')).toMatch(/color:\s*var\(--muted\)/);
     expect(rule('.slide .opt.on::after')).toMatch(/color:\s*var\(--accent\)/);

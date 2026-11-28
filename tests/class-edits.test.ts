@@ -81,7 +81,7 @@ describe('a new class', () => {
   });
 });
 
-describe('a class\'s colour', () => {
+describe('a class\'s color', () => {
   test('changes where the class sets it, and keeps its other properties', async () => {
     const before = 'flowchart TD\n  a:::k\n  classDef k fill:#fff,stroke-width:2px\n  classDef k stroke:#000\n';
     expect(await edit(before, { kind: 'setClassStyle', name: 'k', changes: BLUE }))
@@ -119,7 +119,7 @@ test('Mermaid\'s reading holds the classes the file defines, in its order, and a
 });
 
 // The classes round after 1.0.4 (the user, 2026-11-26): a class's shape (Q267, Q271),
-// its own colour taken off a node put in it (Q270), a border (Q274), a new name (Q276).
+// its own color taken off a node put in it (Q270), a border (Q274), a new name (Q276).
 describe('a class\'s shape', () => {
   const SHAPED = FILE.replace('    classDef held fill:#fff0cd,stroke:#996300\n', '    classDef held fill:#fff0cd,stroke:#996300\n    %% @class held shape: stadium\n');
 
@@ -132,7 +132,7 @@ describe('a class\'s shape', () => {
     expect(await edit(SHAPED, { kind: 'setClassShape', name: 'held', shape: null, nodes: ['b'] })).toBe(FILE);
   });
 
-  test('a node put in the class takes it, and loses its own colour', async () => {
+  test('a node put in the class takes it, and loses its own color', async () => {
     const own = SHAPED.replace('    class a,c stop\n', '    class a,c stop\n    style c fill:#f00,stroke-width:3px\n');
     expect(await edit(own, { kind: 'setClass', id: 'c', cls: 'held' }))
       .toBe(SHAPED.replace('c[C]', 'c(["C"])').replace('    class a,c stop\n', '    class a stop\n    class c held\n    style c stroke-width:3px\n'));

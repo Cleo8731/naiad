@@ -310,8 +310,8 @@ export function setTitle(text: string, id: string, title: string): string {
   if (!title.trim()) throw new EditError('A title cannot be empty.');
   const doc = load(text);
   const refs = requireNode(doc, id);
-  const labelled = refs.filter((r) => r.ref.shape || r.ref.attrs);
-  const target = labelled.length ? labelled[labelled.length - 1] : refs[0];
+  const labeled = refs.filter((r) => r.ref.shape || r.ref.attrs);
+  const target = labeled.length ? labeled[labeled.length - 1] : refs[0];
   const line = doc.lines[target.line];
   const { ref } = target;
   let next: string;
@@ -674,10 +674,10 @@ export function setStyle(text: string, id: string, changes: Record<string, strin
 const CLASS_NAME = /^[\p{L}\p{N}_-]+$/u;
 /** Words Mermaid reads as its own, which no new class may be called. */
 const RESERVED = /^(end|subgraph|graph|flowchart|style|class|classDef|click|linkStyle|direction|default|call|href)$/i;
-const COLOUR = /^#[0-9a-fA-F]{3,8}$/;
+const COLOR = /^#[0-9a-fA-F]{3,8}$/;
 /** The class properties the window writes, and the values it writes for each. */
 const CLASS_VALUE: Record<string, RegExp> = {
-  fill: COLOUR, stroke: COLOUR, color: COLOUR, 'stroke-width': /^\d+(?:\.\d+)?px$/, 'stroke-dasharray': /^\d+(?: \d+)*$/,
+  fill: COLOR, stroke: COLOR, color: COLOR, 'stroke-width': /^\d+(?:\.\d+)?px$/, 'stroke-dasharray': /^\d+(?: \d+)*$/,
 };
 function checkClassValues(changes: Record<string, string | null>): void {
   for (const [k, v] of Object.entries(changes)) {
@@ -822,7 +822,7 @@ export function addClass(text: string, name: string, styles: Record<string, stri
 }
 
 /**
- * Sets properties of a class (its fill, border and text colour): each one is changed
+ * Sets properties of a class (its fill, border and text color): each one is changed
  * where the class's `classDef` lines set it, or added to the last of them. A class
  * defined on a line with other classes is left to the Syntax pane.
  */
@@ -832,7 +832,7 @@ export function setClassStyle(text: string, name: string, changes: Record<string
   if (!mine.length) throw new EditError(`There is no class "${name}" in this file.`);
   checkClassValues(changes);
   for (const d of mine) {
-    if (d.names.length > 1) throw new EditError(`Line ${d.line + 1}: the class "${name}" is defined together with other classes; change its colour in the Syntax pane.`);
+    if (d.names.length > 1) throw new EditError(`Line ${d.line + 1}: the class "${name}" is defined together with other classes; change its color in the Syntax pane.`);
     if (d.pieces.some((p) => !p.includes(':') || p.includes('(') || p.includes('\\'))) {
       throw new EditError(`Line ${d.line + 1}: this classDef line is too involved for the chart to edit; change it in the Syntax pane.`);
     }
@@ -917,7 +917,7 @@ function shapeOf(text: string, id: string): string {
 
 /**
  * Puts a node or group in a class as the window does (Q267, Q270): `setClass`, then the
- * item's own fill, border and text colour come off, so the class's show, and a node
+ * item's own fill, border and text color come off, so the class's show, and a node
  * takes the class's shape when the class has one. Returns the shape given, or null.
  */
 export function putInClass(text: string, id: string, cls: string | null): { text: string; shape: string | null } {
@@ -940,7 +940,7 @@ export function renameClass(text: string, name: string, next: string): string {
   const doc = load(text);
   const defs = defLines(doc).filter((d) => d.names.includes(name));
   if (!defs.length) throw new EditError(`There is no class "${name}" in this file.`);
-  if (name === 'default') throw new EditError('The class "default" colours every node; Mermaid knows it by that name, so it keeps it.');
+  if (name === 'default') throw new EditError('The class "default" colors every node; Mermaid knows it by that name, so it keeps it.');
   const problem = classNameProblem(text, next);
   if (problem) throw new EditError(problem);
   const rw = new Rewriter(doc);
@@ -956,7 +956,7 @@ export function renameClass(text: string, name: string, next: string): string {
 const isStroke = (piece: string): boolean => piece.slice(0, piece.indexOf(':')).trim() === 'stroke';
 
 /**
- * Sets (or, with null, clears) an arrow's colour (the user, 2026-11-13, Q109): the `stroke`
+ * Sets (or, with null, clears) an arrow's color (the user, 2026-11-13, Q109): the `stroke`
  * of its own `linkStyle` line. Mermaid takes the last line naming an arrow as a whole, so
  * only that line is changed; when it names other arrows too, this one gets a line of its
  * own. Cleared, a line left with nothing (or only `fill:none`, Mermaid's own for an
@@ -964,11 +964,11 @@ const isStroke = (piece: string): boolean => piece.slice(0, piece.indexOf(':')).
  * otherwise take over. `linkStyle default` is left alone. The properties other than
  * `stroke` stay exactly as written.
  */
-export function setEdgeColour(text: string, index: number, stroke: string | null): string {
+export function setEdgeColor(text: string, index: number, stroke: string | null): string {
   const doc = load(text);
   const edge = doc.edges[index];
   if (!edge) throw new EditError('That arrow is not in the file any more.');
-  if (stroke !== null && !/^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/.test(stroke)) throw new EditError(`"${stroke}" is not a colour the chart can write.`);
+  if (stroke !== null && !/^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/.test(stroke)) throw new EditError(`"${stroke}" is not a color the chart can write.`);
   const n = String(index);
   const rw = new Rewriter(doc);
   // The lines that give this arrow a style, in order. A line that only sets the curve
@@ -980,7 +980,7 @@ export function setEdgeColour(text: string, index: number, stroke: string | null
     if (!m) throw new EditError(`Line ${i + 1}: cannot read this linkStyle line; change it in the Syntax pane.`);
     if (/^interpolate\b/.test(m[4])) {
       if (/^interpolate\s+\S+\s*$/.test(m[4])) return;
-      throw new EditError(`Line ${i + 1}: this linkStyle line also sets the arrow's curve; change its colour in the Syntax pane.`);
+      throw new EditError(`Line ${i + 1}: this linkStyle line also sets the arrow's curve; change its color in the Syntax pane.`);
     }
     const pieces = m[4].split(',');
     if (m[4].includes('(') || pieces.some((p) => !p.includes(':'))) throw new EditError(`Line ${i + 1}: this linkStyle line is too involved for the chart to edit; change it in the Syntax pane.`);

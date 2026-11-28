@@ -98,7 +98,7 @@ describe('on a drawn chart', () => {
     `<path data-edge="true" data-edge-line="${i}" class="edge-thickness-normal edge-pattern-dotted flowchart-link" style="stroke:#e11;stroke-width:3px;" ${extra} d="${d}"></path>`
     + `<path class="edge-hit" data-edge="${i}" d="${d}"></path>`;
 
-  test('a long arrow with a head gets one mark path, just after it and under its click copy, in its colour', () => {
+  test('a long arrow with a head gets one mark path, just after it and under its click copy, in its color', () => {
     const svg = drawn(arrow(0, 'M0,0L0,600'));
     addDirectionMarks(svg);
     const line = svg.querySelector('[data-edge-line="0"]')!;
@@ -113,7 +113,7 @@ describe('on a drawn chart', () => {
     expect(svg.querySelectorAll('.dir-mark')).toHaveLength(1);
   });
 
-  test('an arrow in the theme colour keeps it: nothing is set on the mark', () => {
+  test('an arrow in the theme color keeps it: nothing is set on the mark', () => {
     const svg = drawn(arrow(0, 'M0,0L0,600').replace('stroke:#e11;stroke-width:3px;', ';'));
     addDirectionMarks(svg);
     expect(svg.querySelector('.dir-mark')!.hasAttribute('style')).toBe(false);
@@ -169,9 +169,9 @@ describe('on a drawn chart', () => {
       line.classList.add('lit');
       expect(styled(mark, 'opacity: 0.22')).toBe(false);
     });
-    test('they take the selection\'s colour, the full accent, a little thicker, under the pointer (Q244), and a highlight\'s halo', () => {
+    test('they take the selection\'s color, the full accent, a little thicker, under the pointer (Q244), and a highlight\'s halo', () => {
       const { line, mark } = setup();
-      // The selection's colour is `--select`: the accent, except in Glacier (T4.9).
+      // The selection's color is `--select`: the accent, except in Glacier (T4.9).
       for (const [cls, wanted] of [['sel', 'stroke: var(--select) !important'], ['hov', 'stroke-width: 2.5px !important'], ['hl', 'drop-shadow']]) {
         expect(styled(mark, wanted), cls).toBe(false);
         line.classList.add(cls);

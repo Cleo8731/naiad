@@ -25,18 +25,18 @@ async function opsFor(text: string): Promise<Op[]> {
     { kind: 'setDescription', id: FLOWCHART_ID, description: 'The whole flowchart.\n\nIn two paragraphs.' },
     { kind: 'setDescription', id: FLOWCHART_ID, description: '' },
   ];
-  // Classes (T1.26): a new one, each one's colour, deleting each, and each node and
+  // Classes (T1.26): a new one, each one's color, deleting each, and each node and
   // group (with an id written in the file) put in each class, a new one, or none.
   const classes = Object.keys(snap.classDefs).filter((c) => c !== 'default');
-  const colour = { fill: '#d3f9d8', stroke: '#2f9e44', color: '#1c2026' };
-  ops.push({ kind: 'addClass', name: 'fresh', styles: colour, node: null });
-  ops.push({ kind: 'addClass', name: 'shaped', styles: colour, node: null, shape: 'hexagon' });
-  // Each class's colour, its border on and off, its shape on (its nodes reshaped) and
+  const color = { fill: '#d3f9d8', stroke: '#2f9e44', color: '#1c2026' };
+  ops.push({ kind: 'addClass', name: 'fresh', styles: color, node: null });
+  ops.push({ kind: 'addClass', name: 'shaped', styles: color, node: null, shape: 'hexagon' });
+  // Each class's color, its border on and off, its shape on (its nodes reshaped) and
   // off, a new name, and deleting it (T1.26, Q267, Q271, Q274, Q276).
   for (const name of classes) {
     const members = Object.entries(snap.nodes).filter(([, n]) => n.classes.includes(name)).map(([id]) => id);
     ops.push(
-      { kind: 'setClassStyle', name, changes: colour },
+      { kind: 'setClassStyle', name, changes: color },
       { kind: 'setClassStyle', name, changes: { 'stroke-width': '2px', 'stroke-dasharray': '5 3' } },
       { kind: 'setClassStyle', name, changes: { 'stroke-width': null, 'stroke-dasharray': null } },
       { kind: 'setClassShape', name, shape: 'diamond', nodes: members },
@@ -47,8 +47,8 @@ async function opsFor(text: string): Promise<Op[]> {
   }
   const named = parseDoc(text).subs.filter((s) => s.explicitId).map((s) => s.id);
   for (const id of [...nodes, ...named]) {
-    ops.push({ kind: 'setClass', id, cls: null }, { kind: 'addClass', name: 'fresh', styles: colour, node: id },
-      { kind: 'addClass', name: 'shaped', styles: colour, node: id, shape: 'hexagon' });
+    ops.push({ kind: 'setClass', id, cls: null }, { kind: 'addClass', name: 'fresh', styles: color, node: id },
+      { kind: 'addClass', name: 'shaped', styles: color, node: id, shape: 'hexagon' });
     for (const cls of classes) ops.push({ kind: 'setClass', id, cls });
   }
   if (nodes.length > 1) ops.push({ kind: 'addEdge', from: nodes[0], to: nodes[nodes.length - 1] }, { kind: 'addEdge', from: nodes[1], to: nodes[1] });
@@ -75,7 +75,7 @@ async function opsFor(text: string): Promise<Op[]> {
       { kind: 'setEdgeLabel', index, label: '' }, { kind: 'setEdgeStyle', index, stroke: 'dotted' }, { kind: 'setEdgeStyle', index, stroke: 'thick' },
       { kind: 'setEdgeStyle', index, stroke: 'normal' }, { kind: 'setEdgeStyle', index, arrow: 'none' }, { kind: 'setEdgeStyle', index, arrow: 'both' },
       { kind: 'setEdgeStyle', index, arrow: 'circle' }, { kind: 'setEdgeStyle', index, arrow: 'cross' }, { kind: 'setEdgeStyle', index, arrow: 'arrow' },
-      { kind: 'setEdgeColour', index, stroke: '#e03131' }, { kind: 'setEdgeColour', index, stroke: null },
+      { kind: 'setEdgeColor', index, stroke: '#e03131' }, { kind: 'setEdgeColor', index, stroke: null },
     );
   });
   for (const id of subs) {

@@ -10,7 +10,7 @@ import { raiseGroupTitles } from './group-titles';
 import { markLabelsInGroups } from './label-pills';
 import { lightArrow, unlightArrows, unreadyArrows } from './arrow-hover';
 import { layChips, type ChipWish, type Edge } from './chip-layout';
-import { readyToLift, relockColours, unlockColours, unready } from './class-colours';
+import { readyToLift, relockColors, unlockColors, unready } from './class-colors';
 import type { Choice, WalkAction, WalkView } from './walk';
 
 export type Target =
@@ -73,34 +73,34 @@ async function fontLoaded(): Promise<void> {
 }
 
 /**
- * The chart's colours: the palette's (`style.css`, T4.9), read from the page so that each
- * colour has one home. Each is read through a hidden element whose text colour is the
- * palette's colour, since the page gives a colour written `light-dark()` as rgb() only
+ * The chart's colors: the palette's (`style.css`, T4.9), read from the page so that each
+ * color has one home. Each is read through a hidden element whose text color is the
+ * palette's color, since the page gives a color written `light-dark()` as rgb() only
  * there. A page without the styles (the tests) gets Naiad Default's.
  */
-const CHART_COLOURS = {
+const CHART_COLORS = {
   bg: ['#eef5f4', '#0b1c21'], node: ['#ffffff', '#12303a'], 'node-border': ['#95c2c8', '#34727f'],
   edge: ['#66979f', '#5592a0'], text: ['#12292f', '#e3f1f2'], muted: ['#4d6a6f', '#8fb0b5'],
   group: ['#e3efee', '#0e262c'], 'group-border': ['#bad6d8', '#22474f'],
 } as const;
 
-type Colours = Record<keyof typeof CHART_COLOURS, string>;
+type Colors = Record<keyof typeof CHART_COLORS, string>;
 
 /**
- * A print's colours (T6.3, Q222): dark lines and text on white, the groups a light grey,
+ * A print's colors (T6.3, Q222): dark lines and text on white, the groups a light gray,
  * whatever the theme on screen, so a print reads on paper and spends little ink.
  */
-const PAPER: Colours = {
+const PAPER: Colors = {
   bg: '#ffffff', node: '#ffffff', 'node-border': '#4a4a4a', edge: '#333333', text: '#111111',
   muted: '#555555', group: '#f2f2f2', 'group-border': '#9a9a9a',
 };
 
-function pageColours(dark: boolean): Colours {
+function pageColors(dark: boolean): Colors {
   const probe = document.createElement('span');
   probe.hidden = true;
   document.body.append(probe);
-  const out = {} as Colours;
-  for (const [name, both] of Object.entries(CHART_COLOURS) as [keyof typeof CHART_COLOURS, readonly [string, string]][]) {
+  const out = {} as Colors;
+  for (const [name, both] of Object.entries(CHART_COLORS) as [keyof typeof CHART_COLORS, readonly [string, string]][]) {
     probe.style.color = '';
     probe.style.color = `var(--${name}, rgb(1, 2, 3))`;
     const value = getComputedStyle(probe).color;
@@ -110,15 +110,15 @@ function pageColours(dark: boolean): Colours {
   return out;
 }
 
-/** The grey of a group's title and an arrow label's text: between the muted colour and the text's. */
+/** The gray of a group's title and an arrow label's text: between the muted color and the text's. */
 const softText = (c: Record<'muted' | 'text', string>) => `color-mix(in srgb, ${c.muted} 55%, ${c.text})`;
 
 /**
- * Sets Mermaid up to draw in the palette's colours, light or dark (Appearance, T4.8; the
+ * Sets Mermaid up to draw in the palette's colors, light or dark (Appearance, T4.8; the
  * palette, T4.9). Called again when either changes, before every tab is drawn again.
  */
 export function configureMermaid(dark: boolean): void {
-  lastConfig = mermaidConfig(pageColours(dark), dark);
+  lastConfig = mermaidConfig(pageColors(dark), dark);
   mermaid.initialize(lastConfig);
 }
 
@@ -127,9 +127,9 @@ let lastConfig: Parameters<typeof mermaid.initialize>[0] | null = null;
 
 /**
  * Mermaid's drawings, one at a time: `mermaid.render` waits its turn, but a new set-up
- * (`initialize`) takes effect at once, so a print's colours would reach a tab's drawing
+ * (`initialize`) takes effect at once, so a print's colors would reach a tab's drawing
  * waiting meanwhile. Each drawing runs inside this, and a print's sets and restores its
- * colours inside its own turn (T6.3).
+ * colors inside its own turn (T6.3).
  */
 let drawing: Promise<unknown> = Promise.resolve();
 function exclusive<T>(job: () => Promise<T>): Promise<T> {
@@ -138,7 +138,7 @@ function exclusive<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function mermaidConfig(c: Colours, dark: boolean): Parameters<typeof mermaid.initialize>[0] {
+function mermaidConfig(c: Colors, dark: boolean): Parameters<typeof mermaid.initialize>[0] {
   return {
     startOnLoad: false,
     securityLevel: 'strict',
@@ -155,13 +155,13 @@ function mermaidConfig(c: Colours, dark: boolean): Parameters<typeof mermaid.ini
       edgeLabelBackground: c.bg, titleColor: c.muted,
     },
     // Group titles (Q173) and arrow labels (Q175), the user, 2026-11-18: a title is
-    // semibold and a little larger than a node's text, in a grey lighter than the muted
-    // colour; an arrow label sits in a soft pill with no border and a small margin, its
-    // text a little smaller and grey, so it reads as a caption and not as a node. Mermaid applies these before it measures, so the layout
+    // semibold and a little larger than a node's text, in a gray lighter than the muted
+    // color; an arrow label sits in a soft pill with no border and a small margin, its
+    // text a little smaller and gray, so it reads as a caption and not as a node. Mermaid applies these before it measures, so the layout
     // makes room for them.
     themeCSS: [
       `.cluster-label span, .cluster-label p { font-weight: 600; font-size: 15px; color: ${softText(c)}; }`,
-      // The pill's colour (Q176, the user, 2026-11-18): the group colour outside every
+      // The pill's color (Q176, the user, 2026-11-18): the group color outside every
       // group, the chart's background inside one (`label-pills.ts` marks which).
       `.labelBkg { background-color: ${c.group}; padding: 2px 7px; border-radius: 999px; }`,
       `g.edgeLabel.in-group .labelBkg { background-color: ${c.bg}; }`,
@@ -210,7 +210,7 @@ let drawCount = 0;
 type Point = { x: number; y: number };
 type End = 'start' | 'end';
 
-/** Velocity of the view in stage pixels per second, towards the chart under the pointer. */
+/** Velocity of the view in stage pixels per second, toward the chart under the pointer. */
 export function edgePanSpeed(point: Point, rect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>, strip: number, topSpeed: number): Point {
   if (strip <= 0) return { x: 0, y: 0 };
   const axis = (p: number, low: number, high: number) =>
@@ -379,7 +379,7 @@ export class Chart {
   /** A fit asked for while the chart had no width (hidden while another tab is shown,
    * T1.16), so it is fitted as soon as it is shown. */
   private fitWaiting = false;
-  /** The stage's width the view was last placed for: the resize watcher keeps the centre
+  /** The stage's width the view was last placed for: the resize watcher keeps the center
    * from it, and a fit sets it, so a fit made before the watcher runs isn't shifted. */
   private placedWidth = 0;
   /** True once the user has panned or zoomed; until then each redraw is fitted again. */
@@ -390,7 +390,7 @@ export class Chart {
   /** The walk bar at the chart's foot, and the edge chips (`placeChips`). */
   private walkBar: HTMLDivElement;
   private walkChips: HTMLDivElement;
-  /** The view travelling to the walk's next place (`walkCamera`) or to a Fit (`glideView`): its frame. */
+  /** The view traveling to the walk's next place (`walkCamera`) or to a Fit (`glideView`): its frame. */
   private walkFrame: number | null = null;
   /** The drawing's own frame's corner (its viewBox's x and y), to place a point of an arrow's line. */
   private origin = { x: 0, y: 0 };
@@ -487,7 +487,7 @@ export class Chart {
     el.setAttribute('height', String(box.height));
     el.style.maxWidth = 'none';
     finish(el, id, snap, true);
-    unlockColours(el);
+    unlockColors(el);
     if (!this.fitted || !this.manual) { this.fit(); this.fitted = true; }
     this.paintSelection();
     this.paintHighlights();
@@ -761,7 +761,7 @@ export class Chart {
 
   /**
    * The edge chips (Q232, the user, 2026-11-26): each place the walk can go next that is
-   * not wholly in view gets a chip at the chart's edge, centred where its arrow's line
+   * not wholly in view gets a chip at the chart's edge, centered where its arrow's line
    * leaves the view, naming the arrow's label and the place in full ("Yes → Build the
    * index"). A click takes that choice. They are the only way to an out-of-view place
    * besides its key: the walk bar names none (the user, 2026-11-26).
@@ -818,7 +818,7 @@ export class Chart {
       // Its size is fixed once measured, so a place near the right edge cannot narrow it.
       const w = chip.offsetWidth, h = chip.offsetHeight;
       chip.style.width = `${String(w)}px`;
-      // Centred on that point on its nearest edge; `layChips` keeps chips clear of each other.
+      // Centered on that point on its nearest edge; `layChips` keeps chips clear of each other.
       const edge: Edge = Math.min(at.y - top, bottom - at.y) <= Math.min(at.x - left, right - at.x)
         ? (at.y - top <= bottom - at.y ? 'top' : 'bottom')
         : (at.x - left <= right - at.x ? 'left' : 'right');
@@ -866,7 +866,7 @@ export class Chart {
   /**
    * A copy of the whole chart as drawn now, for Export (T6.3): in the theme on screen,
    * without what only the window shows (the selection, highlights, the item under the
-   * pointer, a trace, the arrows' clickable copies); and the chart's background colour.
+   * pointer, a trace, the arrows' clickable copies); and the chart's background color.
    * Null while nothing is drawn.
    */
   picture(): { svg: SVGSVGElement; background: string } | null {
@@ -874,10 +874,10 @@ export class Chart {
     if (!el) return null;
     const svg = el.cloneNode(true) as SVGSVGElement;
     clean(svg);
-    relockColours(svg);
+    relockColors(svg);
     unready(svg);
     unreadyArrows(svg);
-    return { svg, background: getComputedStyle(this.stage).backgroundColor || CHART_COLOURS.bg[0] };
+    return { svg, background: getComputedStyle(this.stage).backgroundColor || CHART_COLORS.bg[0] };
   }
 
   clear(): void {
@@ -1079,7 +1079,7 @@ export class Chart {
       if (el) {
         const r = el.getBoundingClientRect();
         // Beside the node's size once its grow under the pointer (Q240) ends, not as it is
-        // now, part way: the grow is about the node's centre.
+        // now, part way: the grow is about the node's center.
         const now = Number.parseFloat(getComputedStyle(el).scale) || 1;
         const end = el.classList.contains('hov') && owner?.kind === 'node' ? GROW : 1;
         set.connect.style.left = `${r.left + (r.width / 2) * (1 + end / now) - s.left + 6}px`;
@@ -1233,7 +1233,7 @@ export class Chart {
    * at each side; at the top and the foot, 12 px clear of the chart's tools laid over the
    * chart (Undo's island, the pill), so no node is fitted under them (seen 2026-11-25: a
    * tall chart's last node sat under the pill). Width fits the chart's width (at most a
-   * little over full size, as every fit); a chart then shorter than its area is centred
+   * little over full size, as every fit); a chart then shorter than its area is centered
    * in it, as a whole one is, and a taller one starts at the top.
    */
   private fitGoal(kind: 'open' | FitKind): { x: number; y: number; k: number } | null {
@@ -1496,9 +1496,9 @@ export class Chart {
     }
     document.addEventListener('keydown', this.onKeyDown);
 
-    // When a side panel opens or closes, keep the chart centred and the selection in view.
+    // When a side panel opens or closes, keep the chart centered and the selection in view.
     // A hidden chart (another tab shown, T1.16) has no width: its view stays as it was
-    // left, and on showing it moves only to keep the centre if the width changed meanwhile.
+    // left, and on showing it moves only to keep the center if the width changed meanwhile.
     this.placedWidth = stageWidth(stage);
     let shown = this.placedWidth > 0;
     this.observer = new ResizeObserver(() => {
@@ -1529,7 +1529,7 @@ export class Chart {
 /**
  * Maps Mermaid's drawing to the file's nodes, groups and arrows, rounds the arrows'
  * bends, and adds Naiad's own finishing: direction marks, group titles above the arrows
- * and the label pills' colours. `hits` adds each arrow's wide clickable copy, which a
+ * and the label pills' colors. `hits` adds each arrow's wide clickable copy, which a
  * printed or saved picture leaves out. The order matters: a direction mark directly
  * follows its arrow (`path.sel + path.dir-mark` in `style.css`).
  */
@@ -1584,7 +1584,7 @@ function clean(svg: SVGSVGElement): void {
 /**
  * The chart drawn for paper (T6.3, Q222): dark lines on white, finished as on screen,
  * into `holder`, which must be in the page so the finishing can measure. Mermaid gets
- * the print's colours for this one drawing and the screen's back after it. Null when
+ * the print's colors for this one drawing and the screen's back after it. Null when
  * Mermaid cannot draw the text.
  */
 export function drawForPaper(text: string, snap: Snap, holder: HTMLElement): Promise<SVGSVGElement | null> {

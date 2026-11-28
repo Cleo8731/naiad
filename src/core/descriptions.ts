@@ -151,7 +151,7 @@ export function setDescription(text: string, id: string, description: string): s
     if (desc === '') {
       let from = block.start;
       let count = block.end - block.start;
-      // Take one neighbouring blank line with the block, so blank lines do not pile up.
+      // Take one neighboring blank line with the block, so blank lines do not pile up.
       if (from > 0 && lines[from - 1].trim() === '' && (block.end >= lines.length || lines[block.end].trim() === '')) {
         from--;
         count++;

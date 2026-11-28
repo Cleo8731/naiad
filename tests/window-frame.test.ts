@@ -480,7 +480,7 @@ describe('the Customize window (T4.8, T4.9)', () => {
     expect(rootAttr('data-palette')).toBeNull();
   });
 
-  test('a theme picked: the window and the chart take its colours at once, and keep them at the next start', async () => {
+  test('a theme picked: the window and the chart take its colors at once, and keep them at the next start', async () => {
     await start();
     await vi.waitFor(() => expect(charts.list[0].drawn).toHaveLength(1));
     const before = chartTheme.calls;
@@ -489,7 +489,7 @@ describe('the Customize window (T4.8, T4.9)', () => {
     expect(rootAttr('data-palette')).toBe('kelp');
     expect(card('kelp').getAttribute('aria-pressed')).toBe('true');
     expect(card('naiad-default').getAttribute('aria-pressed')).toBe('false');
-    expect(chartTheme.calls).toBe(before + 1); // Mermaid set up again, with the palette's colours
+    expect(chartTheme.calls).toBe(before + 1); // Mermaid set up again, with the palette's colors
     await vi.waitFor(() => expect(charts.list[0].drawn).toHaveLength(2));
     expect(localStorage.getItem('palette')).toBe('kelp');
     await restart();
@@ -570,13 +570,13 @@ describe('the look (T4.9)', () => {
     expect(root).toMatch(/--hl:\s*var\(--highlight\)/);
   });
 
-  test('the fonts are bundled, each with its licence, and Nunito is gone', () => {
+  test('the fonts are bundled, each with its license, and Nunito is gone', () => {
     const faces = [...css.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(([, b]) => [/font-family:\s*'([^']+)'/.exec(b)![1], /url\('\.\/([^']+)'\)/.exec(b)![1]]);
     expect(faces.map(([f]) => f)).toEqual(['Lexend', 'Newsreader', 'JetBrains Mono', 'DM Mono', 'Recursive']);
     for (const [, file] of faces) expect(existsSync(resolve('src', file)), file).toBe(true);
-    const licence = readFileSync(resolve('src', 'fonts', 'OFL.txt'), 'utf8');
-    for (const name of ['Lexend', 'Newsreader', 'JetBrains Mono', 'DM Mono', 'Recursive']) expect(licence).toContain(`The ${name} Project Authors`);
-    expect(licence).toContain('SIL OPEN FONT LICENSE Version 1.1');
+    const license = readFileSync(resolve('src', 'fonts', 'OFL.txt'), 'utf8');
+    for (const name of ['Lexend', 'Newsreader', 'JetBrains Mono', 'DM Mono', 'Recursive']) expect(license).toContain(`The ${name} Project Authors`);
+    expect(license).toContain('SIL OPEN FONT LICENSE Version 1.1');
     expect(existsSync(resolve('src', 'fonts', 'nunito-latin.woff2'))).toBe(false);
     expect(css).not.toMatch(/Nunito/);
   });
@@ -584,7 +584,7 @@ describe('the look (T4.9)', () => {
   test('the Syntax font\'s choices, and no ligatures in the Syntax pane', () => {
     expect(rule(':root[data-syntaxfont="dm-mono"]')).toMatch(/--font-mono:\s*'DM Mono'/);
     expect(rule(':root[data-syntaxfont="recursive"]')).toMatch(/--mono-fvs:\s*'MONO' 1, 'CASL' 1/);
-    // the text area, whose rule the coloured copy under it shares (2026-11-25)
+    // the text area, whose rule the colored copy under it shares (2026-11-25)
     expect(rule('.code textarea')).toMatch(/font-variant-ligatures:\s*none/);
     expect(rule('.code textarea')).toMatch(/font-variation-settings:\s*var\(--mono-fvs/);
   });

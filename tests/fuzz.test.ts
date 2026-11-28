@@ -504,7 +504,7 @@ function strictCanon(s: Snap): string {
 
 // ------------------------------------------------------------------ the checks
 
-/** Normalises a description as typed to what reading it back must give. */
+/** Normalizes a description as typed to what reading it back must give. */
 // A line keeps the spaces at its end (bug hunt round 5, A40); a line of spaces alone is an
 // empty line.
 function typedDescription(d: string): string {

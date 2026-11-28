@@ -1,6 +1,6 @@
 /**
- * The Syntax pane's colours (the user, 2026-11-25): each line of a flowchart's text cut
- * into pieces, each piece with its kind, which the pane draws in its own colour. Only
+ * The Syntax pane's colors (the user, 2026-11-25): each line of a flowchart's text cut
+ * into pieces, each piece with its kind, which the pane draws in its own color. Only
  * for showing: the text itself is never changed, and a line this does not understand is
  * drawn plain, piece by piece, so every character is always there once and in order.
  */
@@ -31,13 +31,13 @@ const SHAPES: [string, string[]][] = [
   ['[/', ['/]', '\\]']], ['[\\', ['\\]', '/]']], ['(', [')']], ['[', [']']], ['{', ['}']],
 ];
 /** An arrow with its label inside it, `-- yes -->`: the opening, the label, the rest. */
-const LABELLED = /^(--|==|-\.)( +)([^\s>].*?)( +)(-{2,}>|-{3,}|={2,}>|={3,}|\.+->|\.+-|-{2,}[ox]|={2,}[ox])/;
+const LABELED = /^(--|==|-\.)( +)([^\s>].*?)( +)(-{2,}>|-{3,}|={2,}>|={3,}|\.+->|\.+-|-{2,}[ox]|={2,}[ox])/;
 const ARROW = /^(?:<|[ox](?=--|==))?(?:-{2,}>|-{3,}|={2,}>|={3,}|-\.+->|-\.+-|-{2,}[ox]\b|={2,}[ox]\b|~~~)/;
 /** An id or a word: a hyphen only between letters, so `a-->b` is `a`, an arrow and `b`. */
 const WORD = /^[\p{L}\p{N}_]+(?:-(?![-.>=])[\p{L}\p{N}_]+)*/u;
 
 /** The pieces of every line of `text`, one array per line. */
-export function colourLines(text: string): Piece[][] {
+export function colorLines(text: string): Piece[][] {
   let inDescription = false;
   return text.split('\n').map((line) => {
     const comment = /^(\s*)(%%)(.*)$/.exec(line);
@@ -95,10 +95,10 @@ function statement(line: string): Piece[] {
       afterId = false;
       continue;
     }
-    const labelled = LABELLED.exec(rest);
-    if (labelled) {
-      push(labelled[1], 'arrow'); push(labelled[2], 'plain'); push(labelled[3], 'label'); push(labelled[4], 'plain'); push(labelled[5], 'arrow');
-      rest = rest.slice(labelled[0].length); first = false; afterId = false;
+    const labeled = LABELED.exec(rest);
+    if (labeled) {
+      push(labeled[1], 'arrow'); push(labeled[2], 'plain'); push(labeled[3], 'label'); push(labeled[4], 'plain'); push(labeled[5], 'arrow');
+      rest = rest.slice(labeled[0].length); first = false; afterId = false;
       continue;
     }
     const arrow = ARROW.exec(rest);
@@ -149,7 +149,7 @@ function shapeAt(text: string): { pieces: Piece[]; length: number } | null {
   return null;
 }
 
-/** Joins neighbouring pieces of one kind and drops empty ones. */
+/** Joins neighboring pieces of one kind and drops empty ones. */
 function join(pieces: Piece[]): Piece[] {
   const out: Piece[] = [];
   for (const p of pieces) {
@@ -164,9 +164,9 @@ function join(pieces: Piece[]): Piece[] {
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
-/** The pane's drawing of `text`: one element a line, its pieces in coloured spans. */
-export function colouredHtml(text: string): string {
-  return colourLines(text)
+/** The pane's drawing of `text`: one element a line, its pieces in colored spans. */
+export function coloredHtml(text: string): string {
+  return colorLines(text)
     .map((pieces) => `<div class="ln">${pieces.map((p) => (p.kind === 'plain' ? escape(p.text) : `<span class="s-${p.kind}">${escape(p.text)}</span>`)).join('')}</div>`)
     .join('');
 }

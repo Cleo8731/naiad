@@ -19,7 +19,7 @@ export type Op =
   | { kind: 'setEdgeLabel'; index: number; label: string }
   | { kind: 'setEdgeStyle'; index: number; stroke?: E.LinkParts['stroke']; arrow?: E.ArrowKind }
   | { kind: 'setStyle'; id: string; changes: Record<string, string | null> }
-  | { kind: 'setEdgeColour'; index: number; stroke: string | null }
+  | { kind: 'setEdgeColor'; index: number; stroke: string | null }
   | { kind: 'setDirection'; dir: string }
   | { kind: 'moveNode'; id: string; target: string | null }
   | { kind: 'groupNode'; id: string; title: string }
@@ -53,7 +53,7 @@ export function runOp(text: string, op: Op): OpResult {
     case 'setEdgeLabel': return { text: E.setEdgeLabel(text, op.index, op.label) };
     case 'setEdgeStyle': return { text: E.setEdgeStyle(text, op.index, { stroke: op.stroke, arrow: op.arrow }) };
     case 'setStyle': return { text: E.setStyle(text, op.id, op.changes) };
-    case 'setEdgeColour': return { text: E.setEdgeColour(text, op.index, op.stroke) };
+    case 'setEdgeColor': return { text: E.setEdgeColor(text, op.index, op.stroke) };
     case 'setDirection': return { text: E.setDirection(text, op.dir) };
     case 'moveNode': return { text: E.moveNode(text, op.id, op.target) };
     case 'groupNode': {
@@ -105,7 +105,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
     const item = s.subs[id] ?? s.nodes[id];
     item.classes = [...item.classes.filter((c) => c === 'clickable'), ...(cls === null ? [] : [cls])].sort();
   };
-  // Put in a class from the window (Q267, Q270): its own colours go, and a node takes
+  // Put in a class from the window (Q267, Q270): its own colors go, and a node takes
   // the class's shape when it has one.
   const putInClass = (id: string, cls: string | null) => {
     onlyClass(id, cls);
@@ -157,7 +157,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
       target.styles = styleAfter(target.styles, op.changes);
       break;
     }
-    case 'setEdgeColour': {
+    case 'setEdgeColor': {
       // Mermaid gives a styled arrow `fill:none` when its line sets no fill; a line left
       // with only that is taken out, so the arrow has no style of its own.
       const e = s.edges[op.index];
@@ -241,7 +241,7 @@ export function expectOp(before: Snap, op: Op, res: OpResult): Snap {
   return s;
 }
 
-const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle', 'setEdgeEnd', 'setEdgeColour']);
+const EDGE_OPS = new Set(['deleteEdge', 'setEdgeLabel', 'setEdgeStyle', 'setEdgeEnd', 'setEdgeColor']);
 
 /**
  * Runs an edit with the check. Throws E.EditError (with a message for the user) when

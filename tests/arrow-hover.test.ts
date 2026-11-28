@@ -72,14 +72,14 @@ describe('lighting an arrow', () => {
     expect(svg.querySelector('.hov-marker')).toBeNull();
   });
 
-  test('its label grows about its own centre and keeps its pill\'s colour as --own-fill', () => {
+  test('its label grows about its own center and keeps its pill\'s color as --own-fill', () => {
     const { svg, one, label } = drawing();
     lightArrow(svg, one, label);
     expect(label.style.transformOrigin).toBe('80.25px 140px');
     expect(label.querySelector<HTMLElement>('.labelBkg')!.style.getPropertyValue('--own-fill')).toBe('rgb(30, 40, 50)');
   });
 
-  test('a saved picture keeps no copy, no swapped marker and no grow centre', () => {
+  test('a saved picture keeps no copy, no swapped marker and no grow center', () => {
     const { svg, one, label } = drawing();
     lightArrow(svg, one, label);
     unreadyArrows(svg);
@@ -88,7 +88,7 @@ describe('lighting an arrow', () => {
     expect(label.hasAttribute('style')).toBe(false);
     const pill = label.querySelector<HTMLElement>('.labelBkg')!;
     expect(pill.style.getPropertyValue('--own-fill')).toBe('');
-    expect(pill.getAttribute('style')).toBe('background-color: rgb(30, 40, 50);'); // its own colour stays
+    expect(pill.getAttribute('style')).toBe('background-color: rgb(30, 40, 50);'); // its own color stays
   });
 });
 

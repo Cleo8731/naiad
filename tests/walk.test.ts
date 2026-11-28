@@ -166,7 +166,7 @@ describe('the chart during a walk', () => {
     Object.assign(places, { A: rect(100, 100, 80, 40), C: rect(100, 300, 80, 40) });
   });
 
-  test('an edge chip is centred where its arrow\'s line leaves the view', () => {
+  test('an edge chip is centered where its arrow\'s line leaves the view', () => {
     // "Yes" runs from B down and to the right, to C far below: it leaves the view's foot
     // (y 600) at x 140 + 560 * 360 / 660, about 445, not where the line from the view's
     // middle to C would meet it (about 279).
@@ -302,12 +302,12 @@ describe('the chart during a walk', () => {
     const v0 = { ...(chart as any).view };
     chart.setWalk(view('B'));
     const goal = (chart as any).walkGoal();
-    const centre = (v: { x: number; y: number; k: number }) => ({ x: (goal.ax - v.x) / v.k, y: (goal.ay - v.y) / v.k });
-    const c0 = centre(v0), c1 = { x: goal.cx, y: goal.cy };
+    const center = (v: { x: number; y: number; k: number }) => ({ x: (goal.ax - v.x) / v.k, y: (goal.ay - v.y) / v.k });
+    const c0 = center(v0), c1 = { x: goal.cx, y: goal.cy };
     const seen: { x: number; y: number }[] = [];
     for (let now = 0; frames.length && now < 5000; now += 50) {
       frames.shift()!(now);
-      seen.push(centre((chart as any).view));
+      seen.push(center((chart as any).view));
     }
     expect(seen.length).toBeGreaterThan(5);
     const len = Math.hypot(c1.x - c0.x, c1.y - c0.y);

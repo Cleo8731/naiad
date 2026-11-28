@@ -18,7 +18,7 @@ export interface SnapEdge {
   id: string;
 }
 export interface SnapSub { title: string; nodes: string[]; dir: string; styles: string[]; classes: string[] }
-/** The colour a node's or group's classes give it (`classDef`), and the class that gives it. */
+/** The color a node's or group's classes give it (`classDef`), and the class that gives it. */
 export interface ClassPaint { name: string; fill: string; stroke: string }
 
 export interface Snap {
@@ -39,14 +39,14 @@ export interface Snap {
    */
   classDefs: Record<string, string[]>;
   /**
-   * Each node's and group's colour from its classes, when they give one (T1.6, Q259). Only
+   * Each node's and group's color from its classes, when they give one (T1.6, Q259). Only
    * the sidebar reads it; the checks compare a chart without it (`canon`).
    */
   paint?: Record<string, ClassPaint>;
 }
 
 /**
- * The colour a list of classes gives, read as Mermaid draws it: each class's `fill` and
+ * The color a list of classes gives, read as Mermaid draws it: each class's `fill` and
  * `stroke` in turn, the last one winning. `name` is the class that gives the fill, or the
  * border when no class gives a fill.
  */

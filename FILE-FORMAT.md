@@ -173,7 +173,7 @@ flowchart TD
 
 ## A class's shape
 
-A Mermaid class (`classDef`) sets colours and borders, but no shape. Naiad adds a line
+A Mermaid class (`classDef`) sets colors and borders, but no shape. Naiad adds a line
 for a class's shape: a `%%` comment, which Mermaid skips.
 
 ```mermaid
@@ -226,16 +226,16 @@ flowchart TD
   arrow. A new end is a node or a group with an id (`subgraph id [Title]`); a group
   written with only a title gets its id from Mermaid, which numbers such groups in
   order, so it is never made an end.
-- An arrow's colour, picked in the sidebar, is the `stroke` of a `linkStyle` line
+- An arrow's color, picked in the sidebar, is the `stroke` of a `linkStyle` line
   (`linkStyle 3 stroke:#e03131`, where 3 is the arrow's place among the arrows as they
   are written, counted from 0). Mermaid takes the last `linkStyle` line naming an arrow,
   whole, so only that line changes: its `stroke` is replaced, or added, and its other
   properties stay as written. When that line names other arrows too
   (`linkStyle 1,3 stroke-width:3px`), this arrow's number is taken out of it and the
-  arrow gets a line of its own just under it, with the same properties and the colour.
+  arrow gets a line of its own just under it, with the same properties and the color.
   An arrow with no such line gets one under the last `linkStyle` line, or after the
   last line of the flowchart when that `linkStyle` line stands above the arrow (Mermaid
-  wants an arrow written before any line that styles it). Taking the colour off removes
+  wants an arrow written before any line that styles it). Taking the color off removes
   the `stroke`; a line left with nothing else (or only `fill:none`) goes, and so does
   the arrow's number on the earlier lines naming it, which would otherwise take over.
   `linkStyle default` lines and lines that set only the curve (`interpolate`) are left
@@ -248,13 +248,13 @@ flowchart TD
   read. With no such line, a new `class id name` line goes after the last `classDef` or
   `class` line (and below the item). Choosing no class takes the id out of them all.
   Putting an item in a class also takes the item's own `fill`, `stroke` and `color` out
-  of its `style` lines (a line left with nothing goes), so the class's colour shows,
+  of its `style` lines (a line left with nothing goes), so the class's color shows,
   and gives a node the class's shape, when the class has one
   ([A class's shape](#a-classs-shape)). Taking an item out of every class changes
   nothing else.
   A new class is a `classDef name fill:#…,stroke:#…,color:#1c2026` line after the last
   `classDef` line, or after the last line of the flowchart, with its border (below)
-  after the colour and its shape line under it. Changing a class's colour
+  after the color and its shape line under it. Changing a class's color
   changes its `fill`, `stroke` and `color` where its `classDef` lines set them (Mermaid
   reads every `classDef` line of a name, the later winning), or adds them to the last
   of those lines; its other properties stay as written. Its border is changed the same
@@ -271,7 +271,7 @@ flowchart TD
   lines; the new name follows the rules of a new class, and `default` keeps its name.
   Deleting a class removes its `classDef` lines (only its name, on a line shared with
   other classes), its `class` lines, its shape lines and its name in every `:::` mark;
-  the nodes stay, without its colour. A
+  the nodes stay, without its color. A
   group whose id Mermaid made up (one written with only a title) is put in a class in
   the Syntax pane: its id changes as groups are added.
 - Every line keeps its own line ending (LF, CRLF or a lone CR), so a file that mixes
@@ -450,7 +450,7 @@ but must be edited as text:
   `-->|label|` or `-- label -->`; chains (`a --> b --> c`) and `&` lists
   (`a & b --> c`).
 - Groups: `subgraph id [Title]` ... `end`, with an optional `direction LR` line inside.
-- Styling: `style id fill:#...,stroke:#...,color:#...`; an arrow's colour as
+- Styling: `style id fill:#...,stroke:#...,color:#...`; an arrow's color as
   `linkStyle 3 stroke:#...` (the arrow's place among the arrows, counted from 0).
 - Classes: `classDef name fill:#...,stroke:#...`, with a border as
   `stroke-width:2px` and `stroke-dasharray:5 3`, `class id1,id2 name`, `id:::name`
@@ -513,12 +513,12 @@ place, in the sidebar:
   each of its nodes too: the line does not draw them. Leave the shape line out of a
   class that marks a state, such as `done` or `blocked`, which nodes of any shape can
   be in.
-- A class sets a colour with `fill`, `stroke` and `color`, and a border with
+- A class sets a color with `fill`, `stroke` and `color`, and a border with
   `stroke-width:2px` (thick) and `stroke-dasharray:5 3` (dashed). Those are the values
   the sidebar writes; other values still work.
 - In a file that has classes, put a new node of a kind in that kind's class; do not
-  make a new class that looks the same. Colour nodes with a class rather than with
-  `style` lines: a node's own colour beats its class's.
+  make a new class that looks the same. Color nodes with a class rather than with
+  `style` lines: a node's own color beats its class's.
 - Say in the flowchart's description what each class means, when a reader needs to
   know it.
 

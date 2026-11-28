@@ -24,7 +24,7 @@ describe('chips along one edge', () => {
     expect(bs.map((b) => b.y)).toEqual([12, 12, 12 + 44 + CHIP_GAP]);
   });
 
-  test('a lone chip sits centred on its spot, kept inside', () => {
+  test('a lone chip sits centered on its spot, kept inside', () => {
     expect(layChips([{ edge: 'top', x: 400, y: 12, w: 200, h: 34 }], area)).toEqual([{ x: 300, y: 12 }]);
     expect(layChips([{ edge: 'top', x: 930, y: 12, w: 200, h: 34 }], area)).toEqual([{ x: 735, y: 12 }]);
     expect(layChips([{ edge: 'bottom', x: 400, y: 1000, w: 200, h: 34 }], area)).toEqual([{ x: 300, y: 966 }]);

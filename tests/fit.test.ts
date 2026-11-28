@@ -52,7 +52,7 @@ describe('Fit and the chart\'s tools', () => {
     expect(at.bottom).toBeCloseTo(734 - 12, 6);
   });
 
-  test('a wide, short chart is centred in the room between the tools', () => {
+  test('a wide, short chart is centered in the room between the tools', () => {
     tool('island-row', rect(14, 14, 80, 40));
     tool('pill', rect(400, 734, 200, 48));
     const at = fit(1900, 200); // width decides: k = 952 / 1900

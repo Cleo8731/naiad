@@ -36,7 +36,7 @@ export const PX_PER_MM = 96 / 25.4;
 export const MARGIN_MM = 14;
 /** The line at the top of each part's page: the flowchart's name and "Part 2 of 7". */
 export const PART_HEAD_MM = 8;
-/** What neighbouring parts share when a cut must go through a box (Q226). */
+/** What neighboring parts share when a cut must go through a box (Q226). */
 export const OVERLAP_MM = 10;
 /** A fitted chart's tallest size on its page (`style.css`: `.print-chart svg`). */
 export const FIT_HEIGHT_MM = 245;

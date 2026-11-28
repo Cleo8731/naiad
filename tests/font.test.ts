@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Lexend, for the chart and the window (the design handoff, T4.9, 2026-11-15; Nunito
 // before it): the styles and Mermaid name it first, and the chart waits for it. The
-// chart takes the palette's colours from the page. The files and their licence:
+// chart takes the palette's colors from the page. The files and their license:
 // window-frame.test.ts, "the look".
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -26,7 +26,7 @@ test('Mermaid draws in it, in light and dark', () => {
   }
 });
 
-test('Mermaid takes the palette\'s colours from the page, and Naiad Default\'s without them', () => {
+test('Mermaid takes the palette\'s colors from the page, and Naiad Default\'s without them', () => {
   const init = vi.spyOn(mermaid, 'initialize');
   const vars = () => init.mock.lastCall?.[0].themeVariables as Record<string, unknown>;
   configureMermaid(false);

@@ -14,7 +14,7 @@ import type { ClassPaint } from './semantics';
 export interface NodeView {
   kind: 'node'; id: string; title: string; description: string; shape: string;
   fill: string; group: string; groups: { id: string; title: string }[];
-  /** The colour the node's classes give it, shown in the Colour row's first swatch; null for none. */
+  /** The color the node's classes give it, shown in the Color row's first swatch; null for none. */
   classPaint?: ClassPaint | null;
   /** The classes the node is in, and those the file defines, for the Class row (T1.26). */
   classes?: string[]; classList?: ClassInfo[];
@@ -22,8 +22,8 @@ export interface NodeView {
 export interface EdgeView {
   kind: 'edge'; index: number; from: string; to: string; label: string;
   stroke: LinkParts['stroke']; arrow: ArrowKind;
-  /** The arrow's own colour (`stroke` in its `linkStyle` line), as written; '' for none. */
-  colour: string;
+  /** The arrow's own color (`stroke` in its `linkStyle` line), as written; '' for none. */
+  color: string;
   fromId: string; toId: string; ends: { id: string; title: string }[];
 }
 export interface SubView {
@@ -39,7 +39,7 @@ export interface SubView {
  */
 export interface AboutView { kind: 'about'; file: string; name: string; description: string; classList?: ClassInfo[] }
 /**
- * A class the file defines (`classDef`; T1.26): its name, its colour, how many nodes and
+ * A class the file defines (`classDef`; T1.26): its name, its color, how many nodes and
  * groups are in it, its shape (Q267; null for any shape) and its border (Q274).
  */
 export interface ClassInfo { name: string; fill: string; stroke: string; nodes: number; groups: number; shape: string | null; border: ClassBorder }
@@ -52,7 +52,7 @@ export const CLASS_BORDERS: { value: ClassBorder; label: string }[] = [
   { value: 'normal', label: 'Normal' }, { value: 'thick', label: 'Thick' },
   { value: 'dashed', label: 'Dashed' }, { value: 'thickdashed', label: 'Thick dashed' },
 ];
-/** How a new class looks (Q267, Q274): its colour, its border, and its shape, or null for any shape. */
+/** How a new class looks (Q267, Q274): its color, its border, and its shape, or null for any shape. */
 export interface ClassLook { swatch: Swatch; border: ClassBorder; shape: string | null }
 export type View = NodeView | EdgeView | SubView | AboutView;
 
@@ -75,7 +75,7 @@ export interface SidebarActions {
   setEdgeEnd(index: number, end: 'start' | 'end', id: string): void;
   setEdgeStroke(index: number, stroke: LinkParts['stroke']): void;
   setEdgeArrow(index: number, arrow: ArrowKind): void;
-  setEdgeColour(index: number, swatch: Swatch | null): void;
+  setEdgeColor(index: number, swatch: Swatch | null): void;
   deleteEdge(index: number): void;
   renameGroup(id: string, title: string): Promise<boolean>;
   setGroupDirection(id: string, dir: string): void;
@@ -86,13 +86,13 @@ export interface SidebarActions {
   setClass(id: string, cls: string | null): void;
   /** Makes a class that looks as `look` says, with `node` in it when given; true once it is in the file. */
   addClass(name: string, look: ClassLook, node: string | null): Promise<boolean>;
-  setClassColour(name: string, swatch: Swatch): void;
+  setClassColor(name: string, swatch: Swatch): void;
   setClassBorder(name: string, border: ClassBorder): void;
   /** Sets a class's shape, or (null) any shape; the class's nodes take it (Q271). */
   setClassShape(name: string, shape: string | null): void;
   /** Renames a class everywhere the file names it (Q276); true once it is in the file. */
   renameClass(name: string, next: string): Promise<boolean>;
-  /** Deletes a class; its nodes stay, without its colour. */
+  /** Deletes a class; its nodes stay, without its color. */
   deleteClass(name: string): void;
   /** Why a new class cannot be called `name`, or null when it can. */
   classNameProblem(name: string): string | null;
@@ -107,7 +107,7 @@ export const SWATCHES: Swatch[] = [
   { name: 'Yellow', fill: '#fff3bf', stroke: '#f08c00' },
   { name: 'Red', fill: '#ffe3e3', stroke: '#e03131' },
   { name: 'Purple', fill: '#e5dbff', stroke: '#7048e8' },
-  { name: 'Grey', fill: '#e9ecef', stroke: '#868e96' },
+  { name: 'Gray', fill: '#e9ecef', stroke: '#868e96' },
 ];
 /**
  * A description being written: its node's id (`FLOWCHART_ID` for the flowchart's), its
@@ -184,7 +184,7 @@ const PICTURE: Record<string, [string, Record<string, string>][]> = {
   diamond: [['polygon', { points: '12,1 22,9 12,17 2,9' }]],
   odd: [['polygon', { points: '2,3 22,3 22,15 2,15 7,9' }]],
 };
-/** Draws a class's picture into `holder`: its shape in its colour and border (Q275). */
+/** Draws a class's picture into `holder`: its shape in its color and border (Q275). */
 function drawPicture(holder: HTMLElement, c: ClassInfo): void {
   const thick = c.border === 'thick' || c.border === 'thickdashed';
   const dashed = c.border === 'dashed' || c.border === 'thickdashed';
@@ -454,13 +454,13 @@ export class Sidebar {
 
   /**
    * A node or group is matched by its swatch's fill; an arrow, by its line, the swatch's
-   * border colour. The first swatch takes the item's own colour off: it is **No colour**,
-   * or, when the item's classes colour it (`paint`), that colour, named by the class
+   * border color. The first swatch takes the item's own color off: it is **No color**,
+   * or, when the item's classes color it (`paint`), that color, named by the class
    * (T1.6, Q259).
    */
   private swatches(read: (v: View) => string, commit: (s: Swatch | null) => void, by: 'fill' | 'stroke' = 'fill',
     paint: (v: View) => ClassPaint | null | undefined = () => null): HTMLElement {
-    const none = h('button', { class: 'swatch none', title: 'No colour', 'aria-label': 'No colour', click: () => commit(null) });
+    const none = h('button', { class: 'swatch none', title: 'No color', 'aria-label': 'No color', click: () => commit(null) });
     const buttons = SWATCHES.map((s) => {
       const b = h('button', { class: 'swatch', title: s.name, 'aria-label': s.name, click: () => commit(s) });
       b.style.background = s.fill;
@@ -471,7 +471,7 @@ export class Sidebar {
     this.sync.push((v) => {
       const value = read(v).toLowerCase();
       const p = paint(v);
-      const name = p ? `${p.name}, from its class` : 'No colour';
+      const name = p ? `${p.name}, from its class` : 'No color';
       none.title = name;
       none.setAttribute('aria-label', name);
       none.classList.toggle('from-class', !!p);
@@ -519,7 +519,7 @@ export class Sidebar {
   }
 
   /**
-   * The form that makes a class (T1.26): a name, a colour, a border (Q274) and a shape
+   * The form that makes a class (T1.26): a name, a color, a border (Q274) and a shape
    * (Q267, Any shape first), then Create and Cancel. Create writes the class, with
    * `create`; a name that cannot be used says why.
    */
@@ -548,7 +548,7 @@ export class Sidebar {
     const el = h('div', { class: 'new-class', hidden: true },
       h('span', { class: 'new-class-head' }, 'New class'),
       name,
-      this.row('Colour', h('div', { class: 'swatches' }, ...buttons)),
+      this.row('Color', h('div', { class: 'swatches' }, ...buttons)),
       this.row('Border', border),
       this.row('Shape', shape),
       problem,
@@ -594,7 +594,7 @@ export class Sidebar {
   private classesSection(): HTMLElement {
     const a = this.actions;
     const list = h('div', { class: 'class-list' });
-    const empty = h('p', { class: 'hint' }, 'No classes yet. A class gives every node in it the same colour, border and shape, and names the kind of step they are.');
+    const empty = h('p', { class: 'hint' }, 'No classes yet. A class gives every node in it the same color, border and shape, and names the kind of step they are.');
     const add = h('button', { class: 'add-class', click: () => { add.hidden = true; form.open(); } }, iconEl('plus'), 'New class');
     const form = this.newClassForm((name, look) => a.addClass(name, look, null), () => { add.hidden = false; });
     const items = new Map<string, ClassItem>();
@@ -623,7 +623,7 @@ export class Sidebar {
 
   /**
    * One class's line (Q275, Q276): it is highlighted when pointed at, and shows its
-   * three-dot button, whose menu holds Colour, Border, Shape, Rename and Delete class.
+   * three-dot button, whose menu holds Color, Border, Shape, Rename and Delete class.
    * Double-clicking the name, or Rename, renames it in place: Enter keeps the new name,
    * Escape or leaving the box keeps the old one.
    */
@@ -638,14 +638,14 @@ export class Sidebar {
     }, iconEl('more'));
     const problem = h('p', { class: 'hint problem', role: 'alert' });
     const swatches = SWATCHES.map((s) => {
-      const b = h('button', { class: 'swatch', title: s.name, 'aria-label': `${s.name} for the class ${name}`, click: () => a.setClassColour(name, s) });
+      const b = h('button', { class: 'swatch', title: s.name, 'aria-label': `${s.name} for the class ${name}`, click: () => a.setClassColor(name, s) });
       b.style.background = s.fill;
       b.style.borderColor = s.stroke;
       b.style.color = s.stroke;
       return b;
     });
-    // A colour the file gives that is none of the six shows first, marked, so the menu
-    // always shows which colour the class has (the user, 2026-11-26).
+    // A color the file gives that is none of the six shows first, marked, so the menu
+    // always shows which color the class has (the user, 2026-11-26).
     const own = h('button', { class: 'swatch on own', hidden: true, tabindex: '-1' });
     const border = pickList(CLASS_BORDERS.map((b): [string, string] => [b.value, b.label]), (v) => a.setClassBorder(name, v as ClassBorder));
     const shape = pickList(classShapeOptions(), (v) => a.setClassShape(name, v || null));
@@ -658,13 +658,13 @@ export class Sidebar {
         more.focus();
       },
     },
-      this.row('Colour', h('div', { class: 'swatches' }, own, ...swatches)),
+      this.row('Color', h('div', { class: 'swatches' }, own, ...swatches)),
       this.row('Border', border),
       this.row('Shape', shape),
       h('div', { class: 'class-menu-acts' },
         h('button', { class: 'ghost', click: () => { closeMenu(); rename(); } }, iconEl('rename'), 'Rename'),
         h('button', {
-          class: 'ghost danger', title: 'Its nodes stay, without its colour; Undo brings it back',
+          class: 'ghost danger', title: 'Its nodes stay, without its color; Undo brings it back',
           click: () => { closeMenu(); a.deleteClass(name); },
         }, iconEl('trash'), 'Delete class')));
     const el = h('div', { class: 'class-item' }, h('div', { class: 'class-line' }, pic, label, count, more), problem, menu);
@@ -727,13 +727,13 @@ export class Sidebar {
         drawPicture(pic, c);
         const fill = c.fill.toLowerCase();
         const at = SWATCHES.findIndex((s) => s.fill === fill);
-        const colour = at >= 0 ? SWATCHES[at].name : fill ? `its own, ${fill}` : 'none';
-        pic.title = `Colour: ${colour}\nShape: ${c.shape ? shapeLabel(c.shape) : 'Any shape'}\nBorder: ${CLASS_BORDERS.find((b) => b.value === c.border)!.label}`;
+        const color = at >= 0 ? SWATCHES[at].name : fill ? `its own, ${fill}` : 'none';
+        pic.title = `Color: ${color}\nShape: ${c.shape ? shapeLabel(c.shape) : 'Any shape'}\nBorder: ${CLASS_BORDERS.find((b) => b.value === c.border)!.label}`;
         count.textContent = Sidebar.count(c);
         swatches.forEach((b, i) => b.classList.toggle('on', i === at));
         own.hidden = at >= 0 || !fill;
-        own.title = `Its own colour, ${fill}`;
-        own.setAttribute('aria-label', `Its own colour, ${fill}, for the class ${name}`);
+        own.title = `Its own color, ${fill}`;
+        own.setAttribute('aria-label', `Its own color, ${fill}, for the class ${name}`);
         own.style.background = fill;
         own.style.borderColor = c.stroke;
         own.style.color = c.stroke;
@@ -873,7 +873,7 @@ export class Sidebar {
       (v) => (v as NodeView).group, (value) => a.setGroup(id, value));
 
     // Class and Group first, as what kind of step it is and where it sits; then Shape and
-    // Colour, which a class can set (Q272); then the description, last, so a long one
+    // Color, which a class can set (Q272); then the description, last, so a long one
     // moves no row (Q277).
     return [
       this.header('Node', id),
@@ -883,7 +883,7 @@ export class Sidebar {
         this.row('Group', group)),
       h('div', { class: 'props' },
         this.row('Shape', shape),
-        this.row('Colour', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as NodeView).classPaint))),
+        this.row('Color', this.swatches((v) => (v as NodeView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as NodeView).classPaint))),
       this.description(id, (v) => (v as NodeView).description, 'Describe this step. Markdown works: **bold**, lists, `code`, links.'),
       h('div', { class: 'side-foot' },
         h('span', { class: 'hint' }, 'Drag the dot beside the node onto another node to connect them.'),
@@ -917,7 +917,7 @@ export class Sidebar {
       ends,
       label,
       h('div', { class: 'props' }, this.row('From', from), this.row('To', to), this.row('Line', stroke), this.row('Head', arrow),
-        this.row('Colour', this.swatches((v) => (v as EdgeView).colour, (s) => a.setEdgeColour(index, s), 'stroke'))),
+        this.row('Color', this.swatches((v) => (v as EdgeView).color, (s) => a.setEdgeColor(index, s), 'stroke'))),
       h('div', { class: 'side-foot' }, h('button', { class: 'danger', click: () => a.deleteEdge(index) }, iconEl('trash'), 'Delete arrow')),
     ];
   }
@@ -942,7 +942,7 @@ export class Sidebar {
       count,
       h('div', { class: 'props' },
         this.row('Direction', dir),
-        this.row('Colour', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as SubView).classPaint))),
+        this.row('Color', this.swatches((v) => (v as SubView).fill, (s) => a.setFill(id, s), 'fill', (v) => (v as SubView).classPaint))),
       h('div', { class: 'side-foot' },
         h('button', { click: () => a.addNodeIn(id) }, 'Add node inside'),
         h('button', { class: 'danger', title: 'Removes the frame; the nodes stay', click: () => a.ungroup(id) }, 'Ungroup')),

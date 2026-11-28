@@ -16,7 +16,7 @@ Windows 11 (x64) · `.mmd` and `.mermaid` flowcharts · Mermaid places the boxes
 
 [Install](#install) · [Using Naiad](#using-naiad) · [Working with an AI agent](#working-with-an-ai-agent) · [Commands](#commands) · [Limits](#limits)
 
-![A release flowchart in Naiad's light Coral colours: an agent writes the file line by line and the chart grows with it; a person adds a step and connects it; the agent moves the step into its group, gives it a class and writes its description](media/an-agent-draws-it.gif)
+![A release flowchart in Naiad's light Coral colors: an agent writes the file line by line and the chart grows with it; a person adds a step and connects it; the agent moves the step into its group, gives it a class and writes its description](media/an-agent-draws-it.gif)
 
 An agent draws a flowchart, you add to it, the agent finishes it: the agent writes
 `release.mmd` line by line, and the chart and the Syntax pane grow with each line.
@@ -26,7 +26,7 @@ the class its kind of step has, and writes its description. The label at the top
 the agent writes, and the chat card at the lower left, are added by the recording;
 Naiad doesn't show them.
 
-![The same flowchart in Naiad's dark Kelp colours: View mode, two parts highlighted and cleared, then a walkthrough from Open a pull request to Roll out to 100%, each step's description in the sidebar](media/reading-it-step-by-step.gif)
+![The same flowchart in Naiad's dark Kelp colors: View mode, two parts highlighted and cleared, then a walkthrough from Open a pull request to Roll out to 100%, each step's description in the sidebar](media/reading-it-step-by-step.gif)
 
 Reading it step by step: View mode stops edits; **Highlight** marks a group and a step
 for an agent, and **Clear** takes the marks off. **Walkthrough** then follows one run
@@ -105,7 +105,7 @@ right.
 | Add a node | **+** in the bar along the bottom of the chart, or double-click empty space |
 | Rename a node | Double-click it, or select it and press Enter or F2 |
 | Connect two nodes | Point at a node and drag the dot beside it onto another node |
-| Change a shape, colour, class, group or arrow | Click it and use the sidebar. A class (`classDef` in the file) gives every node in it one colour and border, and can give them one shape |
+| Change a shape, color, class, group or arrow | Click it and use the sidebar. A class (`classDef` in the file) gives every node in it one color and border, and can give them one shape |
 | Delete | Select, then press Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y, or the curved arrows at the chart's top left |
 | Zoom and pan (move the view) | Mouse wheel or pinch to zoom; drag empty space to pan. For two-finger panning on a touchpad, click the first switch in the middle of the rail to Touchpad mode |
@@ -234,7 +234,7 @@ checks. Details:
 - It opens Mermaid flowcharts (text that starts `flowchart` or `graph`) in `.mmd` and
   `.mermaid` files. It does not open a Markdown file, even one with a `mermaid` code
   block, or any other kind of Mermaid diagram.
-- Mermaid places the boxes. You change titles, descriptions, shapes, colours, groups
+- Mermaid places the boxes. You change titles, descriptions, shapes, colors, groups
   and arrows; a box cannot be dragged to a place of your choosing.
 - Some Mermaid forms are drawn but can be changed only as text; the forms the chart can
   change are listed in
@@ -286,7 +286,7 @@ If Naiad is useful to you, you can support it on [Ko-fi](https://ko-fi.com/james
 
 Built with [Tauri](https://tauri.app) and [Mermaid](https://mermaid.js.org).
 
-## Licence
+## License
 
 [MIT](LICENSE). The bundled fonts, Lexend, Newsreader, JetBrains Mono, DM Mono and
 Recursive, are under the [SIL Open Font License 1.1](src/fonts/OFL.txt). The window's

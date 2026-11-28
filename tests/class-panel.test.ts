@@ -59,7 +59,7 @@ describe('a node\'s Class row', () => {
     expect(row('Class').hidden).toBe(true);
   });
 
-  it('New class… makes a class of the picked colour with the node in it; a name in use says why', async () => {
+  it('New class… makes a class of the picked color with the node in it; a name in use says why', async () => {
     const { ui } = await start();
     select({ kind: 'node', id: 'ask' });
     pick('\u0000new-class');
@@ -100,7 +100,7 @@ describe('the About panel\'s Classes (Q264)', () => {
       .toEqual([['held', '1 node'], ['stop', '1 node']]);
   });
 
-  it('a swatch in a class\'s menu changes its colour; Delete class takes the class away and leaves its nodes', async () => {
+  it('a swatch in a class\'s menu changes its color; Delete class takes the class away and leaves its nodes', async () => {
     const { ui } = await start();
     openMenu(0).querySelectorAll<HTMLButtonElement>('.swatch:not(.own)')[0].click(); // Blue
     expect(await ui.until((t) => t.includes('classDef held fill:#d0ebff,stroke:#1c7ed6,color:#1c2026'))).toBe(true);
@@ -138,18 +138,18 @@ describe('the About panel\'s Classes (Q264)', () => {
     expect(menuOf(1).hidden).toBe(true);
   });
 
-  it('the picture names the colour, shape and border; the menu marks the colour, its own one too (the user, 2026-11-26)', async () => {
+  it('the picture names the color, shape and border; the menu marks the color, its own one too (the user, 2026-11-26)', async () => {
     await start(BASE.replace('classDef stop fill:#ffe3e3,stroke:#e03131', 'classDef stop fill:#ffe3e3,stroke:#e03131,stroke-dasharray:5 3\n    %% @class stop shape: stadium'));
     const pic = (i: number) => items()[i].querySelector<HTMLElement>('.class-pic')!.title;
-    expect(pic(0)).toBe('Colour: its own, #fff0cd\nShape: Any shape\nBorder: Normal');
-    expect(pic(1)).toBe('Colour: Red\nShape: Stadium\nBorder: Dashed');
+    expect(pic(0)).toBe('Color: its own, #fff0cd\nShape: Any shape\nBorder: Normal');
+    expect(pic(1)).toBe('Color: Red\nShape: Stadium\nBorder: Dashed');
     const marked = (i: number) => [...menuOf(i).querySelectorAll<HTMLButtonElement>('.swatch.on:not([hidden])')].map((b) => b.title);
-    expect(marked(0)).toEqual(['Its own colour, #fff0cd']); // none of the six: shown first, marked
+    expect(marked(0)).toEqual(['Its own color, #fff0cd']); // none of the six: shown first, marked
     expect(marked(1)).toEqual(['Red']);
     expect(menuOf(1).querySelector<HTMLElement>('.swatch.own')!.hidden).toBe(true);
   });
 
-  it('the menu\'s colours stay on one row, its own colour too: they shrink instead of wrapping (the user, 2026-11-26)', async () => {
+  it('the menu\'s colors stay on one row, its own color too: they shrink instead of wrapping (the user, 2026-11-26)', async () => {
     const css = (await import('node:fs')).readFileSync('src/style.css', 'utf8');
     expect(/\n\.class-menu \.swatches \{([^}]*)\}/.exec(css)![1]).toMatch(/flex-wrap: nowrap/);
     expect(/\n\.class-menu \.swatch \{([^}]*)\}/.exec(css)![1]).toMatch(/flex: 0 1 22px;[^}]*aspect-ratio: 1/);
@@ -216,7 +216,7 @@ describe('the About panel\'s Classes (Q264)', () => {
 });
 
 describe('putting a node in a class from its panel (Q267, Q270)', () => {
-  it('the node takes the class\'s shape, and loses its own colour so the class\'s shows; Undo puts both back', async () => {
+  it('the node takes the class\'s shape, and loses its own color so the class\'s shows; Undo puts both back', async () => {
     const text = BASE.replace('classDef stop fill:#ffe3e3,stroke:#e03131', 'classDef stop fill:#ffe3e3,stroke:#e03131\n    %% @class stop shape: stadium') + '    style ask fill:#d3f9d8,stroke:#2f9e44\n';
     const { ui } = await start(text);
     select({ kind: 'node', id: 'ask' });
@@ -231,10 +231,10 @@ describe('the panels\' order (Q272, Q277)', () => {
   const order = () => [...document.querySelectorAll<HTMLElement>('.sidebar > .props, .sidebar > .desc, .sidebar > .hint')]
     .map((el) => (el.classList.contains('props') ? [...el.querySelectorAll(':scope > .row .row-label')].map((l) => l.textContent).join('+') : el.className));
 
-  it('a node: Class and Group, then Shape and Colour, then the description, last (Q277)', async () => {
+  it('a node: Class and Group, then Shape and Color, then the description, last (Q277)', async () => {
     await start();
     select({ kind: 'node', id: 'hold' });
-    expect(order()).toEqual(['Class+Group', 'Shape+Colour', 'desc']);
+    expect(order()).toEqual(['Class+Group', 'Shape+Color', 'desc']);
   });
 
   it('a description being edited marks its part, whose head stays in sight and whose box grows with its text (Q278)', async () => {
@@ -262,6 +262,6 @@ describe('the panels\' order (Q272, Q277)', () => {
   it('a group: Class right under the title', async () => {
     await start('flowchart TD\n    subgraph g [Work]\n        a\n    end\n    classDef held fill:#fff0cd\n');
     select({ kind: 'sub', id: 'g' });
-    expect(order()).toEqual(['Class', 'hint', 'Direction+Colour']);
+    expect(order()).toEqual(['Class', 'hint', 'Direction+Color']);
   });
 });

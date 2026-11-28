@@ -1,5 +1,5 @@
 // Direction marks (D1.8, the user, 2026-11-14): small arrowheads along a long arrow, in
-// its own colour, so the middle of an arrow says which way it goes and the reader need
+// its own color, so the middle of an arrow says which way it goes and the reader need
 // not find one of its ends. Added to Mermaid's drawing after it is made, like the
 // rounder bends (`chart.ts`, `index`). Drawing only: nothing is written into the file.
 
@@ -154,8 +154,8 @@ function labelBoxes(svg: SVGSVGElement): Box[] {
  * Adds the marks to every long arrow Naiad knows (`data-edge-line`) that has one
  * direction: an end marker (an arrowhead, a circle or a cross) and no start marker. One
  * path per arrow, just after it, so the stylesheet can give it the arrow's look
- * (`path.sel + path.dir-mark`); it takes the arrow's classes, for the theme's colour,
- * and the colour of a `linkStyle`.
+ * (`path.sel + path.dir-mark`); it takes the arrow's classes, for the theme's color,
+ * and the color of a `linkStyle`.
  */
 export function addDirectionMarks(svg: SVGSVGElement): void {
   const labels = labelBoxes(svg);

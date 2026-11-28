@@ -80,7 +80,7 @@ test('in-place styles remain on the same duplicate arrow', async () => {
   const before = 'flowchart TD\n  a --> b\n  a --> b\n  x\n  linkStyle 0 stroke:red\n  linkStyle 0,1 stroke:blue\n  linkStyle default interpolate basis\n';
   expect(await move(before, 0, 'end', 'x')).toBe(before.replace('a --> b', 'a --> x'));
 });
-test('keeps semicolon neighbours and an old node inside its group', async () => {
+test('keeps semicolon neighbors and an old node inside its group', async () => {
   const before = 'flowchart TD\n  subgraph g[G]\n    a --> b; c --> d\n  end\n  x\n';
   const after = await move(before, 0, 'end', 'c');
   expect(after).toBe('flowchart TD\n  subgraph g[G]\n    a --> c\n    b\n    c --> d\n  end\n  x\n');

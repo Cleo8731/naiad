@@ -72,7 +72,7 @@ describe('a chart hidden and shown again (T1.16, tabs)', () => {
     expect(transform()).toBe(left);
   });
 
-  test('a width change while shown still keeps the chart centred', async () => {
+  test('a width change while shown still keeps the chart centered', async () => {
     await chart.draw('flowchart TD\n  A\n', snap);
     resize(600);
     expect(transform()).toBe('translate(70px, 185px) scale(1.15)');

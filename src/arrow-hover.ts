@@ -1,7 +1,7 @@
 // An arrow under the pointer (Q244; the user, 2026-11-26: "Yes, softer glow"): the line,
-// its direction mark and its arrowheads take the full accent colour with a faint glow,
+// its direction mark and its arrowheads take the full accent color with a faint glow,
 // and its label grows 5% and lifts, as a node does (`style.css`). The arrowheads are
-// shared `<marker>`s, which a rule on the line cannot colour, so the hovered line points
+// shared `<marker>`s, which a rule on the line cannot color, so the hovered line points
 // at an accent copy of each, made once per drawing, and back at the original after.
 
 /** The suffix of a marker's accent copy. */
@@ -26,7 +26,7 @@ function accentCopy(svg: SVGSVGElement, ref: string): string | null {
   return `url(#${copyId})`;
 }
 
-/** Lights an arrow: its arrowheads swapped for accent copies, and its label made ready to grow about its centre. */
+/** Lights an arrow: its arrowheads swapped for accent copies, and its label made ready to grow about its center. */
 export function lightArrow(svg: SVGSVGElement, line: Element, label: SVGGElement | null): void {
   for (const end of ENDS) {
     const ref = line.getAttribute(`marker-${end}`);
@@ -38,7 +38,7 @@ export function lightArrow(svg: SVGSVGElement, line: Element, label: SVGGElement
   if (!label || label.style.transformOrigin) return;
   const m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)/.exec(label.getAttribute('transform') ?? '');
   label.style.transformOrigin = m ? `${m[1]}px ${m[2]}px` : 'center';
-  // The pill's own colour, which the lifted pill mixes with the accent (`style.css`).
+  // The pill's own color, which the lifted pill mixes with the accent (`style.css`).
   const pill = label.querySelector<HTMLElement>('.labelBkg');
   if (pill) pill.style.setProperty('--own-fill', getComputedStyle(pill).backgroundColor);
 }

@@ -4,7 +4,7 @@
 // and hidden once a flowchart opens, not kept between runs (the user, 2026-11-14,
 // T1.18); each file opened goes on top; a click opens an entry in the
 // shown tab when it is blank, otherwise in a new tab, and shows a file already open
-// (Q142, T1.16); × takes it off the list; a file that cannot be found stays, greyed
+// (Q142, T1.16); × takes it off the list; a file that cannot be found stays, grayed
 // (Q137); 50 kept, 25 shown, View more (Q136); no pane in `naiad serve`'s page. The
 // list's rules alone: recent.test.ts.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -225,7 +225,7 @@ describe('the recent list\'s pane', () => {
     expect(disk.files.has(A)).toBe(true);
   });
 
-  test('a file that cannot be found stays, greyed, with Not found; a click says so and changes nothing (Q137)', async () => {
+  test('a file that cannot be found stays, grayed, with Not found; a click says so and changes nothing (Q137)', async () => {
     localStorage.setItem('recent', JSON.stringify([GONE]));
     const ui = await start();
     toggle().click();

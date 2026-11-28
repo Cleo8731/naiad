@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 // The chart's group titles and arrow labels (the user's questions of 2026-11-18, answered
 // "Yes to all three"):
-// - Q173: a group's title is semibold and a little larger than a node's text, in a grey
+// - Q173: a group's title is semibold and a little larger than a node's text, in a gray
 //   lighter than before, so it reads as the group's title.
 // - Q174: an arrow passes behind a group's title instead of through it: the title sits on
-//   a small plate in the group's colour, drawn above the arrows.
+//   a small plate in the group's color, drawn above the arrows.
 // - Q175: an arrow label sits in a soft pill with no border and a small margin, its text a
-//   little smaller and grey, so it reads as a caption and not as a node.
-// - Q176 (the user's idea, 2026-11-18): the pill takes the group colour when the label is
+//   little smaller and gray, so it reads as a caption and not as a node.
+// - Q176 (the user's idea, 2026-11-18): the pill takes the group color when the label is
 //   outside every group, and the chart's background when it is inside one, so it uses no
-//   colour the chart doesn't already have.
+//   color the chart doesn't already have.
 // Q173 and Q175 are rules Mermaid applies before it measures, so the layout makes room.
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import mermaid from 'mermaid';
@@ -37,14 +37,14 @@ describe('group titles (Q173)', () => {
     }
   });
 
-  test('take a grey between the muted colour and the text\'s', () => {
+  test('take a gray between the muted color and the text\'s', () => {
     const rule = ruleFor(themeCss(true), '.cluster-label span');
     expect(rule).toMatch(/color:\s*color-mix\(in srgb, #8fb0b5 \d+%, #e3f1f2\)/);
   });
 });
 
 describe('arrow labels (Q175, Q176)', () => {
-  test('sit in a pill with a small margin and no border, in the group colour outside a group', () => {
+  test('sit in a pill with a small margin and no border, in the group color outside a group', () => {
     const rule = ruleFor(themeCss(true), '.labelBkg');
     expect(rule).toMatch(/padding:\s*2px 7px/);
     expect(rule).toMatch(/border-radius:\s*999px/);
@@ -57,7 +57,7 @@ describe('arrow labels (Q175, Q176)', () => {
     expect(ruleFor(themeCss(false), 'g.edgeLabel.in-group .labelBkg')).toMatch(/background-color:\s*#eef5f4\s*;/);
   });
 
-  test('the text inside has no background of its own, and is a little smaller and grey', () => {
+  test('the text inside has no background of its own, and is a little smaller and gray', () => {
     const css = themeCss(false);
     expect(ruleFor(css, '.edgeLabel p')).toMatch(/background-color:\s*transparent/);
     expect(ruleFor(css, 'span.edgeLabel')).toMatch(/background-color:\s*transparent/);
@@ -81,7 +81,7 @@ describe('which arrow labels sit in a group (Q176)', () => {
   const inGroup = (svg: SVGSVGElement) =>
     [...svg.querySelectorAll('g.edgeLabel')].map((g) => [g.textContent, g.classList.contains('in-group')]);
 
-  test('a label whose centre lies in a group\'s box is marked; one outside every group is not', () => {
+  test('a label whose center lies in a group\'s box is marked; one outside every group is not', () => {
     // The look trial's chart, as Mermaid drew it: "cleaned" above the group, "yes" in it.
     const svg = drawn(group('review', 12, 174.5, 224, 241.5),
       label('cleaned', 123.77, 112.75) + label('yes', 123.64, 307.25) + label('no', 363.87, 112.75));
@@ -150,7 +150,7 @@ describe('a group\'s title above the arrows (Q174)', () => {
       .toEqual(['-5', '2', '58', '19']);
   });
 
-  test('the plate takes the group\'s own fill when the file colours the group', () => {
+  test('the plate takes the group\'s own fill when the file colors the group', () => {
     const svg = drawn(cluster('review', 'fill:#ffeecc !important'));
     raiseGroupTitles(svg);
     expect((svg.querySelector('rect.group-plate') as SVGRectElement).style.fill).toBe('rgb(255, 238, 204)'); // #ffeecc

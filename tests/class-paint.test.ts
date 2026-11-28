@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// A class's colour in the sidebar's Colour row (T1.6, shortfall 3, Q259, the user,
-// 2026-11-26): a node or group coloured by its classes showed "No colour".
+// A class's color in the sidebar's Color row (T1.6, shortfall 3, Q259, the user,
+// 2026-11-26): a node or group colored by its classes showed "No color".
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import mermaid from 'mermaid';
 import { canon, snapshot } from '../src/semantics';
@@ -10,7 +10,7 @@ beforeAll(() => mermaid.initialize({ startOnLoad: false }));
 
 const paint = async (text: string) => (await snapshot(text)).paint ?? {};
 
-describe('the colour a node or group gets from its classes, read as Mermaid draws it', () => {
+describe('the color a node or group gets from its classes, read as Mermaid draws it', () => {
   it('a node in a class gets that class\'s fill and border, named by the class', async () => {
     const p = await paint('flowchart TD\n  A --> B\n  classDef process fill:#e7f0ff,stroke:#4a6fa5\n  class A process\n');
     expect(p.A).toEqual({ name: 'process', fill: '#e7f0ff', stroke: '#4a6fa5' });
@@ -27,29 +27,29 @@ describe('the colour a node or group gets from its classes, read as Mermaid draw
     expect(p.A).toEqual({ name: 'two', fill: '#333333', stroke: '#222222' });
   });
 
-  it('`classDef default` colours every node, under a node\'s own class, but not a group', async () => {
+  it('`classDef default` colors every node, under a node\'s own class, but not a group', async () => {
     const p = await paint('flowchart TD\n  subgraph G [Group]\n    A\n    B\n  end\n  classDef default fill:#eeeeee\n  classDef hot fill:#ffcccc\n  class B hot\n');
     expect(p.A).toEqual({ name: 'default', fill: '#eeeeee', stroke: '' });
     expect(p.B).toEqual({ name: 'hot', fill: '#ffcccc', stroke: '' });
     expect(p.G).toBeUndefined();
   });
 
-  it('a group in a class gets its colour', async () => {
+  it('a group in a class gets its color', async () => {
     const p = await paint('flowchart TD\n  subgraph G [Group]\n    A\n  end\n  classDef zone fill:#f0f0ff,stroke:#8888cc\n  class G zone\n');
     expect(p.G).toEqual({ name: 'zone', fill: '#f0f0ff', stroke: '#8888cc' });
     expect(p.A).toBeUndefined();
   });
 
-  it('a class that sets neither fill nor border gives no colour', async () => {
+  it('a class that sets neither fill nor border gives no color', async () => {
     const p = await paint('flowchart TD\n  A\n  classDef bold font-weight:bold\n  class A bold\n');
     expect(p.A).toBeUndefined();
   });
 
-  it('the checks compare a chart without it: a class colour changes nothing they see', async () => {
+  it('the checks compare a chart without it: a class color changes nothing they see', async () => {
     const plain = await snapshot('flowchart TD\n  A --> B\n');
-    const coloured = await snapshot('flowchart TD\n  A --> B\n');
-    coloured.paint = { A: { name: 'process', fill: '#e7f0ff', stroke: '' } };
-    expect(canon(coloured)).toBe(canon(plain));
+    const colored = await snapshot('flowchart TD\n  A --> B\n');
+    colored.paint = { A: { name: 'process', fill: '#e7f0ff', stroke: '' } };
+    expect(canon(colored)).toBe(canon(plain));
   });
 });
 
@@ -67,42 +67,42 @@ const NODE: NodeView = {
   group: '', groups: [], classPaint: { name: 'process', fill: '#e7f0ff', stroke: '#4a6fa5' },
 };
 
-describe('the Colour row shows the class\'s colour as the first swatch (Q259)', () => {
-  // The panel's own Colour row, not the New class form's (Q272 put the form above it).
-  const colourRow = (root: HTMLElement) => [...root.querySelectorAll('.props > .row')].find((r) => r.textContent?.startsWith('Colour'))!;
-  const on = (root: HTMLElement) => [...colourRow(root).querySelectorAll<HTMLButtonElement>('.swatch.on')].map((b) => b.title);
+describe('the Color row shows the class\'s color as the first swatch (Q259)', () => {
+  // The panel's own Color row, not the New class form's (Q272 put the form above it).
+  const colorRow = (root: HTMLElement) => [...root.querySelectorAll('.props > .row')].find((r) => r.textContent?.startsWith('Color'))!;
+  const on = (root: HTMLElement) => [...colorRow(root).querySelectorAll<HTMLButtonElement>('.swatch.on')].map((b) => b.title);
 
-  it('a node coloured by its class: the class\'s swatch is marked, in its colours, named by the class', () => {
+  it('a node colored by its class: the class\'s swatch is marked, in its colors, named by the class', () => {
     const { root, side } = sidebar();
     side.show(NODE);
     expect(on(root)).toEqual(['process, from its class']);
-    const first = colourRow(root).querySelector<HTMLButtonElement>('.swatch')!;
+    const first = colorRow(root).querySelector<HTMLButtonElement>('.swatch')!;
     expect(first.getAttribute('aria-label')).toBe('process, from its class');
     expect(first.classList.contains('from-class')).toBe(true);
     expect(first.style.background).toMatch(/rgb\(231, 240, 255\)|#e7f0ff/);
     expect(first.style.borderColor).toMatch(/rgb\(74, 111, 165\)|#4a6fa5/);
   });
 
-  it('a node with its own colour on top of its class: its own swatch is marked, and the class\'s takes it off', () => {
+  it('a node with its own color on top of its class: its own swatch is marked, and the class\'s takes it off', () => {
     const { root, actions, side } = sidebar();
     side.show({ ...NODE, fill: SWATCHES[1].fill });
     expect(on(root)).toEqual(['Green']);
-    colourRow(root).querySelector<HTMLButtonElement>('[title="process, from its class"]')!.click();
+    colorRow(root).querySelector<HTMLButtonElement>('[title="process, from its class"]')!.click();
     expect(actions.setFill).toHaveBeenLastCalledWith('check', null);
   });
 
-  it('a node with no class colour keeps No colour, and the class\'s look goes when the class does', () => {
+  it('a node with no class color keeps No color, and the class\'s look goes when the class does', () => {
     const { root, side } = sidebar();
     side.show(NODE);
     side.show({ ...NODE, classPaint: null });
-    expect(on(root)).toEqual(['No colour']);
-    const first = colourRow(root).querySelector<HTMLButtonElement>('.swatch')!;
+    expect(on(root)).toEqual(['No color']);
+    const first = colorRow(root).querySelector<HTMLButtonElement>('.swatch')!;
     expect(first.classList.contains('from-class')).toBe(false);
     expect(first.style.background).toBe('');
     expect(first.style.borderColor).toBe('');
   });
 
-  it('a group coloured by its class shows it the same way', () => {
+  it('a group colored by its class shows it the same way', () => {
     const { root, side } = sidebar();
     const group: SubView = { kind: 'sub', id: 'G', title: 'Group', dir: '', fill: '', count: 2, classPaint: { name: 'zone', fill: '#f0f0ff', stroke: '' } };
     side.show(group);

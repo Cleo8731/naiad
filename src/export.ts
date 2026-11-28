@@ -1,6 +1,6 @@
 // Export (T6.3; the user, 2026-11-25, Q220 and Q222): the whole chart saved as a picture,
 // an SVG or a PNG, the chart alone, in the theme on screen. The picture is a copy of the
-// chart as drawn (`Chart.picture`). Mermaid writes its colours into the drawing's own
+// chart as drawn (`Chart.picture`). Mermaid writes its colors into the drawing's own
 // style; Naiad's own drawing rules (rounder corners, the direction marks' look) live in
 // `style.css` under `.canvas`, so they are copied into the picture here, and so is the
 // chart's font, Lexend, so the picture looks the same on a computer without it.

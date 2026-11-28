@@ -93,7 +93,7 @@ describe('drag interactions', () => {
     connect.dispatchEvent(pointer('pointerdown', 125, 220));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(frames.size).toBe(0); expect(stage.querySelector('line')).toBeNull();
-    expect(app).not.toHaveBeenCalled(); // the selection stays: only the drag is cancelled
+    expect(app).not.toHaveBeenCalled(); // the selection stays: only the drag is canceled
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(app).toHaveBeenCalledTimes(1); // with no drag, Escape is the app's
     window.removeEventListener('keydown', app);

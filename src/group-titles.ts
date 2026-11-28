@@ -2,7 +2,7 @@
  * A group's title above the arrows (Q174, the user, 2026-11-18): Mermaid draws every group,
  * title and all, before the arrows, so an arrow entering a group from above ran straight
  * through its title. This moves each title into a layer of its own just after the arrows
- * and before the arrow labels, where it was, on a small plate in the group's colour, so
+ * and before the arrow labels, where it was, on a small plate in the group's color, so
  * the line passes behind it, as at the gaps where two arrows cross. Drawing only: the
  * file and the layout are not touched.
  */

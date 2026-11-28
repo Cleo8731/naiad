@@ -5,7 +5,7 @@
 // place of Q131's "where a click goes"); since the user's answer to Q158 (2026-11-15) it
 // is on the rail's middle with the Touchpad and Mouse switch, and the add-node button is
 // a plus alone. And the icon files copied into src/icons/ are plain drawings with their
-// licence beside them.
+// license beside them.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -83,11 +83,11 @@ describe('the icons (T4.7, T4.9)', () => {
 describe('the icon files (Q132)', () => {
   const files = readdirSync(ICON_DIR).filter((f) => f.endsWith('.svg'));
 
-  it('come with Lucide\'s licence', () => {
-    const licence = readFileSync(join(ICON_DIR, 'LICENSE'), 'utf8');
-    expect(licence).toContain('ISC License');
-    expect(licence).toContain('Lucide Icons and Contributors');
-    expect(licence).toContain('Cole Bemis');
+  it('come with Lucide\'s license', () => {
+    const license = readFileSync(join(ICON_DIR, 'LICENSE'), 'utf8');
+    expect(license).toContain('ISC License');
+    expect(license).toContain('Lucide Icons and Contributors');
+    expect(license).toContain('Cole Bemis');
   });
 
   it('are plain drawings: only svg, path, line, rect and circle, no script, no event handler, no link', () => {

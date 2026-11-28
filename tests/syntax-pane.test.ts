@@ -1,29 +1,29 @@
 // @vitest-environment jsdom
-// The Syntax pane's colours, line numbers, wrapping and full-window button (the user,
-// 2026-11-25). The text area stays the one place the text is typed; a coloured copy of
+// The Syntax pane's colors, line numbers, wrapping and full-window button (the user,
+// 2026-11-25). The text area stays the one place the text is typed; a colored copy of
 // its text is drawn under it, so the copy must hold exactly the text, every time the
-// text changes, and colouring must never add, drop or move a character.
+// text changes, and coloring must never add, drop or move a character.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { colourLines, colouredHtml, type Kind } from '../src/syntax-colours';
+import { colorLines, coloredHtml, type Kind } from '../src/syntax-colors';
 import { fixtures, sample } from './fixtures';
 import { FakeDisk, sleep, startApp, stopApps } from './app-harness';
 
 vi.mock('../src/chart', async () => (await import('./app-harness')).chartMock());
 
 /** The pieces of one line as "kind:text", plain pieces left out. */
-const kinds = (line: string) => colourLines(line)[0].filter((p) => p.kind !== 'plain').map((p) => `${p.kind}:${p.text}`);
+const kinds = (line: string) => colorLines(line)[0].filter((p) => p.kind !== 'plain').map((p) => `${p.kind}:${p.text}`);
 
-describe('colouring a line', () => {
+describe('coloring a line', () => {
   it('keeps every character of every line of the sample and the fixtures, in order', () => {
     const texts = [sample, ...Object.values(fixtures), readFileSync('skills/naiad/template.mmd', 'utf8')];
     for (const text of texts) {
-      const lines = colourLines(text);
+      const lines = colorLines(text);
       expect(lines.map((pieces) => pieces.map((p) => p.text).join('')).join('\n')).toBe(text);
     }
   });
 
-  it('colours the header, nodes, titles and arrows', () => {
+  it('colors the header, nodes, titles and arrows', () => {
     expect(kinds('flowchart TD')).toEqual(['keyword:flowchart', 'direction:TD']);
     expect(kinds('    order(Order placed) --> pay{Payment OK?}')).toEqual([
       'id:order', 'bracket:(', 'title:Order placed', 'bracket:)', 'arrow:-->', 'id:pay', 'bracket:{', 'title:Payment OK?', 'bracket:}',
@@ -35,7 +35,7 @@ describe('colouring a line', () => {
     expect(kinds('    a -.-> b ==> c')).toEqual(['id:a', 'arrow:-.->', 'id:b', 'arrow:==>', 'id:c']);
   });
 
-  it('colours groups, classes and styles', () => {
+  it('colors groups, classes and styles', () => {
     expect(kinds('    subgraph prep [Preparation]')).toEqual(['keyword:subgraph', 'id:prep', 'bracket:[', 'title:Preparation', 'bracket:]']);
     expect(kinds('    end')).toEqual(['keyword:end']);
     expect(kinds('    classDef warm fill:#fde,stroke:#c44')).toEqual([
@@ -45,7 +45,7 @@ describe('colouring a line', () => {
   });
 
   it('tells a description from other comments', () => {
-    const lines = colourLines('flowchart TD\n%% a note\n    a\n%% @a\n%% What a does.\n%% .\n\n%% a note again').map((pieces) => pieces.map((p) => p.kind));
+    const lines = colorLines('flowchart TD\n%% a note\n    a\n%% @a\n%% What a does.\n%% .\n\n%% a note again').map((pieces) => pieces.map((p) => p.kind));
     const has = (i: number, kind: Kind) => lines[i].includes(kind);
     expect(has(1, 'desc')).toBe(false); // a comment before any description
     expect(lines[3]).toEqual(['comment', 'plain', 'mark']);
@@ -54,7 +54,7 @@ describe('colouring a line', () => {
   });
 
   it('escapes the text it draws', () => {
-    expect(colouredHtml('a["<b>&"]')).toBe('<div class="ln"><span class="s-id">a</span><span class="s-bracket">[</span><span class="s-title">&quot;&lt;b&gt;&amp;&quot;</span><span class="s-bracket">]</span></div>');
+    expect(coloredHtml('a["<b>&"]')).toBe('<div class="ln"><span class="s-id">a</span><span class="s-bracket">[</span><span class="s-title">&quot;&lt;b&gt;&amp;&quot;</span><span class="s-bracket">]</span></div>');
   });
 });
 

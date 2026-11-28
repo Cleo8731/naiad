@@ -74,7 +74,7 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
       replace(...nodes);
     };
   }
-  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow', colour: '' };
+  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: '', stroke: 'normal', arrow: 'arrow', color: '' };
 
   function typing() {
     const s = sidebar();
@@ -105,22 +105,22 @@ describe('a box blurred as its panel is emptied commits nothing (bug hunt round 
   });
 });
 
-describe('an arrow\'s Colour row (the user, 2026-11-13, Q109)', () => {
-  const ARROW: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 3, from: 'A', to: 'B', label: '', stroke: 'normal', arrow: 'arrow', colour: '#e03131' };
-  it('shows the swatch whose border is the arrow\'s colour, and writes the one clicked', () => {
+describe('an arrow\'s Color row (the user, 2026-11-13, Q109)', () => {
+  const ARROW: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 3, from: 'A', to: 'B', label: '', stroke: 'normal', arrow: 'arrow', color: '#e03131' };
+  it('shows the swatch whose border is the arrow\'s color, and writes the one clicked', () => {
     const { root, actions, side } = sidebar();
     side.show(ARROW);
-    const row = [...root.querySelectorAll('.row')].find((r) => r.textContent?.startsWith('Colour'))!;
+    const row = [...root.querySelectorAll('.row')].find((r) => r.textContent?.startsWith('Color'))!;
     const on = () => [...row.querySelectorAll<HTMLButtonElement>('.swatch.on')].map((b) => b.title);
     expect(on()).toEqual(['Red']);
-    side.show({ ...ARROW, colour: '' });
-    expect(on()).toEqual(['No colour']);
-    side.show({ ...ARROW, colour: '#123456' }); // typed in the Syntax pane: no swatch is it
+    side.show({ ...ARROW, color: '' });
+    expect(on()).toEqual(['No color']);
+    side.show({ ...ARROW, color: '#123456' }); // typed in the Syntax pane: no swatch is it
     expect(on()).toEqual([]);
     row.querySelector<HTMLButtonElement>('[title="Blue"]')!.click();
-    expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, SWATCHES[0]);
-    row.querySelector<HTMLButtonElement>('[title="No colour"]')!.click();
-    expect(actions.setEdgeColour).toHaveBeenLastCalledWith(3, null);
+    expect(actions.setEdgeColor).toHaveBeenLastCalledWith(3, SWATCHES[0]);
+    row.querySelector<HTMLButtonElement>('[title="No color"]')!.click();
+    expect(actions.setEdgeColor).toHaveBeenLastCalledWith(3, null);
   });
 });
 
@@ -131,7 +131,7 @@ describe('a long title wraps while it is edited (the user, 2026-11-17)', () => {
   // still one line in the file: Enter enters it, and a line break typed or pasted
   // becomes a space.
   const SUB = { kind: 'sub' as const, id: 'prep', title: 'Preparation', dir: '', fill: '', count: 2 };
-  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: 'Yes', stroke: 'normal', arrow: 'arrow', colour: '' };
+  const EDGE: EdgeView = { kind: 'edge', fromId: 'a', toId: 'b', ends: [], index: 1, from: 'b', to: 'c', label: 'Yes', stroke: 'normal', arrow: 'arrow', color: '' };
 
   it("a node's title, an arrow's label and a group's title are each a box that wraps", () => {
     const { root, side } = sidebar();

@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 // A node under the pointer grows and lifts (Q240; the user, 2026-11-26: "Grow and lift is
-// best"), and class colours no longer block the window's marks (T6.5's finding): in the
-// window the shapes' inline class colours lose `!important`; a saved picture gets it back.
+// best"), and class colors no longer block the window's marks (T6.5's finding): in the
+// window the shapes' inline class colors lose `!important`; a saved picture gets it back.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { readyToLift, relockColours, unlockColours, unready } from '../src/class-colours';
+import { readyToLift, relockColors, unlockColors, unready } from '../src/class-colors';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 afterEach(() => { document.body.innerHTML = ''; });
 
-/** A drawing with one class-coloured node, as Mermaid writes it: a box, and a label whose text has its own colour. */
+/** A drawing with one class-colored node, as Mermaid writes it: a box, and a label whose text has its own color. */
 function drawing(): { svg: SVGSVGElement; g: SVGGElement; box: SVGRectElement; text: HTMLElement } {
   document.body.innerHTML = `<svg xmlns="${SVG_NS}" id="chart1"><g class="node process" transform="translate(120.5, 40)">`
     + `<rect class="basic label-container" style="fill:#e7f0ff !important;stroke:#385b8c !important;stroke-width:2px !important"></rect>`
@@ -20,39 +20,39 @@ function drawing(): { svg: SVGSVGElement; g: SVGGElement; box: SVGRectElement; t
   return { svg, g: svg.querySelector('g.node')!, box: svg.querySelector('rect')!, text: svg.querySelector('span')! };
 }
 
-describe('class colours in the window', () => {
-  test('a shape keeps its colours without !important, and notes which it had', () => {
+describe('class colors in the window', () => {
+  test('a shape keeps its colors without !important, and notes which it had', () => {
     const { svg, box } = drawing();
-    unlockColours(svg);
+    unlockColors(svg);
     for (const p of ['fill', 'stroke', 'stroke-width']) expect(box.style.getPropertyPriority(p), p).toBe('');
     expect(box.style.getPropertyValue('stroke-width')).toBe('2px');
     expect(box.getAttribute('data-was-important')).toBe('fill stroke stroke-width');
   });
 
-  test('a label\'s text keeps its own colour as Mermaid wrote it', () => {
+  test('a label\'s text keeps its own color as Mermaid wrote it', () => {
     const { svg, text } = drawing();
-    unlockColours(svg);
+    unlockColors(svg);
     expect(text.style.getPropertyPriority('color')).toBe('important');
     expect(svg.querySelector('g.label')!.hasAttribute('data-was-important')).toBe(false);
   });
 
-  test('a class\'s rule loses !important on the shapes\' colours, so a node\'s own colour beats its class (1.0.2, the user: "Picking another swatch doesn\'t even change its color")', () => {
+  test('a class\'s rule loses !important on the shapes\' colors, so a node\'s own color beats its class (1.0.2, the user: "Picking another swatch doesn\'t even change its color")', () => {
     const { svg } = drawing();
     const style = document.createElementNS(SVG_NS, 'style');
     // As Mermaid writes a classDef, on one line: the shapes' rule and the text's.
     style.textContent = '#chart1 .node rect{fill:#ECECFF;}#chart1 .process>*{fill:#e7f0ff!important;stroke:#385b8c!important;color:#142942!important;stroke-width:2px !important;}'
       + '#chart1 .process span{fill:#e7f0ff!important;color:#142942!important;}#chart1 .sel>*{stroke:red!important;}';
     svg.prepend(style);
-    unlockColours(svg);
+    unlockColors(svg);
     expect(style.textContent).toBe('#chart1 .node rect{fill:#ECECFF;}#chart1 .process>*{fill:#e7f0ff;stroke:#385b8c;color:#142942!important;stroke-width:2px;}'
       + '#chart1 .process span{fill:#e7f0ff!important;color:#142942!important;}#chart1 .sel>*{stroke:red;}');
   });
 
   test('a saved picture gets !important back, and no trace of the window', () => {
     const { svg } = drawing();
-    unlockColours(svg);
+    unlockColors(svg);
     const copy = svg.cloneNode(true) as SVGSVGElement;
-    relockColours(copy);
+    relockColors(copy);
     const box = copy.querySelector('rect')!;
     for (const p of ['fill', 'stroke', 'stroke-width']) expect(box.style.getPropertyPriority(p), p).toBe('important');
     expect(copy.querySelector('[data-was-important]')).toBeNull();
@@ -61,7 +61,7 @@ describe('class colours in the window', () => {
 });
 
 describe('a node made ready to grow and lift', () => {
-  test('grows about its centre, the translate Mermaid draws it round', () => {
+  test('grows about its center, the translate Mermaid draws it round', () => {
     const { g } = drawing();
     readyToLift(g);
     expect(g.style.transformOrigin).toBe('120.5px 40px');
@@ -78,7 +78,7 @@ describe('a node made ready to grow and lift', () => {
     expect(border.style.getPropertyValue('--own-fill')).toBe('');
   });
 
-  test('a saved picture leaves the grow\'s centre and the kept fill out', () => {
+  test('a saved picture leaves the grow\'s center and the kept fill out', () => {
     const { svg, g } = drawing();
     readyToLift(g);
     unready(svg);

@@ -122,7 +122,7 @@ describe('Save as SVG', () => {
     expect(disk.writes).toEqual([]); // the flowchart itself is not written
   });
 
-  test('a cancelled save says nothing', async () => {
+  test('a canceled save says nothing', async () => {
     disk.cancelExport = true;
     button('export').click();
     item('Save as SVG…').click();
